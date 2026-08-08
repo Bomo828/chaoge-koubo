@@ -698,7 +698,7 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
   z-index: 10;
   padding: 0 clamp(22px,3.4vw,58px);
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: 1fr auto;
   align-items: center;
   border-bottom: 1px solid rgba(89,208,255,.2);
   background: rgba(1,5,39,.18);
@@ -732,33 +732,7 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 .launch-brand b { font-size: 17px; letter-spacing: .08em; }
 .launch-brand small { margin-top: 5px; color: rgba(196,221,255,.55); font: 8px/1 Arial,sans-serif; letter-spacing: .24em; }
 
-.launch-system {
-  padding: 9px 15px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  border: 1px solid rgba(34,231,255,.16);
-  border-radius: 999px;
-  background: rgba(3,10,63,.38);
-  color: rgba(210,230,255,.48);
-  font: 8px/1 Arial,sans-serif;
-  letter-spacing: .18em;
-}
-.launch-system i { width: 6px; height: 6px; border-radius: 50%; background: #65ffb6; box-shadow: 0 0 12px #65ffb6; animation: launch-pulse 2s ease-in-out infinite; }
-.launch-system span { margin-left: 7px; color: var(--launch-cyan); }
-
 .launch-header-actions { justify-self: end; display: flex; align-items: center; gap: 14px; }
-.launch-login-link, .launch-member {
-  padding: 9px 4px;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  border: 0;
-  background: transparent;
-  color: rgba(225,233,255,.72);
-  font-size: 12px;
-}
-.launch-member i { width: 6px; height: 6px; border-radius: 50%; background: #65ffb6; box-shadow: 0 0 10px #65ffb6; }
 .launch-enter {
   min-width: 132px;
   padding: 11px 14px;
@@ -783,8 +757,8 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
   z-index: 2;
   padding: 54px clamp(24px,4vw,68px) 62px;
   display: grid;
-  grid-template-columns: minmax(330px,390px) minmax(430px,620px) minmax(180px,1fr);
-  grid-template-areas: "login copy space";
+  grid-template-columns: minmax(250px,.55fr) minmax(430px,620px) minmax(180px,1fr);
+  grid-template-areas: ". copy space";
   align-items: center;
   gap: clamp(36px,4vw,74px);
 }
@@ -800,7 +774,6 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
   background: linear-gradient(145deg, rgba(6,12,66,.86), rgba(3,7,42,.72));
   backdrop-filter: blur(24px) saturate(1.2);
   box-shadow: 0 34px 90px rgba(0,0,0,.44), inset 0 0 70px rgba(58,54,191,.12), 9px 10px 0 rgba(8,17,84,.42);
-  animation: launch-card-in .7s cubic-bezier(.2,.8,.2,1) both;
 }
 .launch-login-card::before {
   content: "";
@@ -840,7 +813,7 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 .launch-window-bar b { color: rgba(197,220,255,.42); font: 8px/1 Arial,sans-serif; letter-spacing: .14em; }
 
 .launch-login-heading { padding: 28px 29px 0; }
-.launch-login-heading small, .launch-member-panel > small { color: var(--launch-cyan); font: 8px/1 Arial,sans-serif; letter-spacing: .23em; }
+.launch-login-heading small { color: var(--launch-cyan); font: 8px/1 Arial,sans-serif; letter-spacing: .23em; }
 .launch-login-heading h2 { margin: 10px 0 8px; font-size: 28px; line-height: 1.2; letter-spacing: -.04em; }
 .launch-login-heading p { margin: 0; color: rgba(208,219,255,.48); font-size: 11px; line-height: 1.6; }
 
@@ -895,21 +868,49 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 .launch-account-note { margin: 0 28px 23px; display: flex; align-items: center; gap: 7px; color: rgba(190,205,244,.34); font-size: 8px; line-height: 1.4; }
 .launch-account-note i { width: 5px; height: 5px; border-radius: 50%; background: var(--launch-yellow); box-shadow: 0 0 8px var(--launch-yellow); }
 
-.launch-member-panel { padding: 40px 30px 36px; text-align: center; }
-.launch-avatar { width: 82px; height: 82px; margin: 25px auto 17px; display: grid; place-items: center; border: 1px solid var(--launch-cyan); border-radius: 24px 24px 24px 6px; background: linear-gradient(145deg,#163798,#5b1cad); color: var(--launch-yellow); font-size: 35px; font-weight: 900; box-shadow: 8px 8px 0 var(--launch-pink), 0 0 36px rgba(34,231,255,.22); }
-.launch-member-panel h2 { margin: 0; font-size: 28px; }
-.launch-member-panel p { margin: 9px 0 26px; color: rgba(205,219,255,.5); font-size: 11px; }
-.launch-member-panel a { width: 100%; height: 52px; padding: 0 16px; display: flex; align-items: center; justify-content: space-between; border-radius: 3px 13px 13px 13px; background: var(--launch-cyan); color: #02052d; font-size: 13px; font-weight: 900; box-shadow: 7px 7px 0 var(--launch-pink); }
+.launch-auth-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  padding: 24px;
+  display: grid;
+  place-items: center;
+  background: rgba(0,3,28,.74);
+  backdrop-filter: blur(15px) saturate(1.2);
+  animation: auth-fade-in .22s ease-out both;
+}
+.launch-auth-modal {
+  grid-area: auto;
+  width: min(410px,100%);
+  max-width: 410px;
+  max-height: calc(100svh - 48px);
+  overflow-y: auto;
+  animation: auth-panel-in .3s cubic-bezier(.2,.8,.2,1) both;
+}
+.launch-auth-close {
+  position: absolute;
+  z-index: 5;
+  right: 15px;
+  top: 53px;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(89,208,255,.18);
+  border-radius: 50%;
+  background: rgba(2,8,52,.68);
+  color: rgba(219,231,255,.58);
+  font-size: 20px;
+  line-height: 1;
+  transition: color .2s, border-color .2s, transform .2s;
+}
+.launch-auth-close:hover { color: #fff; border-color: var(--launch-cyan); transform: rotate(5deg); }
 
 .launch-copy { grid-area: copy; max-width: 620px; position: relative; animation: launch-rise .8s .08s ease-out both; }
 .launch-eyebrow { margin: 0 0 22px; color: rgba(205,220,255,.54); font: 9px/1 Arial,sans-serif; letter-spacing: .26em; }
 .launch-eyebrow span { margin-right: 10px; padding: 6px 8px; border: 1px solid rgba(34,231,255,.35); border-radius: 3px; color: var(--launch-cyan); background: rgba(6,20,83,.45); }
 .launch-copy h1 { margin: 0; font-size: clamp(65px,6.1vw,104px); font-weight: 1000; line-height: .86; letter-spacing: -.075em; text-shadow: 0 10px 45px rgba(0,0,0,.48); }
 .launch-copy h1 em { display: inline-block; margin-top: 11px; color: var(--launch-yellow); font-style: normal; white-space: nowrap; text-shadow: 6px 7px 0 var(--launch-pink), 0 0 36px rgba(255,230,0,.2); transform: translate3d(calc(var(--launch-x) * 3px), calc(var(--launch-y) * 2px), 0); }
-.launch-lead { max-width: 500px; margin: 31px 0 0; color: rgba(221,229,255,.62); font-size: 14px; line-height: 1.85; }
-.launch-capabilities { margin-top: 29px; display: flex; flex-wrap: wrap; gap: 9px; }
-.launch-capabilities span { padding: 9px 11px; border: 1px solid rgba(108,190,255,.18); border-radius: 999px; background: rgba(3,10,63,.45); color: rgba(218,227,255,.6); font-size: 9px; backdrop-filter: blur(8px); }
-.launch-capabilities b { margin-right: 7px; color: var(--launch-cyan); font: 8px/1 Arial,sans-serif; }
 .launch-copy-cta { width: min(210px,100%); margin-top: 30px; padding: 13px 15px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--launch-yellow); color: #fff; font-size: 12px; font-weight: 800; transition: color .2s, padding .2s; }
 .launch-copy-cta:hover { padding-left: 20px; color: var(--launch-yellow); }
 .launch-copy-cta span { color: var(--launch-cyan); font-size: 17px; }
@@ -923,11 +924,8 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 .launch-footer span:last-child { justify-self: end; }
 
 @keyframes launch-rise { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
-@keyframes launch-card-in { from { opacity: 0; transform: translateX(-28px) rotateY(7deg); } to { opacity: 1; transform: none; } }
-@keyframes launch-pulse { 0%,100% { opacity: .55; } 50% { opacity: 1; } }
-
 @media (max-width: 1220px) {
-  .launch-stage { grid-template-columns: minmax(320px,370px) minmax(390px,1fr); grid-template-areas: "login copy"; }
+  .launch-stage { grid-template-columns: minmax(150px,.35fr) minmax(390px,620px) minmax(120px,1fr); grid-template-areas: ". copy space"; }
   .launch-copy h1 { font-size: clamp(61px,7.5vw,88px); }
   .launch-space-label { display: none; }
 }
@@ -938,10 +936,8 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
   .launch-color-wash { position: fixed; background: linear-gradient(180deg,rgba(1,5,40,.88),rgba(2,7,47,.62) 42%,rgba(1,5,40,.94)); }
   .launch-grid, .launch-noise { position: fixed; }
   .launch-header { min-height: 72px; grid-template-columns: 1fr auto; }
-  .launch-system { display: none; }
   .launch-header-actions { gap: 9px; }
-  .launch-login-link { display: none; }
-  .launch-stage { min-height: auto; padding: 56px 22px 76px; grid-template-columns: minmax(0,1fr); grid-template-areas: "copy" "login"; gap: 48px; align-items: start; }
+  .launch-stage { min-height: auto; padding: 56px 22px 76px; grid-template-columns: minmax(0,1fr); grid-template-areas: "copy"; gap: 0; align-items: start; }
   .launch-copy { max-width: 660px; }
   .launch-copy h1 { font-size: clamp(62px,12vw,94px); }
   .launch-login-card { max-width: 500px; }
@@ -956,13 +952,12 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
   .launch-brand small { display: none; }
   .launch-logo { width: 40px; height: 40px; }
   .launch-enter { min-width: 104px; padding: 9px 11px; font-size: 10px; }
-  .launch-stage { padding: 46px 16px 58px; gap: 40px; }
+  .launch-stage { padding: 46px 16px 58px; }
   .launch-copy h1 { font-size: clamp(51px,16vw,72px); line-height: .9; }
   .launch-copy h1 em { white-space: normal; text-shadow: 4px 5px 0 var(--launch-pink),0 0 28px rgba(255,230,0,.2); }
-  .launch-lead { margin-top: 25px; font-size: 12px; }
-  .launch-capabilities { gap: 7px; }
-  .launch-capabilities span { padding: 8px 9px; }
   .launch-login-card { border-radius: 4px 22px 22px 22px; box-shadow: 0 28px 70px rgba(0,0,0,.4), 6px 7px 0 rgba(8,17,84,.42); }
+  .launch-auth-backdrop { padding: 14px; }
+  .launch-auth-modal { max-height: calc(100svh - 28px); }
   .launch-login-heading { padding: 24px 22px 0; }
   .launch-login-form { padding: 8px 22px 22px; }
   .launch-account-note { margin: 0 22px 21px; }
@@ -971,5 +966,5 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 
 @media (prefers-reduced-motion: reduce) {
   .launch-video, .launch-copy h1 em { transform: none; transition: none; }
-  .launch-copy, .launch-login-card, .launch-system i { animation: none; }
+  .launch-copy, .launch-login-card { animation: none; }
 }
