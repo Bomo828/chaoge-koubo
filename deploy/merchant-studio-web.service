@@ -1,0 +1,30 @@
+[Unit]
+Description=Merchant Studio Web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=merchantstudio
+Group=merchantstudio
+WorkingDirectory=/opt/merchant-studio/web
+Environment=NODE_ENV=production
+Environment=PORT=3100
+Environment=HOSTNAME=127.0.0.1
+Environment=APP_DATA_DIR=/opt/merchant-studio/web/.data
+Environment=ENABLE_DEMO_ACCOUNT=false
+Environment=NEXT_PUBLIC_VIDEO_WORKER_URL=https://api.chaogeai.top/video-worker
+Environment=VIDEO_WORKER_BASE_URL=https://api.chaogeai.top/video-worker
+EnvironmentFile=-/opt/merchant-studio/web/.env.local
+ExecStart=/usr/bin/node /opt/merchant-studio/web/server.js
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/merchant-studio/web/.data
+
+[Install]
+WantedBy=multi-user.target

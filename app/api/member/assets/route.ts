@@ -1,0 +1,84 @@
+import { getMemberSession } from "../../../member-session";
+import { listMemberAssets, saveMemberAsset, saveUploadedMemberAsset } from "../../../../lib/member-assets";
+
+function clean(value: unknown, fallback: string, max: number) {
+  return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback;
+}
+
+function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
+  return {
+    id: item.id,
+    projectName: item.project_name,
+    kind: item.kind,
+    name: item.name,
+    contentType: item.content_type,
+    sizeBytes: Number(item.size_bytes),
+    // 会员资产接口不返回克隆声音的服务商模型 ID。
+    sourceTaskId: item.kind === "voice" ? null : item.source_task_id,
+    createdAt: Number(item.created_at) * 1000,
+    mediaUrl: `/api/member/assets/${encodeURIComponent(item.id)}`,
+    coverUrl: item.cover_object_key ? `/api/member/assets/${encodeURIComponent(item.id)}?cover=1` : "",
+  };
+}
+
+export async function GET() {
+  const member = await getMemberSession();
+  if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
+  try {
+    const items = await listMemberAssets(member);
+    return Response.json({ items: items.map(assetJson) });
+  } catch (error) {
+    console.error("List member assets failed", error);
+    return Response.json({ error: "会员资产暂时无法读取，请稍后重试。" }, { status: 500 });
+  }
+}
+
+export async function POST(request: Request) {
+  const member = await getMemberSession();
+  if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
+  try {
+    if ((request.headers.get("content-type") || "").includes("multipart/form-data")) {
+      const form = await request.formData();
+      const file = form.get("file");
+      const cover = form.get("cover");
+      const id = clean(form.get("id"), "", 100);
+      const kind = ["image", "video", "audio", "voice"].includes(String(form.get("kind"))) ? String(form.get("kind")) as "image" | "video" | "audio" | "voice" : "video";
+      if (!(file instanceof File) || file.size < 1) return Response.json({ error: "上传文件无效。" }, { status: 400 });
+      if (file.size > 80 * 1024 * 1024) return Response.json({ error: "本地测试生成文件不能超过 80MB。" }, { status: 413 });
+      if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id)) return Response.json({ error: "资产编号无效。" }, { status: 400 });
+      const saved = await saveUploadedMemberAsset(member, {
+        id,
+        projectName: clean(form.get("projectName"), "未命名项目", 80),
+        kind,
+        name: clean(form.get("name"), kind === "video" ? "生成短视频" : "生成文件", 120),
+        contentType: file.type || (kind === "video" ? "video/webm" : "application/octet-stream"),
+        data: await file.arrayBuffer(),
+        coverData: cover instanceof File && cover.size > 0 ? await cover.arrayBuffer() : null,
+        coverContentType: cover instanceof File && cover.size > 0 ? cover.type || "image/jpeg" : null,
+        sourceTaskId: clean(form.get("sourceTaskId"), "", 120) || null,
+        createdAt: Number(form.get("createdAt") || Date.now()),
+      });
+      return saved ? Response.json({ item: assetJson(saved) }) : Response.json({ error: "资产保存失败。" }, { status: 500 });
+    }
+
+    const body = await request.json() as Record<string, unknown>;
+    const id = clean(body.id, "", 100);
+    const sourceUrl = clean(body.sourceUrl, "", 2_000_000);
+    const kind = ["image", "video", "audio", "voice"].includes(String(body.kind)) ? String(body.kind) as "image" | "video" | "audio" | "voice" : "image";
+    if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id)) return Response.json({ error: "资产编号无效。" }, { status: 400 });
+    if (!/^https?:\/\//i.test(sourceUrl) && !/^data:/i.test(sourceUrl)) return Response.json({ error: "资产来源无效。" }, { status: 400 });
+    const saved = await saveMemberAsset(member, {
+      id,
+      projectName: clean(body.projectName, "未命名项目", 80),
+      kind,
+      name: clean(body.name, kind === "video" ? "生成短视频" : "生成图片", 120),
+      sourceUrl,
+      sourceTaskId: clean(body.sourceTaskId, "", 120) || null,
+      createdAt: Number(body.createdAt || Date.now()),
+    });
+    return saved ? Response.json({ item: assetJson(saved) }) : Response.json({ error: "资产保存失败。" }, { status: 500 });
+  } catch (error) {
+    console.error("Save member asset failed", error);
+    return Response.json({ error: error instanceof Error ? error.message : "资产保存失败。" }, { status: 500 });
+  }
+}
