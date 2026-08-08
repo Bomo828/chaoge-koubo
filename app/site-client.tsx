@@ -25,7 +25,6 @@ export function SiteClient({
   const [showPassword, setShowPassword] = useState(false);
   const [authOpen, setAuthOpen] = useState(Boolean(initialAuthMode));
   const [authError, setAuthError] = useState("");
-  const [authNotice, setAuthNotice] = useState("");
   const [returnTo, setReturnTo] = useState(initialReturnTo);
   const usernameRef = useRef<HTMLInputElement>(null);
 
@@ -64,7 +63,6 @@ export function SiteClient({
 
   function openAuth() {
     setAuthError("");
-    setAuthNotice("");
     setReturnTo("/studio");
     setAuthOpen(true);
     window.setTimeout(() => usernameRef.current?.focus({ preventScroll: true }), 80);
@@ -73,7 +71,6 @@ export function SiteClient({
   function closeAuth() {
     setAuthOpen(false);
     setAuthError("");
-    setAuthNotice("");
     const url = new URL(window.location.href);
     url.searchParams.delete("auth");
     url.searchParams.delete("error");
@@ -117,13 +114,12 @@ export function SiteClient({
       <header className="launch-header">
         <a className="launch-brand" href="#top" aria-label="爆点实验室首页">
           <span className="launch-logo"><img src="/media/flash-lab-logo.png" alt="" /></span>
-          <span className="launch-wordmark"><b>爆点实验室</b><small>FLASH LAB / CREATIVE ENGINE</small></span>
+          <span className="launch-wordmark"><b>爆点实验室</b></span>
         </a>
 
         <div className="launch-header-actions">
           <a className="launch-enter" href={studioHref} onClick={guardStudio}>
-            <small>{member ? "MEMBER ACCESS" : "CREATOR ACCESS"}</small>
-            <b>{member ? "进入工作台" : "登录创作"}</b>
+            <b>{member ? "工作台" : "登录"}</b>
             <span>↗</span>
           </a>
         </div>
@@ -131,17 +127,12 @@ export function SiteClient({
 
       <section className="launch-stage" id="top">
         <section className="launch-copy">
-          <p className="launch-kicker">FLASH LAB · AI CREATIVE STUDIO</p>
           <h1><span>爆点实验室</span></h1>
           <p className="launch-slogan"><strong>把灵感，</strong><em>放大到屏幕之外</em></p>
         </section>
       </section>
 
-      <footer className="launch-footer">
-        <span>AI IMAGE · VIDEO · VOICE · ASSET</span>
-        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">鄂ICP备2026017649号-1</a>
-        <span>© 2026 FLASH LAB</span>
-      </footer>
+      <a className="launch-record" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">鄂ICP备2026017649号-1</a>
 
       {authOpen && !member ? (
         <div className="launch-auth-backdrop" role="presentation" onMouseDown={(event) => {
@@ -149,42 +140,30 @@ export function SiteClient({
         }}>
           <section className="launch-login-card launch-auth-modal" role="dialog" aria-modal="true" aria-labelledby="launch-auth-title">
             <button className="launch-auth-close" type="button" aria-label="关闭登录窗口" onClick={closeAuth}>×</button>
-            <div className="launch-window-bar">
-              <span><i /><i /><i /></span>
-              <b>AUTH_PORTAL // 01</b>
-            </div>
-            <div className="launch-login-heading">
-              <small>WELCOME BACK, CREATOR</small>
-              <h2 id="launch-auth-title">登录，点燃创作</h2>
-              <p>进入你的 AI 图片、视频与声音工作台。</p>
+            <div className="launch-login-brand">
+              <span><img src="/media/flash-lab-logo.png" alt="" /></span>
+              <h2 id="launch-auth-title">登录</h2>
             </div>
 
             <form className="launch-login-form" action="/api/auth/account" method="post">
               <input type="hidden" name="mode" value="login" />
               <input type="hidden" name="returnTo" value={returnTo} />
               <label>
-                <span>01 / 用户名</span>
-                <input ref={usernameRef} name="username" type="text" autoComplete="username" placeholder="输入会员用户名" minLength={3} required />
+                <span>用户名</span>
+                <input ref={usernameRef} name="username" type="text" autoComplete="username" placeholder="请输入用户名" minLength={3} required />
               </label>
               <label>
-                <span>02 / 登录密码</span>
+                <span>密码</span>
                 <span className="launch-password-field">
-                  <input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="输入登录密码" minLength={6} required />
-                  <button type="button" onClick={() => setShowPassword((value) => !value)}>{showPassword ? "隐藏" : "显示"}</button>
+                  <input name="password" type={showPassword ? "text" : "password"} autoComplete="current-password" placeholder="请输入密码" minLength={6} required />
+                  <button type="button" aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? "隐藏" : "显示"}</button>
                 </span>
               </label>
 
               {authError ? <p className="launch-auth-message is-error" role="alert">{authError}</p> : null}
-              {authNotice ? <p className="launch-auth-message" role="status">{authNotice}</p> : null}
 
-              <div className="launch-login-options">
-                <label><input type="checkbox" name="remember" defaultChecked /><span>保持登录状态</span></label>
-                <button type="button" onClick={() => setAuthNotice("请联系平台管理员重置登录密码。")}>忘记密码？</button>
-              </div>
-
-              <button className="launch-submit" type="submit"><span>进入创作舱</span><b>→</b></button>
+              <button className="launch-submit" type="submit"><span>进入工作台</span><b>↗</b></button>
             </form>
-            <p className="launch-account-note"><i /> 会员账号由平台管理员统一创建</p>
           </section>
         </div>
       ) : null}
