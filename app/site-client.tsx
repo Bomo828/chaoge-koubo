@@ -127,12 +127,9 @@ export function SiteClient({
 
       <section className="launch-stage" id="top">
         <section className="launch-copy">
-          <h1 aria-label="爆点实验室">
-            <span className="launch-title-glyphs" aria-hidden="true">
-              <i>爆</i><i>点</i><i>实</i><i>验</i><i>室</i>
-            </span>
+          <h1 className="launch-title-image">
+            <img src="/media/flash-lab-title-lockup.png" alt="爆点实验室，把灵感，放大到屏幕之外" />
           </h1>
-          <p className="launch-slogan"><strong>把灵感，</strong><em>放大到屏幕之外</em></p>
         </section>
       </section>
 
