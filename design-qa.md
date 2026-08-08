@@ -1,53 +1,44 @@
-## Design QA
+# Design QA
 
-### Evidence
+- Source visual truth: conversation attachment, 1732 × 909 px reference image (no filesystem path was exposed by the client).
+- Implementation screenshot: unavailable; the in-app browser webview did not attach to the local preview.
+- Intended comparison viewport: 1732 × 909 CSS px at device scale factor 1.
+- State: signed-out homepage, login modal closed.
+- Density normalization: source is 1732 × 909 px and intended implementation capture is 1732 × 909 px.
 
-- source visual truth path: `/var/folders/5h/vzzl75r96714xbh889g8db7r0000gn/T/codex-clipboard-736ba461-a7f3-414c-b903-1d95065b733a.jpg`
-- implementation screenshot path: `/Users/chaoge/Documents/Codex/2026-07-14/new-chat/merchant-studio-web/.audit/viral-quick-template-1440x1050.jpg`
-- combined comparison path: `/Users/chaoge/Documents/Codex/2026-07-14/new-chat/merchant-studio-web/.audit/viral-quick-comparison.jpg`
-- viewport: 1440 × 1050 CSS px
-- source pixels: 1289 × 669 at 1× density
-- implementation pixels: 1440 × 1050 at 1× density
-- density normalization: both captures are shown without aspect distortion in the combined comparison
-- state: logged-in desktop workspace, “短视频 → 一键网感剪辑”, demo source video loaded, default template selected
+## Full-view comparison evidence
 
-### Full-view comparison evidence
+Blocked. The source image is visible in the conversation, but a browser-rendered implementation screenshot could not be captured, so a valid combined comparison input could not be produced.
 
-The implementation follows the reference workflow and hierarchy: the original video is imported and previewed on the left; the right side presents a two-row template gallery; music, sound effects, inherited resolution, and the primary processing action share one bottom control bar. Merchant Studio’s existing light green/white visual system and navigation rail are intentionally retained.
+## Focused-region comparison evidence
 
-### Focused region comparison evidence
+Blocked for the same reason. The critical regions would be the hero typography, the angular logo lockup, the angular login button, the full-bleed video crop, and the transparent header edge.
 
-Focused inspection covered the source preview, source metadata, eight template cards, selected-template state, music/effect controls, inherited-resolution label, and processing button. All primary controls remain visible in a single desktop viewport with no horizontal overflow.
+## Findings
 
-### Required fidelity surfaces
+- [P2] Browser-rendered visual verification is unavailable.
+  - Evidence: production build and type validation passed, but the local browser surface timed out before attaching.
+  - Impact: full-screen crop, exact text wrapping, and responsive proportions could not be visually confirmed at the target viewport.
+  - Fix: capture the deployed implementation at 1732 × 909 and compare it with the supplied reference before the next polish iteration.
 
-- Typography: existing Merchant Studio display and interface hierarchy retained; source and template labels remain legible.
-- Layout: clear left/right split, 4 × 2 template grid, and a single aligned bottom action bar.
-- Colors: existing dark green, warm gold, pale green, and white tokens are used consistently.
-- Media: the supplied demo video is used for the source preview and template thumbnails.
-- Workflow: manual resolution selection and unrelated editing tabs have been removed; output resolution follows the original video metadata.
+## Required fidelity surfaces
 
-### Primary interactions tested
+- Fonts and typography: implemented with a heavy italic Chinese display treatment, but browser-rendered weight and wrapping are not visually verified.
+- Spacing and layout rhythm: full-viewport overlay layout is implemented; final pixel alignment is not visually verified.
+- Colors and visual tokens: white, neon yellow, cyan, magenta, and deep navy match the reference palette in code; rendered balance is not visually verified.
+- Image quality and asset fidelity: the supplied dynamic video and existing brand logo are reused; video crop and sharpness are not visually verified.
+- Copy and content: main title is “爆点实验室”; subtitle is “把灵感，放大到屏幕之外”; login remains button-triggered.
 
-- opened “短视频 → 一键网感剪辑”
-- switched from “简洁黄白” to “轻透雅粉” and verified the selected state updated
-- verified all seven supplied remote MP4 template previews reached ready state with no media error
-- verified the selected template preview can play independently while inactive previews remain paused
-- toggled the music checkbox and verified its state updated
-- restored the default template and music setting
-- verified source-video metadata displays `810 × 1080`
-- checked browser console: 0 page errors
-- production build completed successfully
+## Comparison history
 
-### Findings
+- Initial pass: blocked before comparison because no browser-rendered implementation screenshot was available.
 
-- No actionable P0/P1/P2 issues remain.
-- Intentional difference: the implementation uses Merchant Studio’s light product shell instead of copying the reference editor’s dark theme.
-- Intentional difference: template imagery uses the current project’s demo merchant video so the page remains coherent with the rest of the product.
+## Implementation checklist
 
-### Follow-up polish
+- Capture the homepage at 1732 × 909.
+- Verify the hero title does not overlap the astronaut.
+- Verify the logo and login button silhouettes remain crisp.
+- Verify the top edge has no visible divider.
+- Test opening and closing the login modal.
 
-- P3: connect the processing button to the real transcription, template rendering, music/effect mixing, and export service.
-- P3: add processing progress, failure recovery, and a downloadable completed-video state after the backend is connected.
-
-final result: passed
+final result: blocked

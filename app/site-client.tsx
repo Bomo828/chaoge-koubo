@@ -117,25 +117,24 @@ export function SiteClient({
       <header className="launch-header">
         <a className="launch-brand" href="#top" aria-label="爆点实验室首页">
           <span className="launch-logo"><img src="/media/flash-lab-logo.png" alt="" /></span>
-          <span><b>爆点实验室</b><small>FLASH LAB</small></span>
+          <span className="launch-wordmark"><b>爆点实验室</b><small>FLASH LAB / CREATIVE ENGINE</small></span>
         </a>
 
         <div className="launch-header-actions">
-          <a className="launch-enter" href={studioHref} onClick={guardStudio}>进入工作台 <span>↗</span></a>
+          <a className="launch-enter" href={studioHref} onClick={guardStudio}>
+            <small>{member ? "MEMBER ACCESS" : "CREATOR ACCESS"}</small>
+            <b>{member ? "进入工作台" : "登录创作"}</b>
+            <span>↗</span>
+          </a>
         </div>
       </header>
 
       <section className="launch-stage" id="top">
         <section className="launch-copy">
-          <p className="launch-eyebrow"><span>CREATE</span> WITHOUT LIMITS</p>
-          <h1>把灵感<br />放大到<br /><em>屏幕之外</em></h1>
-          <a className="launch-copy-cta" href={studioHref} onClick={guardStudio}>{member ? "继续你的创作" : "从登录开始"}<span>↗</span></a>
+          <p className="launch-kicker">FLASH LAB · AI CREATIVE STUDIO</p>
+          <h1><span>爆点实验室</span></h1>
+          <p className="launch-slogan"><strong>把灵感，</strong><em>放大到屏幕之外</em></p>
         </section>
-
-        <div className="launch-space-label" aria-hidden="true">
-          <span>DEEP SPACE / CREATIVE MODE</span>
-          <b>∞</b>
-        </div>
       </section>
 
       <footer className="launch-footer">
