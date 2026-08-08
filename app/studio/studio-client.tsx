@@ -2534,7 +2534,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         lastModified: viralSourceFile.lastModified,
       });
     }
-    if (!viralVideoPreviewUrl || viralVideoPreviewUrl === "/net-edit-demo.mp4" || viralVideoPreviewUrl.startsWith("blob:")) {
+    if (!viralVideoPreviewUrl || viralVideoPreviewUrl.startsWith("blob:")) {
       throw new Error("真实原片文件已经失效，请重新上传原片，或从会员资产点击“一键网感”导入。");
     }
     const response = await fetch(viralVideoPreviewUrl, { cache: "no-store" });
