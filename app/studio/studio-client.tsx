@@ -485,7 +485,9 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
 
   useEffect(() => {
     const requestedTool = new URLSearchParams(window.location.search).get("tool");
-    if (requestedTool && Object.hasOwn(studioLabels, requestedTool)) setActive(requestedTool);
+    if (requestedTool && Object.hasOwn(studioLabels, requestedTool)) {
+      queueMicrotask(() => setActive(requestedTool));
+    }
   }, []);
 
   useEffect(() => {
@@ -674,7 +676,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
   }
 
   useEffect(() => {
-    void loadOverviewAssets();
+    queueMicrotask(() => void loadOverviewAssets());
     const refresh = () => void loadOverviewAssets();
     window.addEventListener("member-assets-updated", refresh);
     return () => window.removeEventListener("member-assets-updated", refresh);
@@ -897,8 +899,10 @@ function Design({ busy, action, onPointsChange }: { busy: boolean; action: () =>
     if (referencesAnalyzed || !referenceNames.length) return;
     const assistantReplies = marketingMessages.filter((item) => item.role === "assistant");
     if (assistantReplies.length <= 1) return;
-    setMarketingReferenceSummary(assistantReplies[assistantReplies.length - 1]?.content ?? "");
-    setAnalyzedReferenceSignature(currentReferenceSignature);
+    queueMicrotask(() => {
+      setMarketingReferenceSummary(assistantReplies[assistantReplies.length - 1]?.content ?? "");
+      setAnalyzedReferenceSignature(currentReferenceSignature);
+    });
   }, [currentReferenceSignature, marketingMessages, referenceNames.length, referencesAnalyzed]);
 
   useEffect(() => {
@@ -907,8 +911,10 @@ function Design({ busy, action, onPointsChange }: { busy: boolean; action: () =>
       if (!stored) return;
       const parsed = JSON.parse(stored) as { name?: string; url?: string };
       if (typeof parsed.url === "string" && /^data:image\//i.test(parsed.url)) {
-        setMaterialQrName(typeof parsed.name === "string" ? parsed.name : "门店二维码");
-        setMaterialQrUrl(parsed.url);
+        queueMicrotask(() => {
+          setMaterialQrName(typeof parsed.name === "string" ? parsed.name : "门店二维码");
+          setMaterialQrUrl(parsed.url as string);
+        });
       }
     } catch {
       window.localStorage.removeItem("material-qr:current-task");
@@ -1462,34 +1468,37 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   useEffect(() => {
     if (!viralTemplates.length) return;
     if (!viralTemplates.some((template) => template.id === viralTemplate)) {
-      setViralTemplate(viralTemplates[0].id);
+      queueMicrotask(() => setViralTemplate(viralTemplates[0].id));
     }
   }, [viralTemplate, viralTemplates]);
 
   useEffect(() => {
     if (!viralImportAsset) return;
     let cancelled = false;
-    setViralImportPreparing(true);
-    setWorkspace("viral-edit");
-    setViralFiles([viralImportAsset.name]);
-    setViralSourceFile(null);
-    setViralVideoPreviewUrl(viralImportAsset.mediaUrl);
-    setViralAnalyzed(true);
-    setViralResultUrl("");
-    setViralResultBlob(null);
-    setViralDownloadUrl("");
-    setViralSaved(false);
-    setViralError("");
-    setViralTranscriptError("");
-    setViralProcessStarted(false);
-    setViralCoverUrl("");
-    setViralCaptions([]);
-    setViralCaptionsConfirmed(false);
-    setViralAnalysisSummary("");
-    setViralAnalysisMode("");
-    setViralProcessingEngine("");
-    setViralRenderer("");
-    setViralFailed(false);
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setViralImportPreparing(true);
+      setWorkspace("viral-edit");
+      setViralFiles([viralImportAsset.name]);
+      setViralSourceFile(null);
+      setViralVideoPreviewUrl(viralImportAsset.mediaUrl);
+      setViralAnalyzed(true);
+      setViralResultUrl("");
+      setViralResultBlob(null);
+      setViralDownloadUrl("");
+      setViralSaved(false);
+      setViralError("");
+      setViralTranscriptError("");
+      setViralProcessStarted(false);
+      setViralCoverUrl("");
+      setViralCaptions([]);
+      setViralCaptionsConfirmed(false);
+      setViralAnalysisSummary("");
+      setViralAnalysisMode("");
+      setViralProcessingEngine("");
+      setViralRenderer("");
+      setViralFailed(false);
+    });
     window.sessionStorage.setItem("merchant-studio-viral-source", JSON.stringify({
       id: viralImportAsset.id,
       name: viralImportAsset.name,
@@ -1533,9 +1542,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     try {
       const saved = JSON.parse(window.sessionStorage.getItem("merchant-studio-viral-source") || "null") as { name?: string; mediaUrl?: string } | null;
       if (!saved?.name || !saved.mediaUrl || saved.mediaUrl.startsWith("blob:")) return;
-      setViralFiles([saved.name]);
-      setViralVideoPreviewUrl(saved.mediaUrl);
-      setViralAnalyzed(true);
+      queueMicrotask(() => {
+        setViralFiles([saved.name as string]);
+        setViralVideoPreviewUrl(saved.mediaUrl as string);
+        setViralAnalyzed(true);
+      });
     } catch {
       window.sessionStorage.removeItem("merchant-studio-viral-source");
     }
@@ -2893,10 +2904,12 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
     voiceRecoveryStarted.current = true;
     voiceRecoveryPending.current = true;
-    setWorkspace("lip-sync");
-    setVoicesLoading(true);
-    setVoiceError("");
-    setVoiceNotice("正在恢复已克隆声音的试听样本…");
+    queueMicrotask(() => {
+      setWorkspace("lip-sync");
+      setVoicesLoading(true);
+      setVoiceError("");
+      setVoiceNotice("正在恢复已克隆声音的试听样本…");
+    });
 
     const recover = async () => {
       try {
@@ -2942,8 +2955,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   useEffect(() => {
     if (workspace !== "lip-sync") return;
     const controller = new AbortController();
-    setVoicesLoading(true);
-    setVoiceError("");
+    queueMicrotask(() => {
+      setVoicesLoading(true);
+      setVoiceError("");
+    });
     fetch("/api/ai/voices", { cache: "no-store", signal: controller.signal })
       .then(async (response) => {
         const data = await response.json() as { error?: string; voices?: ClonedVoice[] };
@@ -3450,15 +3465,17 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
   }
 
   useEffect(() => {
-    void loadAssets();
+    queueMicrotask(() => void loadAssets());
     const refresh = () => void loadAssets();
     window.addEventListener("member-assets-updated", refresh);
     return () => window.removeEventListener("member-assets-updated", refresh);
   }, []);
 
   useEffect(() => {
-    setFilter(initialFilter);
-    setSelectedAsset(null);
+    queueMicrotask(() => {
+      setFilter(initialFilter);
+      setSelectedAsset(null);
+    });
   }, [initialFilter]);
 
   async function deleteAsset(item: MemberAssetItem) {
@@ -3482,7 +3499,7 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
 
   return <>
     <ToolHeading eyebrow="MEMBER ASSET CLOUD" title="会员资产空间" desc="生成的图片、短视频和声音按项目名称与生成时间自动归档。" />
-    <div className="asset-summary asset-summary-live"><div><b>{usedBytes ? formatAssetSize(usedBytes) : `${items.length} 个资产`}</b><span>{items.length ? `共 ${projects.length} 个项目 · 最近生成 ${formatAssetTime(items[0]?.createdAt || Date.now())}` : "等待保存第一份生成结果"}</span><i><em style={{ width: `${Math.min(100, Math.max(3, usedBytes / (1024 * 1024 * 1024) * 100))}%` }} /></i></div><button disabled={syncing} onClick={() => { setSyncing(true); void loadAssets().finally(() => window.setTimeout(() => setSyncing(false), 500)); }}>{syncing ? "同步中…" : "↻ 立即同步"}</button></div>
+    <div className="asset-summary asset-summary-live"><div><b>{usedBytes ? formatAssetSize(usedBytes) : `${items.length} 个资产`}</b><span>{items.length ? `共 ${projects.length} 个项目 · 最近生成 ${formatAssetTime(items[0]?.createdAt ?? 0)}` : "等待保存第一份生成结果"}</span><i><em style={{ width: `${Math.min(100, Math.max(3, usedBytes / (1024 * 1024 * 1024) * 100))}%` }} /></i></div><button disabled={syncing} onClick={() => { setSyncing(true); void loadAssets().finally(() => window.setTimeout(() => setSyncing(false), 500)); }}>{syncing ? "同步中…" : "↻ 立即同步"}</button></div>
     <div className="asset-groups asset-filter-groups">
       <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><i>全</i><b>全部资产</b><span>{items.length} 个</span></button>
       <button className={filter === "image" ? "active" : ""} onClick={() => setFilter("image")}><i>图</i><b>生成图片</b><span>{imageCount} 个</span></button>
