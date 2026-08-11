@@ -46,13 +46,12 @@ jobs:
           set -euo pipefail
           pnpm exec next build --webpack
 
-      - name: Package release
+      - name: Prepare release directory
         env:
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           release_dir="$RUNNER_TEMP/merchant-studio-release"
-          archive="$RUNNER_TEMP/merchant-studio-web-${RELEASE_SHA}.tar.gz"
 
           mkdir -p "$release_dir/.next"
           cp -R .next/standalone/. "$release_dir/"
@@ -60,7 +59,6 @@ jobs:
           cp -R public "$release_dir/public"
           cp -R deploy "$release_dir/deploy"
           printf '%s\n' "$RELEASE_SHA" > "$release_dir/RELEASE_SHA"
-          tar -czf "$archive" -C "$release_dir" .
 
       - name: Configure deployment SSH
         env:
@@ -82,13 +80,16 @@ jobs:
         run: |
           set -euo pipefail
           port="${DEPLOY_PORT:-22}"
-          archive="$RUNNER_TEMP/merchant-studio-web-${RELEASE_SHA}.tar.gz"
+          release_dir="$RUNNER_TEMP/merchant-studio-release"
           remote_archive="/tmp/merchant-studio-web-${RELEASE_SHA}.tar.gz"
           ssh_options=(-i "$HOME/.ssh/tencent_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
 
-          scp "${ssh_options[@]}" -P "$port" "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          rsync --archive --compress --checksum --delete \
+            --exclude '.data' --exclude '.env.local' \
+            -e "ssh -i $HOME/.ssh/tencent_deploy -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            "$release_dir/" "${DEPLOY_USER}@${DEPLOY_HOST}:/home/merchantdeploy/release-cache/"
           ssh "${ssh_options[@]}" -p "$port" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "sudo /usr/local/sbin/deploy-merchant-studio '${remote_archive}' '${RELEASE_SHA}'"
+            "tar -czf '${remote_archive}' -C '/home/merchantdeploy/release-cache' . && sudo /usr/local/sbin/deploy-merchant-studio '${remote_archive}' '${RELEASE_SHA}'"
 
       - name: Verify public health endpoint
         run: |
