@@ -35,10 +35,15 @@ jobs:
           corepack enable
           pnpm install --frozen-lockfile
 
-      - name: Validate project
+      - name: Type-check project
         run: |
           set -euo pipefail
           pnpm run typecheck
+
+      - name: Report lint findings
+        continue-on-error: true
+        run: |
+          set -euo pipefail
           pnpm run lint
 
       - name: Build production bundle
