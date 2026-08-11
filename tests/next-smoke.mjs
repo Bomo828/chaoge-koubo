@@ -42,7 +42,7 @@ try {
   await waitUntilReady();
   const homepage = await fetch(baseUrl);
   assert.equal(homepage.status, 200);
-  assert.match(await homepage.text(), /商装工坊/);
+  assert.match(await homepage.text(), /爆点实验室/);
 
   const login = await fetch(`${baseUrl}/api/auth/account`, {
     method: "POST",
@@ -56,17 +56,15 @@ try {
 
   const studio = await fetch(`${baseUrl}/studio`, { headers: { cookie } });
   assert.equal(studio.status, 200);
-  assert.match(await studio.text(), /今天想创作点什么/);
+  assert.match(await studio.text(), /把灵感/);
 
-  const [wallet, tasks, merchant] = await Promise.all([
+  const [wallet, tasks] = await Promise.all([
     fetch(`${baseUrl}/api/member/wallet`, { headers: { cookie } }),
     fetch(`${baseUrl}/api/member/tasks`, { headers: { cookie } }),
-    fetch(`${baseUrl}/api/member/merchant`, { headers: { cookie } }),
   ]);
   assert.equal(wallet.status, 200);
   assert.equal(tasks.status, 200);
-  assert.equal(merchant.status, 200);
-  console.log("本地冒烟测试通过：首页、登录、工作台、积分、任务与商家资料接口均正常。");
+  console.log("本地冒烟测试通过：首页、登录、工作台、积分与任务接口均正常。");
 } finally {
   child.kill("SIGTERM");
   rmSync(dataDir, { recursive: true, force: true });

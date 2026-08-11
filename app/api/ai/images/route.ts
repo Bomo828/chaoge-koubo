@@ -3,7 +3,6 @@ import { aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { ensureProviderBalance, providerCostToPoints, quoteGptImage2 } from "../../../../lib/ai-pricing";
 import { getWallet, pointsErrorResponse, refundAiPoints, refundAiPointsByRequest, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 import { createAiTask, getAiTask, updateAiTask } from "../../../../lib/server/ai-tasks";
-import { getMerchantProfile } from "../../../../lib/server/merchants";
 
 type ProviderImageResponse = Record<string, unknown>;
 type NormalizedImagePayload = ReturnType<typeof normalizedPayload>;
@@ -126,12 +125,8 @@ export async function POST(request: Request) {
     const body = await request.json() as { prompt?: unknown; size?: unknown; quality?: unknown; images?: unknown; copies?: unknown; section?: unknown; count?: unknown; navigationShape?: unknown; customerShape?: unknown; navigationLabels?: unknown; package?: unknown; requestId?: unknown };
     const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 5000) : "";
     if (prompt.length < 8) return Response.json({ error: "请补充更完整的图片生成要求。" }, { status: 400 });
-    const merchant = getMerchantProfile(member);
-    const merchantContext = merchant
-      ? `商家资料：商家名称“${merchant.name}”，门店显示名“${merchant.storeDisplayName}”，行业“${merchant.industry}”，定位“${merchant.positioning}”，目标顾客“${merchant.audience}”，服务标签“${merchant.serviceTags.join("、")}”，门店标签“${merchant.storeTags.join("、")}”。`
-      : "商家资料尚未完善，只依据用户本次生成要求设计，不得虚构具体地址、价格或服务承诺。";
     const images = Array.isArray(body.images)
-      ? body.images.filter((item): item is string => typeof item === "string" && (/^https?:\/\//i.test(item) || /^data:image\//i.test(item))).slice(0, 8)
+      ? body.images.filter((item): item is string => typeof item === "string" && (/^https?:\/\//i.test(item) || /^data:image\//i.test(item))).slice(0, 10)
       : [];
     const quality = ["auto", "high", "medium", "low"].includes(String(body.quality)) ? String(body.quality) : "auto";
     const section = typeof body.section === "string" ? body.section : "";
@@ -164,14 +159,14 @@ export async function POST(request: Request) {
         : `这是团购链接“${packageTitle || "当前团购套餐"}”的独立5:4主图设计。团购标题只用于理解套餐内容，不得画入图片；图片中严禁出现任何文字、字母、数字、价格、原价、销量、折扣、购买按钮、二维码、角标或水印。画面主体必须与套餐商品、服务成果或核心体验直接相关，真实可信，不得虚构套餐没有提供的项目。最终按1000×800比例使用。`
       : "";
     const bannerInstruction = section === "横幅配置"
-      ? "这是小程序店铺页面的横向品牌横幅，输出必须为16:9构图、固定1536×864。结合商家资料和品牌主题表现核心商品、服务或活动氛围，主体清晰，重要内容放在移动端安全区域；不要生成无关水印、二维码或虚假价格信息。"
+      ? "这是小程序店铺页面的横向品牌横幅，输出必须为16:9构图、固定1536×864。结合本次需求和参考素材表现核心商品、服务或活动氛围，主体清晰，重要内容放在移动端安全区域；不要生成无关水印、二维码或虚假价格信息。"
       : "";
     const customerInstruction = section === "客服配置"
       ? `这是小程序浮动客服入口图标。只设计一枚1:1客服图标，外轮廓必须为${customerShape === "circle" ? "完整圆形" : "四角圆角方形"}，主体居中、轮廓简洁、友好亲切，缩小后仍清晰可辨，并与商家品牌色统一。背景干净，不要出现文字、字母、数字、二维码、复杂场景或水印。`
       : "";
     const referenceInstruction = images.length
-      ? `本任务包含${images.length}张参考图。必须重点参考其风格样式、构图关系、光线与色彩氛围，同时结合商家信息和生成要求重新设计；不要机械复制参考图中的无关文字或水印。`
-      : "本任务没有参考图，请完全依据文字中的商家信息、主题色系与生成要求进行文生图设计。";
+      ? `本任务包含${images.length}张参考图。必须重点参考其风格样式、构图关系、光线与色彩氛围，同时结合本次生成要求重新设计；不要机械复制参考图中的无关文字或水印。`
+      : "本任务没有参考图，请完全依据本次文字要求、主题色系与生成要求进行文生图设计。";
     const littleGreenCopies = Array.isArray(body.copies)
       ? body.copies.filter((item): item is string => typeof item === "string" && item.trim().length > 0).map((item) => item.trim().slice(0, 360)).slice(0, 3)
       : [];
@@ -187,7 +182,6 @@ export async function POST(request: Request) {
       provider: "lk888",
       payload: {
         model: "gpt-image-2",
-        merchantName: merchant?.name || "",
         section,
         prompt: prompt.slice(0, 1200),
         size: outputSize,
@@ -204,17 +198,23 @@ export async function POST(request: Request) {
         "方案二（信息价值型）：主体清晰、信息层级明确，突出最值得收藏的服务亮点或实用价值。",
         "方案三（视觉氛围型）：以品牌气质、光线、材质和生活方式氛围取胜，画面简洁有记忆点。",
       ]
-      : [
-        "方案一：主体清晰、经典稳妥、适合首屏展示。",
-        "方案二：构图更有生活感，强调真实体验与氛围。",
-        "方案三：视觉更现代简洁，突出品牌色和留白。",
-        "方案四：画面更有传播力，但保持真实可信。",
-      ];
+      : section === "营销海报"
+        ? [
+          "生成变体一（构图基准）：严格执行用户已经选择的创意方向、营销目标与参考图角色，以最清晰的主视觉层级完成一张可投放成品。",
+          "生成变体二（镜头变化）：保持同一创意方向、品牌锚点、真实约束和安全区不变，改变镜头距离、主体姿态或场景纵深，不能变成另一套概念。",
+          "生成变体三（编辑强化）：保持同一创意方向与事实信息不变，强化材质细节、视觉节奏和缩略图辨识度，仍需保留指定的后期文字安全区。",
+        ]
+        : [
+          "方案一：主体清晰、经典稳妥、适合首屏展示。",
+          "方案二：构图更有生活感，强调真实体验与氛围。",
+          "方案三：视觉更现代简洁，突出品牌色和留白。",
+          "方案四：画面更有传播力，但保持真实可信。",
+        ];
     const settled = await Promise.allSettled(directions.slice(0, requestedCount).map((direction, index) => lk888Fetch<ProviderImageResponse>("/v1/media/generate", {
       method: "POST",
       body: JSON.stringify({
         model: "gpt-image-2",
-        prompt: `${merchantContext}\n${prompt}\n${referenceInstruction}\n${section === "门店招牌" ? "输出必须为横向16:9门店首页招牌图，固定1536×864，重要主体与品牌信息放在移动端安全区域内。" : ""}\n${navigationInstruction}\n${bannerInstruction}\n${packageInstruction}\n${customerInstruction}\n${littleGreenInstruction}\n${littleGreenCopies[index] ? `本方案对应的小绿书发布文案如下，只提炼其主题和视觉线索，不要把整段文字排进图片：${littleGreenCopies[index]}` : ""}\n${direction}`,
+        prompt: `${prompt}\n${referenceInstruction}\n${section === "门店招牌" ? "输出必须为横向16:9门店首页招牌图，固定1536×864，重要主体与品牌信息放在移动端安全区域内。" : ""}\n${navigationInstruction}\n${bannerInstruction}\n${packageInstruction}\n${customerInstruction}\n${littleGreenInstruction}\n${littleGreenCopies[index] ? `本方案对应的小绿书发布文案如下，只提炼其主题和视觉线索，不要把整段文字排进图片：${littleGreenCopies[index]}` : ""}\n${direction}`,
         params: {
           size: outputSize,
           quality,
@@ -276,7 +276,7 @@ export async function GET(request: Request) {
   const requestId = url.searchParams.get("request_id") || "";
 
   try {
-    const settled = await Promise.allSettled(taskIds.map((taskId) => lk888Fetch<ProviderImageResponse>(`/v1/media/status?task_id=${encodeURIComponent(taskId)}`)));
+    const settled = await Promise.allSettled(taskIds.map((taskId) => lk888Fetch<ProviderImageResponse>(`/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`)));
     const tasks = settled
       .filter((result): result is PromiseFulfilledResult<ProviderImageResponse> => result.status === "fulfilled")
       .map((result) => normalizedPayload(result.value));

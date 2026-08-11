@@ -9,6 +9,7 @@ export type ClonedVoiceRecord = {
   name: string;
   provider: string;
   providerVoiceId: string;
+  language: "cn" | "en";
   sampleAssetId: string;
   status: string;
   createdAt: number;
@@ -19,6 +20,7 @@ export function upsertClonedVoice(input: {
   name: string;
   providerVoiceId: string;
   provider?: string;
+  language?: "cn" | "en";
   sampleAssetId?: string | null;
   status?: string;
 }) {
@@ -33,11 +35,12 @@ export function upsertClonedVoice(input: {
   const id = existing?.id || `voice_${randomUUID()}`;
   db.prepare(`
     INSERT INTO cloned_voices
-      (id, owner_id, name, provider, provider_voice_id, sample_asset_id, status, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (id, owner_id, name, provider, provider_voice_id, sample_asset_id, language, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       name = excluded.name,
       sample_asset_id = COALESCE(excluded.sample_asset_id, cloned_voices.sample_asset_id),
+      language = excluded.language,
       status = excluded.status,
       updated_at = excluded.updated_at
   `).run(
@@ -47,6 +50,7 @@ export function upsertClonedVoice(input: {
     provider,
     input.providerVoiceId,
     input.sampleAssetId || null,
+    input.language === "en" ? "en" : "cn",
     input.status || "ready",
     now,
     now,
@@ -57,7 +61,7 @@ export function upsertClonedVoice(input: {
 export function listClonedVoicesForAdmin(): ClonedVoiceRecord[] {
   return (getDatabase().prepare(`
     SELECT cv.id, cv.owner_id, cv.name, cv.provider, cv.provider_voice_id,
-      cv.sample_asset_id, cv.status, cv.created_at,
+      cv.sample_asset_id, cv.language, cv.status, cv.created_at,
       u.display_name AS owner_name, u.username AS owner_username
     FROM cloned_voices cv
     LEFT JOIN users u ON u.id = cv.owner_id
@@ -69,6 +73,7 @@ export function listClonedVoicesForAdmin(): ClonedVoiceRecord[] {
     provider: string;
     provider_voice_id: string;
     sample_asset_id: string | null;
+    language: string;
     status: string;
     created_at: number;
     owner_name: string | null;
@@ -81,6 +86,7 @@ export function listClonedVoicesForAdmin(): ClonedVoiceRecord[] {
     name: row.name,
     provider: row.provider,
     providerVoiceId: row.provider_voice_id,
+    language: row.language === "en" ? "en" : "cn",
     sampleAssetId: row.sample_asset_id || "",
     status: row.status,
     createdAt: Number(row.created_at),
@@ -89,7 +95,7 @@ export function listClonedVoicesForAdmin(): ClonedVoiceRecord[] {
 
 export function listClonedVoicesForMember(ownerId: string) {
   return (getDatabase().prepare(`
-    SELECT name, provider_voice_id, sample_asset_id, created_at
+    SELECT name, provider_voice_id, sample_asset_id, language, created_at
     FROM cloned_voices
     WHERE owner_id = ? AND status = 'ready'
     ORDER BY created_at DESC, name ASC
@@ -97,10 +103,12 @@ export function listClonedVoicesForMember(ownerId: string) {
     name: string;
     provider_voice_id: string;
     sample_asset_id: string | null;
+    language: string;
     created_at: number;
   }>).map((row) => ({
     voiceId: row.provider_voice_id,
     name: row.name,
+    language: row.language === "en" ? "en" as const : "cn" as const,
     demoAudio: row.sample_asset_id
       ? `/api/member/assets/${encodeURIComponent(row.sample_asset_id)}`
       : "",

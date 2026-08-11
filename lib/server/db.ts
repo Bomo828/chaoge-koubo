@@ -39,27 +39,9 @@ function initialize(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id, expires_at DESC);
 
-    CREATE TABLE IF NOT EXISTS merchants (
-      id TEXT PRIMARY KEY,
-      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      name TEXT NOT NULL,
-      miniapp_name TEXT,
-      display_name TEXT,
-      address TEXT,
-      phone TEXT,
-      industry TEXT,
-      average_spend TEXT,
-      service_tags TEXT NOT NULL DEFAULT '[]',
-      store_tags TEXT NOT NULL DEFAULT '[]',
-      profile_json TEXT NOT NULL DEFAULT '{}',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-      merchant_id TEXT REFERENCES merchants(id) ON DELETE SET NULL,
       name TEXT NOT NULL,
       type TEXT NOT NULL,
       status TEXT NOT NULL DEFAULT 'draft',
@@ -132,6 +114,7 @@ function initialize(db: DatabaseSync) {
       provider TEXT NOT NULL,
       provider_voice_id TEXT NOT NULL,
       sample_asset_id TEXT REFERENCES assets(id) ON DELETE SET NULL,
+      language TEXT NOT NULL DEFAULT 'cn',
       status TEXT NOT NULL DEFAULT 'ready',
       created_at INTEGER NOT NULL,
       updated_at INTEGER NOT NULL
@@ -168,6 +151,11 @@ function initialize(db: DatabaseSync) {
       updated_at INTEGER NOT NULL
     );
   `);
+
+  const clonedVoiceColumns = db.prepare("PRAGMA table_info(cloned_voices)").all() as Array<{ name: string }>;
+  if (!clonedVoiceColumns.some((column) => column.name === "language")) {
+    db.exec("ALTER TABLE cloned_voices ADD COLUMN language TEXT NOT NULL DEFAULT 'cn'");
+  }
 
   const now = Math.floor(Date.now() / 1000);
   const insert = db.prepare(`

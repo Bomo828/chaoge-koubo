@@ -1,0 +1,214 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-09T08:06:46Z",
+  "title": "Design System: 爆点实验室图片创作",
+  "extensions": {
+    "colorMeta": {
+      "graphite-stock": {
+        "role": "neutral",
+        "displayName": "Graphite Stock",
+        "canonical": "#101114",
+        "tonalRamp": ["oklch(15% 0.006 275)", "oklch(25% 0.006 275)", "oklch(35% 0.006 275)", "oklch(47% 0.006 275)", "oklch(59% 0.006 275)", "oklch(71% 0.006 275)", "oklch(83% 0.006 275)", "oklch(95% 0.006 275)"]
+      },
+      "proof-surface": {
+        "role": "neutral",
+        "displayName": "Proof Surface",
+        "canonical": "#17191e",
+        "tonalRamp": ["oklch(15% 0.009 265)", "oklch(25% 0.009 265)", "oklch(35% 0.009 265)", "oklch(47% 0.009 265)", "oklch(59% 0.009 265)", "oklch(71% 0.009 265)", "oklch(83% 0.009 265)", "oklch(95% 0.009 265)"]
+      },
+      "raised-stock": {
+        "role": "neutral",
+        "displayName": "Raised Stock",
+        "canonical": "#20232a",
+        "tonalRamp": ["oklch(15% 0.012 264)", "oklch(25% 0.012 264)", "oklch(35% 0.012 264)", "oklch(47% 0.012 264)", "oklch(59% 0.012 264)", "oklch(71% 0.012 264)", "oklch(83% 0.012 264)", "oklch(95% 0.012 264)"]
+      },
+      "field-stock": {
+        "role": "neutral",
+        "displayName": "Inset Field Stock",
+        "canonical": "#121419",
+        "tonalRamp": ["oklch(15% 0.009 266)", "oklch(25% 0.009 266)", "oklch(35% 0.009 266)", "oklch(47% 0.009 266)", "oklch(59% 0.009 266)", "oklch(71% 0.009 266)", "oklch(83% 0.009 266)", "oklch(95% 0.009 266)"]
+      },
+      "proof-border": {
+        "role": "neutral",
+        "displayName": "Proof Border",
+        "canonical": "#30343d",
+        "tonalRamp": ["oklch(15% 0.013 265)", "oklch(25% 0.013 265)", "oklch(35% 0.013 265)", "oklch(47% 0.013 265)", "oklch(59% 0.013 265)", "oklch(71% 0.013 265)", "oklch(83% 0.013 265)", "oklch(95% 0.013 265)"]
+      },
+      "proof-border-strong": {
+        "role": "neutral",
+        "displayName": "Strong Proof Border",
+        "canonical": "#434752",
+        "tonalRamp": ["oklch(15% 0.015 267)", "oklch(25% 0.015 267)", "oklch(35% 0.015 267)", "oklch(47% 0.015 267)", "oklch(59% 0.015 267)", "oklch(71% 0.015 267)", "oklch(83% 0.015 267)", "oklch(95% 0.015 267)"]
+      },
+      "proof-text": {
+        "role": "neutral",
+        "displayName": "Warm Proof White",
+        "canonical": "#f6f3ef",
+        "tonalRamp": ["oklch(15% 0.008 75)", "oklch(25% 0.008 75)", "oklch(35% 0.008 75)", "oklch(47% 0.008 75)", "oklch(59% 0.008 75)", "oklch(71% 0.008 75)", "oklch(83% 0.008 75)", "oklch(95% 0.008 75)"]
+      },
+      "proof-muted": {
+        "role": "neutral",
+        "displayName": "Muted Copy Gray",
+        "canonical": "#9a9eaa",
+        "tonalRamp": ["oklch(15% 0.015 266)", "oklch(25% 0.015 266)", "oklch(35% 0.015 266)", "oklch(47% 0.015 266)", "oklch(59% 0.015 266)", "oklch(71% 0.015 266)", "oklch(83% 0.015 266)", "oklch(95% 0.015 266)"]
+      },
+      "proof-dim": {
+        "role": "neutral",
+        "displayName": "Dim Metadata Gray",
+        "canonical": "#90959f",
+        "tonalRamp": ["oklch(15% 0.012 260)", "oklch(25% 0.012 260)", "oklch(35% 0.012 260)", "oklch(47% 0.012 260)", "oklch(59% 0.012 260)", "oklch(71% 0.012 260)", "oklch(83% 0.012 260)", "oklch(95% 0.012 260)"]
+      },
+      "proof-magenta": {
+        "role": "primary",
+        "displayName": "Proof Magenta",
+        "canonical": "#ff4d8d",
+        "tonalRamp": ["oklch(15% 0.18 356)", "oklch(25% 0.18 356)", "oklch(35% 0.18 356)", "oklch(47% 0.18 356)", "oklch(59% 0.18 356)", "oklch(71% 0.18 356)", "oklch(83% 0.18 356)", "oklch(95% 0.08 356)"]
+      },
+      "proof-magenta-hover": {
+        "role": "primary",
+        "displayName": "Proof Magenta Hover",
+        "canonical": "#ff659e",
+        "tonalRamp": ["oklch(15% 0.16 356)", "oklch(25% 0.16 356)", "oklch(35% 0.16 356)", "oklch(47% 0.16 356)", "oklch(59% 0.16 356)", "oklch(71% 0.16 356)", "oklch(83% 0.16 356)", "oklch(95% 0.07 356)"]
+      },
+      "registration-cyan": {
+        "role": "secondary",
+        "displayName": "Registration Cyan",
+        "canonical": "#59d9e8",
+        "tonalRamp": ["oklch(15% 0.11 205)", "oklch(25% 0.11 205)", "oklch(35% 0.11 205)", "oklch(47% 0.11 205)", "oklch(59% 0.11 205)", "oklch(71% 0.11 205)", "oklch(83% 0.11 205)", "oklch(95% 0.05 205)"]
+      },
+      "signal-yellow": {
+        "role": "tertiary",
+        "displayName": "Signal Yellow",
+        "canonical": "#f4c95d",
+        "tonalRamp": ["oklch(15% 0.13 85)", "oklch(25% 0.13 85)", "oklch(35% 0.13 85)", "oklch(47% 0.13 85)", "oklch(59% 0.13 85)", "oklch(71% 0.13 85)", "oklch(83% 0.13 85)", "oklch(95% 0.05 85)"]
+      },
+      "ink-on-accent": {
+        "role": "neutral",
+        "displayName": "Ink on Accent",
+        "canonical": "#190b11",
+        "tonalRamp": ["oklch(15% 0.025 355)", "oklch(25% 0.025 355)", "oklch(35% 0.025 355)", "oklch(47% 0.025 355)", "oklch(59% 0.025 355)", "oklch(71% 0.025 355)", "oklch(83% 0.025 355)", "oklch(95% 0.025 355)"]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Page Display", "purpose": "Compact page names; never a giant promotional headline." },
+      "headline": { "displayName": "Proof Headline", "purpose": "Concept name inside the proof canvas overlay." },
+      "title": { "displayName": "Panel Title", "purpose": "Numbered panel headings and key module titles." },
+      "body": { "displayName": "Operational Body", "purpose": "Editable task inputs and primary explanatory copy." },
+      "label": { "displayName": "Job Ticket Label", "purpose": "Field names, states, ratios and secondary actions." },
+      "mono": { "displayName": "Generation Detail Mono", "purpose": "Expanded generation prompt details only." }
+    },
+    "shadows": [
+      { "name": "panel-float", "value": "0 18px 50px rgba(0, 0, 0, .2)", "purpose": "Shared low lift for the job ticket, proof canvas and contact sheet panels." },
+      { "name": "proof-sheet", "value": "0 24px 70px rgba(0, 0, 0, .46), 0 0 0 1px rgba(255, 255, 255, .08)", "purpose": "Makes the output frame read as a physical proof sheet on the dark table." },
+      { "name": "menu-lift", "value": "0 18px 44px rgba(0, 0, 0, .5)", "purpose": "Temporary lift for the industry picker menu." },
+      { "name": "primary-action", "value": "0 10px 24px rgba(255, 77, 141, .18)", "purpose": "Restrained ink-colored lift under the generate button." },
+      { "name": "mobile-launch", "value": "0 18px 50px rgba(0, 0, 0, .5)", "purpose": "Separates the fixed mobile generation bar from scrolling content." }
+    ],
+    "motion": [
+      { "name": "proof-in", "value": "340ms ease-out", "purpose": "Subtle fade and 1.2% scale correction when the proof image changes." },
+      { "name": "disclosure", "value": "200ms ease", "purpose": "Rotates disclosure arrows when supplemental details open." },
+      { "name": "primary-hover", "value": "translateY(-1px)", "purpose": "A single-pixel lift on the generate action; active state returns to rest." },
+      { "name": "reduced-motion", "value": "none", "purpose": "Removes proof image animation and disclosure transitions when reduced motion is preferred." }
+    ],
+    "breakpoints": [
+      { "name": "wide-compression", "value": "1380px" },
+      { "name": "two-column", "value": "1120px" },
+      { "name": "single-workflow", "value": "820px" },
+      { "name": "compact-phone", "value": "520px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Generate Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The sole high-emphasis action that launches three image generations.",
+      "html": "<button class=\"ds-generate\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M13 2 4.5 13H11l-1 9L19.5 11H13z\"/></svg><span>生成 3 张图片</span></button>",
+      "css": ".ds-generate { width: 100%; min-height: 54px; padding: 0 18px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 11px; background: #ff4d8d; color: #190b11; cursor: pointer; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 15px; font-weight: 900; box-shadow: 0 10px 24px rgba(255,77,141,.18); transition: background .2s ease, transform .2s ease; } .ds-generate svg { width: 20px; height: 20px; color: #f4c95d; } .ds-generate:hover { background: #ff659e; transform: translateY(-1px); } .ds-generate:active { transform: translateY(0); } .ds-generate:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Download Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A quiet bordered action shown only when a generated result is available.",
+      "html": "<button class=\"ds-download\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M12 3v12m-5-5 5 5 5-5M5 20h14\"/></svg><span>下载当前方案</span></button>",
+      "css": ".ds-download { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #434752; border-radius: 10px; background: transparent; color: #f6f3ef; cursor: pointer; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 11px; font-weight: 700; } .ds-download svg { width: 17px; height: 17px; } .ds-download:hover { border-color: #59d9e8; } .ds-download:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Job Ticket Field",
+      "kind": "input",
+      "refersTo": "field",
+      "description": "The standard labeled text area for task facts and campaign inputs.",
+      "html": "<label class=\"ds-field\"><span>核心卖点</span><textarea rows=\"3\">招牌现烤，真实门店可验证</textarea></label>",
+      "css": ".ds-field { display: block; color: #9a9eaa; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 11px; font-weight: 700; } .ds-field span { display: block; margin-bottom: 7px; } .ds-field textarea { box-sizing: border-box; width: 100%; min-height: 72px; padding: 11px 12px; resize: vertical; border: 1px solid #30343d; border-radius: 10px; outline: 0; background: #121419; color: #f6f3ef; font: 400 13px/1.55 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-field textarea:hover { border-color: #434752; } .ds-field textarea:focus { border-color: #59d9e8; box-shadow: 0 0 0 3px rgba(89,217,232,.09); } .ds-field textarea:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Format Segmented Control",
+      "kind": "chip",
+      "description": "A compact ratio switcher that keeps production formats visible above the proof canvas.",
+      "html": "<div class=\"ds-formats\" role=\"group\" aria-label=\"投放版式\"><button aria-pressed=\"true\">3:4</button><button aria-pressed=\"false\">1:1</button><button aria-pressed=\"false\">9:16</button><button aria-pressed=\"false\">16:9</button></div>",
+      "css": ".ds-formats { padding: 3px; display: inline-flex; gap: 3px; border-radius: 10px; background: #111318; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-formats button { min-width: 49px; height: 31px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: #90959f; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 800; line-height: 1; } .ds-formats button:hover { color: #fff; } .ds-formats button[aria-pressed=\"true\"] { background: #2b2d34; color: #fff; box-shadow: inset 0 -2px #ff4d8d; } .ds-formats button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Creative Direction Card",
+      "kind": "card",
+      "description": "A compact visual strategy choice with a thumbnail, sequence number and reaction cue.",
+      "html": "<button class=\"ds-direction\" aria-pressed=\"true\"><span class=\"ds-direction-art\" aria-hidden=\"true\"></span><span class=\"ds-direction-copy\"><small>01</small><b>产品定场</b><i>第一眼记住主推服务</i></span></button>",
+      "css": ".ds-direction { min-width: 220px; min-height: 64px; padding: 6px; display: grid; grid-template-columns: 48px minmax(0,1fr); align-items: center; gap: 8px; border: 1px solid #30343d; border-radius: 10px; background: #121419; color: #9a9eaa; cursor: pointer; text-align: left; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-direction-art { width: 48px; height: 48px; border-radius: 7px; background: linear-gradient(145deg,#3b2731,#ff4d8d 48%,#17191e 49%); } .ds-direction-copy { min-width: 0; display: grid; gap: 2px; } .ds-direction small { color: #ff4d8d; font-size: 10px; } .ds-direction b { color: #f6f3ef; font-size: 11px; } .ds-direction i { overflow: hidden; color: #90959f; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; } .ds-direction:hover { border-color: #434752; } .ds-direction[aria-pressed=\"true\"] { border-color: #754156; background: #251e23; box-shadow: inset 0 -2px #ff4d8d; } .ds-direction:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Contact Sheet Result",
+      "kind": "card",
+      "description": "A numbered result row used both before generation as a direction preview and after generation as a selectable output.",
+      "html": "<button class=\"ds-result\" aria-pressed=\"true\"><span class=\"ds-result-number\">01</span><span class=\"ds-result-art\" aria-hidden=\"true\"></span><span class=\"ds-result-copy\"><b>产品定场</b><small>点击查看成品</small></span><span class=\"ds-result-check\">✓</span></button>",
+      "css": ".ds-result { width: 100%; min-height: 112px; padding: 7px; display: grid; grid-template-columns: 20px 106px minmax(0,1fr) 18px; align-items: center; gap: 9px; border: 1px solid #30343d; border-radius: 11px; background: #121419; color: #9a9eaa; cursor: pointer; text-align: left; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-result-number { color: #90959f; font-size: 10px; font-weight: 900; } .ds-result-art { width: 106px; height: 94px; border-radius: 7px; background: linear-gradient(155deg,#20232a,#ff4d8d 48%,#101114 49%); } .ds-result-copy { min-width: 0; display: grid; gap: 7px; } .ds-result-copy b { color: #f6f3ef; font-size: 13px; } .ds-result-copy small { color: #90959f; font-size: 10px; line-height: 1.4; } .ds-result-check { color: #ff4d8d; font-weight: 900; } .ds-result:hover { border-color: #434752; } .ds-result[aria-pressed=\"true\"] { border-color: #754156; background: #251e23; } .ds-result:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Proof Canvas",
+      "kind": "custom",
+      "description": "The signature print-proof stage with center axes, registration marks and a low-radius output sheet.",
+      "html": "<div class=\"ds-stage\"><span class=\"ds-register ds-register-a\" aria-hidden=\"true\"></span><span class=\"ds-register ds-register-b\" aria-hidden=\"true\"></span><div class=\"ds-sheet\"><div class=\"ds-sheet-art\"></div><div class=\"ds-sheet-copy\"><small>01 / HERO</small><b>产品定场</b><span>第一眼记住主推服务</span></div></div></div>",
+      "css": ".ds-stage { position: relative; width: min(100%,420px); height: 410px; padding: 18px; display: grid; place-items: center; overflow: hidden; border: 1px solid #262930; border-radius: 13px; background: linear-gradient(90deg,transparent calc(50% - .5px),#262930 50%,transparent calc(50% + .5px)),linear-gradient(transparent calc(50% - .5px),#262930 50%,transparent calc(50% + .5px)),#0d0f13; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-register { position: absolute; z-index: 2; width: 10px; height: 10px; border: 1px solid #59d9e8; border-radius: 50%; opacity: .7; } .ds-register::before,.ds-register::after { content: \"\"; position: absolute; background: #59d9e8; } .ds-register::before { left: 4px; top: -4px; width: 1px; height: 16px; } .ds-register::after { top: 4px; left: -4px; width: 16px; height: 1px; } .ds-register-a { top: 12px; left: 12px; } .ds-register-b { right: 12px; bottom: 12px; border-color: #ff4d8d; } .ds-register-b::before,.ds-register-b::after { background: #ff4d8d; } .ds-sheet { position: relative; z-index: 1; height: 100%; aspect-ratio: 3/4; overflow: hidden; border-radius: 4px; background: #1c1f25; box-shadow: 0 24px 70px rgba(0,0,0,.46),0 0 0 1px rgba(255,255,255,.08); } .ds-sheet-art { width: 100%; height: 100%; background: radial-gradient(circle at 68% 28%,#f4c95d 0 13%,#ff4d8d 14% 31%,#20232a 55%,#101114); } .ds-sheet-copy { position: absolute; left: 7%; right: 7%; bottom: 6%; padding: 14px 16px; border-radius: 9px; background: rgba(9,10,13,.82); backdrop-filter: blur(8px); color: #f6f3ef; } .ds-sheet-copy small,.ds-sheet-copy b,.ds-sheet-copy span { display: block; } .ds-sheet-copy small { color: #59d9e8; font-size: 9px; font-weight: 800; letter-spacing: .08em; } .ds-sheet-copy b { margin-top: 4px; font-size: 24px; line-height: 1.05; letter-spacing: -.04em; } .ds-sheet-copy span { margin-top: 6px; color: #d5d6da; font-size: 11px; }"
+    },
+    {
+      "name": "Workbench Navigation",
+      "kind": "nav",
+      "description": "The graphite shared shell navigation with one quiet magenta active state.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作台导航\"><button><span class=\"ds-nav-icon\">⌂</span><span>工作台</span></button><button class=\"ds-nav-active\" aria-current=\"page\"><span class=\"ds-nav-icon\">▣</span><span>图片创作</span></button><button><span class=\"ds-nav-icon\">◫</span><span>素材库</span></button></nav>",
+      "css": ".ds-nav { width: 188px; padding: 14px; display: flex; flex-direction: column; gap: 5px; background: #141519; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-nav button { width: 100%; height: 45px; padding: 0 13px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 10px; background: transparent; color: #989ca6; cursor: pointer; text-align: left; font-size: 12px; font-weight: 700; } .ds-nav-icon { width: 20px; color: #747985; text-align: center; } .ds-nav button:hover { background: #202228; color: #f6f3ef; } .ds-nav .ds-nav-active { background: #29242b; color: #fff; box-shadow: inset 0 0 0 1px #4b3540; } .ds-nav .ds-nav-active .ds-nav-icon { color: #ff6aa0; } .ds-nav button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Print Proofing Table / 印刷打样台",
+    "overview": "图片创作世界把营销任务呈现成一张摆在石墨工作台上的印刷工单：信息具体、层级安静、每一步都可以立即操作。柔和的深色表面承担长时间工作，套准标记与克制的品红、电子青、信号黄只用来说明选择、焦点、成本和生产状态。\n\n体验遵循“工单 → 打样画布 → 联系表 → 生成”的阅读顺序。品牌可以有冲击力，但操作密度、可见状态和真实投放约束始终优先；共享工作台外壳也延续同一石墨材质与克制状态语言，不把旧页面的视觉习惯当作这一新世界的规则。",
+    "keyCharacteristics": [
+      "石墨纸张般的深色底与柔和分层表面",
+      "先任务、后画布、再成品联系表的清晰操作层级",
+      "品红表示主选择与生成，电子青表示焦点与校准，信号黄表示成本或提醒",
+      "标准矩形控件、轻圆角和印刷套准标记形成可识别的工作台世界",
+      "桌面端高密度并排工作，窄屏按任务顺序纵向展开"
+    ],
+    "rules": [
+      { "name": "The Three-Ink Rule", "body": "品红只表示主选择或生成，电子青只表示焦点与校准，信号黄只表示成本或生产提示；不要互换语义。", "section": "colors" },
+      { "name": "The Ink Is Rare Rule", "body": "任一打样墨色都不铺满面板，也不叠加发光；大面积始终由石墨中性色承担。", "section": "colors" },
+      { "name": "The Job-Ticket Type Rule", "body": "字号服务于扫描和操作层级；页面标题保持克制，禁止用巨型展示字制造戏剧性。", "section": "typography" },
+      { "name": "The Workflow Order Rule", "body": "响应式重排可以改变列数，但不能改变“工单 → 打样画布 → 联系表 → 生成”的任务顺序。", "section": "layout" },
+      { "name": "The Structural Shadow Rule", "body": "阴影只说明真实层级或操作状态；静态装饰和信息卡不凭空漂浮。", "section": "elevation" },
+      { "name": "The Proof Sheet Rule", "body": "大容器可以柔和，成品画幅必须更像纸张；用较小圆角区分“工具”与“作品”。", "section": "shapes" }
+    ],
+    "dos": [
+      "Do 保持工单、打样画布、联系表和生成操作的阅读顺序，即使布局在窄屏重排。",
+      "Do 用石墨色调、完整 1px 边框和轻阴影建立层级，让打样墨色只承担明确状态。",
+      "Do 保留可见的电子青键盘焦点、语义化选择状态和生成状态播报。",
+      "Do 让共享侧栏和内容表面使用同一石墨材质，并在 820px 以下转换为紧凑顶部导航。",
+      "Do 把套准标记限制在打样画布，把小圆角的成品纸与较柔和的工具面板区分开。"
+    ],
+    "donts": [
+      "Don't 使用游戏控制台式 HUD、霓虹描边或发光堆叠。",
+      "Don't 裁切面板边缘、制造异形缺角，或把套准装饰复制到普通控件。",
+      "Don't 用巨型展示字压过任务信息、主画布或唯一主操作。",
+      "Don't 添加与任务无关的遥测数字、状态灯或装饰性技术读数。",
+      "Don't 把项目中无关的旧页面 CSS、绿色纸张世界或高饱和旧 Image Lab 规则视为本系统规范。"
+    ]
+  }
+}

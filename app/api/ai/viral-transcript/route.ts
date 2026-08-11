@@ -195,7 +195,6 @@ export async function POST(request: Request) {
     const body = await request.json() as {
       captions?: unknown;
       frames?: unknown;
-      merchant?: Record<string, unknown>;
       duration?: unknown;
     };
     const duration = Math.max(1, Math.min(600, Number(body.duration) || 60));
@@ -207,7 +206,7 @@ export async function POST(request: Request) {
       ? body.frames.filter((item): item is string => typeof item === "string" && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item)).slice(0, 5)
       : [];
     const sourceText = sourceCaptions.map((item) => item.text).join("");
-    const system = `你是中文短视频口播校对师。输入已经包含从视频人声识别出的原始文字和真实时间轴，另有视频关键帧与商家资料供你核对专有名词。
+    const system = `你是中文短视频口播校对师。输入已经包含从视频人声识别出的原始文字和真实时间轴，另有视频关键帧供你核对专有名词。
 要求：
 1. 保留原口播的全部有效信息，不总结、不缩写、不加入营销文案，不虚构原片没有说过的内容。
 2. 结合整段上下文和关键画面校正同音错字、品牌名、机构名、数字与明显漏字；不能确认时保留原词。
@@ -219,7 +218,7 @@ export async function POST(request: Request) {
     const content = [
       {
         type: "text",
-        text: `视频时长：${duration.toFixed(2)}秒\n商家资料：${JSON.stringify(body.merchant || {})}\n原始口播时间轴：${JSON.stringify(sourceCaptions)}\n原始口播全文：${sourceText}`,
+        text: `视频时长：${duration.toFixed(2)}秒\n原始口播时间轴：${JSON.stringify(sourceCaptions)}\n原始口播全文：${sourceText}`,
       },
       ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
     ];

@@ -4,7 +4,6 @@ import { providerCostToPoints } from "../../../../lib/ai-pricing";
 import { getWallet, pointsErrorResponse, refundAiPoints, refundAiPointsByRequest, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 import { quoteMerchantVideo } from "../../../../lib/video-pricing";
 import { createAiTask, getAiTask, updateAiTask } from "../../../../lib/server/ai-tasks";
-import { getMerchantProfile } from "../../../../lib/server/merchants";
 
 type ProviderPayload = Record<string, unknown>;
 
@@ -70,24 +69,19 @@ export async function POST(request: Request) {
     };
     const prompt = typeof body.prompt === "string" ? body.prompt.trim().slice(0, 6000) : "";
     if (prompt.length < 20) return Response.json({ error: "请先完成视频分镜和生成提示词。" }, { status: 400 });
-    const merchant = getMerchantProfile(member);
-    const merchantContext = merchant
-      ? `商家资料：${merchant.name}；行业：${merchant.industry}；门店定位：${merchant.positioning}；目标顾客：${merchant.audience}；主营服务：${merchant.serviceTags.join("、")}。`
-      : "商家资料未完善，请只依据用户本次视频要求和参考素材生成，不得虚构服务与价格。";
     const images = Array.isArray(body.images)
       ? body.images.filter((item): item is string => typeof item === "string" && (/^data:image\//i.test(item) || /^https?:\/\//i.test(item))).slice(0, 9)
       : [];
     if (!images.length) return Response.json({ error: "参考生视频至少需要一张图片素材。" }, { status: 400 });
     const quote = await quoteMerchantVideo({ duration: Number(body.duration), resolution: String(body.resolution || ""), version: String(body.version || "") });
     reservation = await reserveAiPoints(member, "video_generate", 1, body.requestId, quote.reservedPoints);
-    const projectName = typeof body.projectName === "string" ? body.projectName.slice(0, 80) : "商家素材成片";
+    const projectName = typeof body.projectName === "string" ? body.projectName.slice(0, 80) : "素材智能成片";
     createAiTask(member, {
       id: reservation.requestId,
       kind: "video",
       provider: "lk888",
       payload: {
         model: quote.model,
-        merchantName: merchant?.name || "",
         projectName,
         prompt: prompt.slice(0, 1600),
         referenceCount: images.length,
@@ -103,7 +97,7 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(90_000),
       body: JSON.stringify({
         model: quote.model,
-        prompt: `${merchantContext}\n${prompt}`,
+        prompt,
         params: {
           images,
           version: quote.version,

@@ -47,31 +47,23 @@ function cleanText(value: unknown, fallback: string, maxLength: number) {
 }
 
 function localTemplateAnalysis(input: {
-  merchant: Record<string, unknown>;
   duration: number;
   fallbackTitle: string;
   fallbackSubtitle: string;
 }) {
-  const merchantName = cleanText(input.merchant.name, "真实门店", 24);
-  const merchantTerms = [
-    input.fallbackSubtitle,
-    ...(Array.isArray(input.merchant.serviceTags) ? input.merchant.serviceTags : []),
-    ...(Array.isArray(input.merchant.storeTags) ? input.merchant.storeTags : []),
-    input.merchant.category,
-    input.merchant.positioning,
-  ]
+  const taskTerms = [input.fallbackSubtitle]
     .flatMap((value) => typeof value === "string" ? value.split(/[，,、·/|]/) : [])
     .map((value) => value.trim())
     .filter(Boolean)
     .filter((value, index, items) => items.indexOf(value) === index)
     .slice(0, 5);
-  const captionTexts = merchantTerms.length
-    ? merchantTerms.map((term, index) => index === 0 ? `${merchantName} · ${term}` : term)
-    : [`走进${merchantName}`, "看看真实门店环境", "了解门店特色服务", "记录自然到店体验"];
+  const captionTexts = taskTerms.length
+    ? taskTerms
+    : ["走进真实现场", "看看真实环境", "了解特色服务", "记录自然体验"];
   const segmentDuration = input.duration / captionTexts.length;
   return {
-    summary: "AI主备通道均未在限定时间内响应，已切换本地模板规则继续生成；本次内容采用商家资料与当前填写内容。",
-    title: cleanText(input.fallbackTitle, `${merchantName}｜真实体验`, 28),
+    summary: "AI主备通道均未在限定时间内响应，已切换本地模板规则继续生成；本次内容仅采用原片和当前填写内容。",
+    title: cleanText(input.fallbackTitle, "真实体验", 28),
     captions: captionTexts.map((text, index) => ({
       start: Number((index * segmentDuration).toFixed(2)),
       end: Number(Math.min(input.duration, (index + 1) * segmentDuration).toFixed(2)),
@@ -92,7 +84,6 @@ export async function POST(request: Request) {
       phase?: unknown;
       requestId?: unknown;
       frames?: unknown;
-      merchant?: Record<string, unknown>;
       duration?: unknown;
       template?: Record<string, unknown>;
       fallbackTitle?: unknown;
@@ -115,7 +106,6 @@ export async function POST(request: Request) {
         ? body.frames.filter((item): item is string => typeof item === "string" && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item)).slice(0, 5)
         : [];
       const duration = Math.max(3, Math.min(180, Number(body.duration) || 15));
-      const merchant = body.merchant ?? {};
       const template = body.template ?? {};
       const fallbackTitle = cleanText(body.fallbackTitle, "", 28);
       const fallbackSubtitle = cleanText(body.fallbackSubtitle, "", 160);
@@ -123,13 +113,12 @@ export async function POST(request: Request) {
         {
           type: "text",
           text: `视频时长：${duration.toFixed(1)}秒
-商家资料：${JSON.stringify(merchant)}
 已选模板：${JSON.stringify(template)}
 请根据抽取的关键帧识别原片的真实主体、场景、动作、商品或服务内容，再生成一个短视频标题和按时间顺序出现的字幕。`,
         },
         ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
       ];
-      const systemPrompt = `你是短视频后期内容导演。你的任务不是重写原片，而是从关键帧和商家资料中提炼原片内容，生成适合模板化后期叠加的标题和字幕。
+      const systemPrompt = `你是短视频后期内容导演。你的任务不是重写原片，而是从关键帧和当前任务信息中提炼原片内容，生成适合模板化后期叠加的标题和字幕。
 要求：
 1. 不虚构画面中没有出现的商品、服务、价格、功效、荣誉、顾客评价。
 2. title为8到18个中文字，适合封面和开场标题。
@@ -182,7 +171,6 @@ export async function POST(request: Request) {
       }
       if (endpoint === "local-template") {
         return Response.json(localTemplateAnalysis({
-          merchant,
           duration,
           fallbackTitle,
           fallbackSubtitle,
@@ -205,7 +193,7 @@ export async function POST(request: Request) {
       if (!captions.length) throw new AiProviderError("AI 没有生成可用字幕，请重新处理。", 502);
       return Response.json({
         summary: cleanText(parsed.summary, "已根据原片关键帧完成内容分析。", 180),
-        title: cleanText(parsed.title, "真实门店体验", 28),
+        title: cleanText(parsed.title, "真实体验", 28),
         captions,
         model: "gpt-5.5",
         endpoint,

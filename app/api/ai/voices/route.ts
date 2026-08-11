@@ -13,6 +13,10 @@ import {
 const DEFAULT_RELAY_BASE_URL = "https://api.chaogeai.top";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
+function normalizeVoiceLanguage(value: unknown): "cn" | "en" {
+  return value === "en" ? "en" : "cn";
+}
+
 function assetIdForVoice(voiceId: string) {
   let hash = 2166136261;
   for (let index = 0; index < voiceId.length; index += 1) {
@@ -88,7 +92,7 @@ async function uploadPublicVoiceSample(member: NonNullable<Awaited<ReturnType<ty
 
 async function archiveVoice(
   member: NonNullable<Awaited<ReturnType<typeof getMemberSession>>>,
-  input: { voiceId: string; name: string; demoAudio: string },
+  input: { voiceId: string; name: string; demoAudio: string; language?: "cn" | "en" },
 ) {
   const id = assetIdForVoice(input.voiceId);
   await saveMemberAsset(member, {
@@ -105,6 +109,7 @@ async function archiveVoice(
     name: input.name,
     providerVoiceId: input.voiceId,
     sampleAssetId: id,
+    language: normalizeVoiceLanguage(input.language),
   });
   return `/api/member/assets/${encodeURIComponent(id)}`;
 }
@@ -115,6 +120,7 @@ export async function GET(request: Request) {
 
   const url = new URL(request.url);
   const voiceId = (url.searchParams.get("voice_id") || "").trim();
+  const language = normalizeVoiceLanguage(url.searchParams.get("language"));
   if (url.searchParams.get("support_recover") === "execute") {
     const name = (url.searchParams.get("name") || "克隆声音").trim().slice(0, 40);
     const demoAudio = (url.searchParams.get("demo_audio") || "").trim();
@@ -146,6 +152,7 @@ export async function GET(request: Request) {
         voiceId,
         name,
         demoAudio,
+        language,
       });
       return Response.json({
         saved: true,
@@ -153,6 +160,7 @@ export async function GET(request: Request) {
           voiceId,
           name,
           demoAudio: playableAudio,
+          language,
         },
         wallet: await getWallet(member),
       });
@@ -187,6 +195,7 @@ export async function GET(request: Request) {
     <h1>恢复已克隆声音</h1>
     <p class="hint">仅补回会员资产中的试听样本，不会重新克隆，也不会扣除积分。</p>
     <input type="hidden" name="action" value="recover">
+    <input type="hidden" name="language" value="${language}">
     <label>声音名称</label>
     <input name="name" value="${escapeHtml(name)}" readonly>
     <label>声音模型 ID</label>
@@ -206,16 +215,19 @@ export async function GET(request: Request) {
   if (!voiceId) {
     try {
       const items = await listMemberAssets(member);
+      const registeredVoices = listClonedVoicesForMember(member.id);
+      const registeredById = new Map(registeredVoices.map((voice) => [voice.voiceId, voice]));
       const voices = items
         .filter((item) => item.kind === "voice" && item.source_task_id)
         .map((item) => ({
           voiceId: item.source_task_id as string,
           name: item.name,
+          language: registeredById.get(item.source_task_id as string)?.language ?? "cn" as const,
           demoAudio: `/api/member/assets/${encodeURIComponent(item.id)}`,
           createdAt: Number(item.created_at) * 1000,
         }));
       const merged = [...voices];
-      for (const voice of listClonedVoicesForMember(member.id)) {
+      for (const voice of registeredVoices) {
         if (!merged.some((item) => item.voiceId === voice.voiceId)) merged.push(voice);
       }
       return Response.json({ voices: merged });
@@ -236,7 +248,7 @@ export async function GET(request: Request) {
     if (task.state === "success") {
       if (playableAudio) {
         try {
-          playableAudio = await archiveVoice(member, { voiceId, name: task.name || name, demoAudio: playableAudio });
+          playableAudio = await archiveVoice(member, { voiceId, name: task.name || name, demoAudio: playableAudio, language });
           saved = true;
         } catch (error) {
           warning = "声音已克隆成功，但会员资产保存失败；本次页面仍可继续使用。";
@@ -248,6 +260,7 @@ export async function GET(request: Request) {
           ownerId: member.id,
           name: task.name || name,
           providerVoiceId: voiceId,
+          language,
         });
       }
     }
@@ -257,7 +270,7 @@ export async function GET(request: Request) {
     return Response.json({
       ...task,
       voice: task.state === "success"
-        ? { voiceId, name: task.name || name, demoAudio: playableAudio }
+        ? { voiceId, name: task.name || name, demoAudio: playableAudio, language }
         : null,
       demoAudio: playableAudio,
       saved,
@@ -282,6 +295,7 @@ export async function POST(request: Request) {
       const voiceId = String(form.get("voiceId") || "").trim();
       const name = String(form.get("name") || "克隆声音").trim().slice(0, 40);
       const demoAudio = String(form.get("demoAudio") || "").trim();
+      const recoverLanguage = normalizeVoiceLanguage(form.get("language"));
       if (!voiceId || !demoAudio) {
         return Response.json({ error: "缺少声音模型或试听样本信息。" }, { status: 400 });
       }
@@ -299,6 +313,7 @@ export async function POST(request: Request) {
         voiceId,
         name,
         demoAudio,
+        language: recoverLanguage,
       });
       return Response.json({
         saved: true,
@@ -306,6 +321,7 @@ export async function POST(request: Request) {
           voiceId,
           name,
           demoAudio: playableAudio,
+          language: recoverLanguage,
         },
         wallet: await getWallet(member),
       });
@@ -314,6 +330,7 @@ export async function POST(request: Request) {
     const file = fileValue instanceof File ? fileValue : null;
     const name = String(form.get("name") || "").trim().slice(0, 40);
     const requestId = String(form.get("requestId") || "").trim();
+    const language = normalizeVoiceLanguage(form.get("language"));
 
     if (!name) return Response.json({ error: "请先填写声音名称。" }, { status: 400 });
     if (!file || !file.size) return Response.json({ error: "请先上传一段清晰的人声音频。" }, { status: 400 });
@@ -326,11 +343,12 @@ export async function POST(request: Request) {
 
     reservation = await reserveAiPoints(member, "voice_clone", 1, requestId, 10);
     const audioUrl = await uploadPublicVoiceSample(member, file);
-    const created = await createCustomVoice({ name, audioUrl });
+    const created = await createCustomVoice({ name, audioUrl, language });
     submitted = true;
     return Response.json({
       voiceId: created.voiceId,
       name,
+      language,
       demoAudio: audioUrl,
       state: "running",
       isFinal: false,

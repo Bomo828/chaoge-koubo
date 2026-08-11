@@ -3,46 +3,10 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
+import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
-
-type MerchantProfile = {
-  name: string;
-  miniAppName: string;
-  storeDisplayName: string;
-  address: string;
-  phone: string;
-  categoryPerCapita: string;
-  serviceTags: string[];
-  storeTags: string[];
-  industry: string;
-  positioning: string;
-  audience: string;
-  keywords: string[];
-  materialSummary: string;
-};
-
-const demoMerchantProfile: MerchantProfile = {
-  name: "懿周美学",
-  miniAppName: "懿周美学",
-  storeDisplayName: "懿周美学纹眉（甪直店）",
-  address: "江苏省苏州市吴中区甪直镇鸣市路16号310室",
-  phone: "15190088862",
-  categoryPerCapita: "美业丽人 / ¥68/人",
-  serviceTags: ["眉型设计", "半永久纹眉", "纹唇美瞳线", "发际线设计"],
-  storeTags: ["专业纹绣美学", "品牌认证", "预约服务", "甪直纹眉"],
-  industry: "美业丽人",
-  positioning: "专注纹绣半永久，以自然眉型设计与专业服务为核心",
-  audience: "甪直及周边重视自然妆感、眉眼唇改善的女性顾客",
-  keywords: ["自然眉型", "半永久", "专业纹绣", "品牌认证"],
-  materialSummary: "已同步品牌 Logo、门头照、2 张店内场景照和团购页面截图",
-};
-
-const merchantProfileStorageKey = "merchant-studio-profile-yizhou-v1";
-
-function safeTags(value: unknown) {
-  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
-}
+import { IndustryImageLab } from "./image-lab";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -85,11 +49,13 @@ type AssetFilter = "all" | "image" | "video" | "audio";
 type ClonedVoice = {
   voiceId: string;
   name: string;
+  language: "cn" | "en";
   demoAudio: string;
   createdAt?: number;
 };
 
 const VOICE_AUDITION_TEXT = "我是您的克隆声音，我可以说很多的话。";
+const VOICE_AUDITION_TEXT_EN = "Hello, this is my cloned voice. I can speak English naturally.";
 
 type ViralCaption = {
   start: number;
@@ -485,6 +451,15 @@ const menu = [
   { id: "member", icon: "会", label: "账号中心" },
 ];
 
+const menuIcons = {
+  overview: House,
+  design: ImageSquare,
+  video: VideoCamera,
+  cases: Lightbulb,
+  assets: FolderOpen,
+  member: UserCircle,
+};
+
 const studioLabels: Record<string, string> = {
   overview: "创作首页",
   design: "图片创作",
@@ -497,17 +472,21 @@ const studioLabels: Record<string, string> = {
 export function StudioClient({ member, initialFeatures }: { member: MemberSession; initialFeatures: PlatformFeature[] }) {
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
-  const [merchantProfile, setMerchantProfile] = useState<MerchantProfile>(demoMerchantProfile);
   const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
-  const [accountDialog, setAccountDialog] = useState<"merchant" | "password" | null>(null);
+  const [accountDialog, setAccountDialog] = useState<"password" | null>(null);
   const [dialogMessage, setDialogMessage] = useState("");
   const [walletPoints, setWalletPoints] = useState(member.points);
   const memberMenuRef = useRef<HTMLDivElement>(null);
   const visibleMenu = initialFeatures.length
     ? [...initialFeatures].filter((item) => item.enabled).sort((left, right) => left.sortOrder - right.sortOrder).map((item) => ({ id: item.entry, icon: item.icon, label: studioLabels[item.entry] || item.name }))
     : menu;
+
+  useEffect(() => {
+    const requestedTool = new URLSearchParams(window.location.search).get("tool");
+    if (requestedTool && Object.hasOwn(studioLabels, requestedTool)) setActive(requestedTool);
+  }, []);
 
   useEffect(() => {
     function closeMemberMenu(event: MouseEvent) {
@@ -543,68 +522,28 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
     return () => { active = false; };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    async function syncMerchantProfile() {
-      let localProfile = demoMerchantProfile;
-      try {
-        const savedProfile = window.localStorage.getItem(merchantProfileStorageKey);
-        if (savedProfile) localProfile = { ...demoMerchantProfile, ...JSON.parse(savedProfile) as Partial<MerchantProfile> };
-      } catch {
-        window.localStorage.removeItem(merchantProfileStorageKey);
-      }
-      try {
-        const response = await fetch("/api/member/merchant", { cache: "no-store" });
-        const data = await response.json() as { merchant?: Partial<MerchantProfile> | null };
-        if (!response.ok) throw new Error("merchant unavailable");
-        if (data.merchant) {
-          const profile = { ...demoMerchantProfile, ...data.merchant };
-          if (active) setMerchantProfile(profile);
-          window.localStorage.setItem(merchantProfileStorageKey, JSON.stringify(profile));
-        } else {
-          if (active) setMerchantProfile(localProfile);
-          await fetch("/api/member/merchant", {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(localProfile),
-          });
-        }
-      } catch {
-        if (active) setMerchantProfile(localProfile);
-      }
-    }
-    void syncMerchantProfile();
-    return () => { active = false; };
-  }, []);
-
-  function saveMerchantProfile(profile: MerchantProfile) {
-    setMerchantProfile(profile);
-    window.localStorage.setItem(merchantProfileStorageKey, JSON.stringify(profile));
-    void fetch("/api/member/merchant", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(profile),
-    });
-  }
-
   function demoAction() {
     setBusy(true);
     window.setTimeout(() => setBusy(false), 1100);
   }
 
   return (
-    <main className="studio-shell">
+    <main className={`studio-shell ${active === "design" ? "is-image-lab" : ""}`}>
       <aside className="studio-sidebar">
         <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><img src="/media/flash-lab-logo.png" alt="" /></span><div><b>爆点实验室</b><small>FLASH LAB</small></div></Link>
         <nav>
-          {visibleMenu.map((item, index) => (
-            <button className={active === item.id ? "active" : ""} key={`${item.id}-${index}`} onClick={() => {
-              if (item.id === "assets") setAssetInitialFilter("all");
-              setActive(item.id);
-            }}>
-              <span>{item.label}</span>
-            </button>
-          ))}
+          {visibleMenu.map((item, index) => {
+            const MenuIcon = menuIcons[item.id as keyof typeof menuIcons] ?? House;
+            return (
+              <button className={active === item.id ? "active" : ""} key={`${item.id}-${index}`} onClick={() => {
+                if (item.id === "assets") setAssetInitialFilter("all");
+                setActive(item.id);
+              }}>
+                <MenuIcon size={19} weight={active === item.id ? "fill" : "regular"} />
+                <span>{item.label}</span>
+              </button>
+            );
+          })}
         </nav>
         <div className="sidebar-member"><span>创作积分</span><b>{walletPoints.toLocaleString()} <small>PTS</small></b><button onClick={() => setActive("member")}>充值积分</button></div>
         <a className="sidebar-exit" href="/api/auth/logout">退出账号</a>
@@ -632,7 +571,6 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
                 </div>
                 <div className="member-dropdown-actions">
                   {member.role === "admin" || member.role === "super_admin" ? <a role="menuitem" href="/admin"><span><b>管理后台</b><small>项目、模板与平台配置</small></span><i>›</i></a> : null}
-                  <button type="button" role="menuitem" onClick={() => { setAccountDialog("merchant"); setDialogMessage(""); setMemberMenuOpen(false); }}><span><b>创作偏好</b><small>资料与内容方向</small></span><i>›</i></button>
                   <button type="button" role="menuitem" onClick={() => { setAccountDialog("password"); setDialogMessage(""); setMemberMenuOpen(false); }}><span><b>修改密码</b><small>更新会员登录密码</small></span><i>›</i></button>
                 </div>
                 <a className="member-logout" role="menuitem" href="/api/auth/logout"><span>退出登录</span><i>↗</i></a>
@@ -642,8 +580,8 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
         </header>
         <div className="studio-content">
           {active === "overview" && <Overview onOpen={setActive} />}
-          {active === "design" && <Design busy={busy} action={demoAction} merchant={merchantProfile} onPointsChange={setWalletPoints} />}
-          {active === "video" && <Video busy={busy} action={demoAction} merchant={merchantProfile} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
+          {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
+          {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <Cases onUse={() => setActive("design")} />}
           {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
             setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType });
@@ -662,11 +600,8 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
 
       {accountDialog ? (
         <AccountDialog
-          mode={accountDialog}
-          merchant={merchantProfile}
           message={dialogMessage}
           onMessage={setDialogMessage}
-          onMerchantSave={saveMerchantProfile}
           onClose={() => { setAccountDialog(null); setDialogMessage(""); }}
         />
       ) : null}
@@ -674,7 +609,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   );
 }
 
-function AccountDialog({ mode, merchant, message, onMessage, onMerchantSave, onClose }: { mode: "merchant" | "password"; merchant: MerchantProfile; message: string; onMessage: (message: string) => void; onMerchantSave: (merchant: MerchantProfile) => void; onClose: () => void }) {
+function AccountDialog({ message, onMessage, onClose }: { message: string; onMessage: (message: string) => void; onClose: () => void }) {
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -699,62 +634,20 @@ function AccountDialog({ mode, merchant, message, onMessage, onMerchantSave, onC
     }
   }
 
-  function saveMerchant(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const categoryPerCapita = String(form.get("categoryPerCapita") ?? "").trim();
-    const serviceTags = String(form.get("serviceTags") ?? "").split(/[，,]/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
-    const storeTags = String(form.get("storeTags") ?? "").split(/[，,]/).map((item) => item.trim()).filter(Boolean).slice(0, 8);
-    onMerchantSave({
-      ...merchant,
-      name: String(form.get("merchantName") ?? "").trim(),
-      miniAppName: String(form.get("miniAppName") ?? "").trim(),
-      storeDisplayName: String(form.get("storeDisplayName") ?? "").trim(),
-      address: String(form.get("address") ?? "").trim(),
-      phone: String(form.get("phone") ?? "").trim(),
-      categoryPerCapita,
-      serviceTags,
-      storeTags,
-      industry: categoryPerCapita.split(/[\/／]/)[0]?.trim() || merchant.industry,
-      positioning: storeTags.join("、") || merchant.positioning,
-      keywords: [...serviceTags, ...storeTags].slice(0, 8),
-    });
-    onMessage("商家资料已保存，AI 推荐与后续生图会使用最新资料。");
-  }
-
   return (
     <div className="account-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) onClose(); }}>
       <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-dialog-title">
         <button className="account-dialog-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
-        {mode === "merchant" ? (
-          <form onSubmit={saveMerchant}>
-            <header className="account-dialog-header"><small>创作资料</small><h2 id="account-dialog-title">创作偏好</h2><p>这些资料将帮助 AI 更准确地理解你的内容方向。</p></header>
-            <div className="account-form-grid">
-              <label><span>商家名称</span><input name="merchantName" defaultValue={merchant.name} placeholder="工商或平台商家名称" required /></label>
-              <label><span>小程序名称</span><input name="miniAppName" defaultValue={merchant.miniAppName} placeholder="商家小程序名称" required /></label>
-              <label className="account-field-wide"><span>门店显示名称</span><input name="storeDisplayName" defaultValue={merchant.storeDisplayName} placeholder="例如：品牌名（中心店）" required /></label>
-              <label className="account-field-wide"><span>地址</span><input name="address" defaultValue={merchant.address} placeholder="门店详细地址" /></label>
-              <label><span>电话</span><input name="phone" inputMode="tel" defaultValue={merchant.phone} placeholder="门店联系电话" /></label>
-              <label><span>类目 / 人均</span><input name="categoryPerCapita" defaultValue={merchant.categoryPerCapita} placeholder="例如：粤菜馆 / ¥69/人" /></label>
-              <label className="account-field-wide"><span>建议服务标签</span><input name="serviceTags" defaultValue={safeTags(merchant.serviceTags).join("、")} placeholder="例如：朋友聚餐、免费停车、团购优惠" /></label>
-              <label className="account-field-wide"><span>建议门店标签</span><input name="storeTags" defaultValue={safeTags(merchant.storeTags).join("、")} placeholder="例如：品质门店、家庭聚餐、到店核销" /></label>
-            </div>
-            <div className="account-dialog-note"><b>账号同步</b><span>商家资料已按会员账号保存，AI 分析、生图与视频会读取最新信息。</span></div>
-            {message ? <div className="account-dialog-message" role="status">{message}</div> : null}
-            <footer className="account-dialog-footer"><button type="button" onClick={onClose}>取消</button><button className="account-dialog-submit" type="submit">保存设置</button></footer>
-          </form>
-        ) : (
-          <form onSubmit={submitPassword}>
-            <header className="account-dialog-header"><small>账号安全</small><h2 id="account-dialog-title">修改密码</h2><p>为了账号安全，请使用与其他平台不同的密码。</p></header>
-            <div className="account-form-grid is-single">
-              <label><span>当前密码</span><input name="currentPassword" type="password" autoComplete="current-password" placeholder="输入当前密码" required /></label>
-              <label><span>新密码</span><input name="nextPassword" type="password" autoComplete="new-password" placeholder="不少于 8 个字符" minLength={8} required /></label>
-              <label><span>确认新密码</span><input name="confirmPassword" type="password" autoComplete="new-password" placeholder="再次输入新密码" minLength={8} required /></label>
-            </div>
-            {message ? <div className="account-dialog-message" role="status">{message}</div> : null}
-            <footer className="account-dialog-footer"><button type="button" onClick={onClose}>取消</button><button className="account-dialog-submit" type="submit">确认修改</button></footer>
-          </form>
-        )}
+        <form onSubmit={submitPassword}>
+          <header className="account-dialog-header"><small>账号安全</small><h2 id="account-dialog-title">修改密码</h2><p>为了账号安全，请使用与其他平台不同的密码。</p></header>
+          <div className="account-form-grid is-single">
+            <label><span>当前密码</span><input name="currentPassword" type="password" autoComplete="current-password" placeholder="输入当前密码" required /></label>
+            <label><span>新密码</span><input name="nextPassword" type="password" autoComplete="new-password" placeholder="不少于 8 个字符" minLength={8} required /></label>
+            <label><span>确认新密码</span><input name="confirmPassword" type="password" autoComplete="new-password" placeholder="再次输入新密码" minLength={8} required /></label>
+          </div>
+          {message ? <div className="account-dialog-message" role="status">{message}</div> : null}
+          <footer className="account-dialog-footer"><button type="button" onClick={onClose}>取消</button><button className="account-dialog-submit" type="submit">确认修改</button></footer>
+        </form>
       </section>
     </div>
   );
@@ -883,14 +776,14 @@ const materialTypes = [
 
 type MarketingChatMessage = { role: "assistant" | "user"; content: string };
 
-function designAgentGreeting(mode: (typeof designModes)[number], merchantName: string) {
+function designAgentGreeting(mode: (typeof designModes)[number]) {
   return mode.id === "material"
-    ? `我是你的门店物料设计策划师。我会结合${merchantName || "商家"}的资料、参考图片和物料摆放场景，整理适合线下打印的方案。你可以选择迎宾海报、桌面立牌、小绿书打卡卡、评价引导卡或服务预约卡。先告诉我：最希望顾客看完后完成什么行动？二维码准备链接到哪里？`
+    ? "我是你的门店物料设计策划师。我会结合本次填写的需求、参考图片和物料摆放场景，整理适合线下打印的方案。你可以选择迎宾海报、桌面立牌、小绿书打卡卡、评价引导卡或服务预约卡。先告诉我：最希望顾客看完后完成什么行动？二维码准备链接到哪里？"
     : mode.id === "custom"
-    ? `我是你的小绿书内容策划师。我会结合${merchantName || "商家"}的资料和参考图片，从选题、标题、正文、互动句到3:4笔记首图大纲，整理3套不同角度的种草图文。你可以继续让我重写或调整其中一套。先告诉我：这次最想分享哪项商品、服务或门店体验？希望读者看完后做什么？`
+    ? "我是你的小绿书内容策划师。我会结合本次填写的需求和参考图片，从选题、标题、正文、互动句到3:4笔记首图大纲，整理3套不同角度的种草图文。你可以继续让我重写或调整其中一套。先告诉我：这次最想分享哪项商品、服务或体验？希望读者看完后做什么？"
     : mode.id === "moments"
-    ? `我是你的朋友圈海报策划师。我会结合${merchantName || "商家"}的资料和参考图片整理传播方案，并同步写出3份不同角度的朋友圈文案。你也可以随时让我重写、调整语气或修改其中的卖点。先告诉我：这次想在朋友圈推广什么？最希望顾客看到后产生什么行动？`
-    : `我是你的营销海报策划师。我会结合${merchantName || "商家"}的资料整理海报方案。先告诉我：这次主要推广什么商品、服务或活动？最希望顾客记住什么？`;
+    ? "我是你的朋友圈海报策划师。我会结合本次填写的需求和参考图片整理传播方案，并同步写出3份不同角度的朋友圈文案。你也可以随时让我重写、调整语气或修改其中的卖点。先告诉我：这次想在朋友圈推广什么？最希望顾客看到后产生什么行动？"
+    : "我是你的营销海报策划师。我会根据本次填写的需求整理海报方案。先告诉我：这次主要推广什么商品、服务或活动？最希望顾客记住什么？";
 }
 
 function MomentsFeedPreview({ merchantName, avatarUrl, caption, imageUrl, imageUrls = [], spec, onEnlarge }: { merchantName: string; avatarUrl: string; caption: string; imageUrl: string; imageUrls?: string[]; spec: string; onEnlarge: () => void }) {
@@ -941,7 +834,7 @@ function LittleGreenBookPhonePreview({ merchantName, caption, imageUrl, fallback
   </div>;
 }
 
-function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; action: () => void; merchant: MerchantProfile; onPointsChange: (points: number) => void }) {
+function Design({ busy, action, onPointsChange }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void }) {
   const [activeDesign, setActiveDesign] = useState<(typeof designModes)[number]["id"]>("marketing");
   const activeMode = designModes.find((mode) => mode.id === activeDesign) ?? designModes[0];
   const isLittleGreenBook = activeMode.id === "custom";
@@ -963,7 +856,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
   const [selectedPreview, setSelectedPreview] = useState(1);
   const [downloadStatus, setDownloadStatus] = useState("");
   const [marketingMessages, setMarketingMessages] = useState<MarketingChatMessage[]>([
-    { role: "assistant", content: designAgentGreeting(designModes[0], merchant.name) },
+    { role: "assistant", content: designAgentGreeting(designModes[0]) },
   ]);
   const [marketingInput, setMarketingInput] = useState("");
   const [marketingAgentBusy, setMarketingAgentBusy] = useState(false);
@@ -985,7 +878,6 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
   const currentReferenceSignature = `${activeMode.id}:${referenceNames.join("|")}`;
   const referencesAnalyzed = Boolean(marketingReferenceSummary) && analyzedReferenceSignature === currentReferenceSignature;
   const referenceImagesForAgent = referencesAnalyzed ? [] : referenceImageUrls;
-  const merchantIndustry = merchant.industry || merchant.categoryPerCapita || "商家所属行业";
   const marketingProviderSize = selectedSpec === "poster-1-1" || selectedSpec === "single-1-1"
     ? "1024x1024"
     : selectedSpec === "poster-9-16" || selectedSpec === "single-9-16"
@@ -998,7 +890,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
             ? "2880x2880"
             : "960x1280";
   const marketingImageQuote = useImagePriceQuote(marketingProviderSize, "high", 3, referenceImageUrls.length);
-  const marketingConversationCharacters = marketingInput.length + prompt.length + marketingMessages.reduce((total, item) => total + item.content.length, 0) + JSON.stringify(merchant).length;
+  const marketingConversationCharacters = marketingInput.length + prompt.length + marketingMessages.reduce((total, item) => total + item.content.length, 0);
   const estimatedMarketingChatPoints = Math.max(2, Math.ceil((2400 + Math.ceil(marketingConversationCharacters / 2) + referenceImagesForAgent.length * 650) / 1000) * 2);
 
   useEffect(() => {
@@ -1011,7 +903,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
 
   useEffect(() => {
     try {
-      const stored = window.localStorage.getItem(`merchant-material-qr:${merchant.name || "default"}`);
+      const stored = window.localStorage.getItem("material-qr:current-task");
       if (!stored) return;
       const parsed = JSON.parse(stored) as { name?: string; url?: string };
       if (typeof parsed.url === "string" && /^data:image\//i.test(parsed.url)) {
@@ -1019,14 +911,14 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
         setMaterialQrUrl(parsed.url);
       }
     } catch {
-      window.localStorage.removeItem(`merchant-material-qr:${merchant.name || "default"}`);
+      window.localStorage.removeItem("material-qr:current-task");
     }
-  }, [merchant.name]);
+  }, []);
 
   useEffect(() => {
     if (!isAgentDesign) return;
     const controller = new AbortController();
-    const projectName = `${merchant.name} · ${activeMode.title}`;
+    const projectName = activeMode.title;
     fetch("/api/member/assets", { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("assets unavailable")))
       .then((data: { items?: MemberAssetItem[] }) => {
@@ -1047,7 +939,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
         if (!(error instanceof DOMException && error.name === "AbortError")) return;
       });
     return () => controller.abort();
-  }, [activeMode.id, activeMode.title, isAgentDesign, merchant.name]);
+  }, [activeMode.id, activeMode.title, isAgentDesign]);
 
   function openDesign(mode: (typeof designModes)[number]) {
     setActiveDesign(mode.id);
@@ -1060,7 +952,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
     setGeneratedDesignError("");
     setSelectedPreview(1);
     setDownloadStatus("");
-    setMarketingMessages([{ role: "assistant", content: designAgentGreeting(mode, merchant.name) }]);
+    setMarketingMessages([{ role: "assistant", content: designAgentGreeting(mode) }]);
     setMarketingInput("");
     setMarketingAgentError("");
     setMarketingPromptReady(false);
@@ -1096,7 +988,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
     setMaterialQrName(file.name);
     setMaterialQrUrl(url);
     try {
-      window.localStorage.setItem(`merchant-material-qr:${merchant.name || "default"}`, JSON.stringify({ name: file.name, url }));
+      window.localStorage.setItem("material-qr:current-task", JSON.stringify({ name: file.name, url }));
     } catch {
       // The QR remains available for the current session when browser storage is full.
     }
@@ -1129,7 +1021,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
         : activeMode.id === "material"
           ? `当前物料类型为“${activeMaterialType.label}”。${activeMaterialType.scene} 设计必须适合线下打印和近距离阅读，信息层级清晰、文字不贴边，并在画面右下角预留独立、干净、无遮挡的正方形二维码安全区域；真实门店二维码将由系统精确合成到此处，不要生成无法扫描的伪二维码。`
           : "生成用于线上活动和团购推广的专业营销海报，移动端展示时主体和关键信息必须清晰。";
-      const fullPrompt = `${generationPrompt}\n商家名称：${merchant.name}。商家行业：${merchantIndustry}。输出规格：${specLabel}。${modeLayoutInstruction} 不虚构价格、荣誉、活动或商家未提供的信息。`;
+      const fullPrompt = `${generationPrompt}\n输出规格：${specLabel}。${modeLayoutInstruction} 不虚构价格、荣誉、活动或本次需求未提供的信息。`;
       const requestId = crypto.randomUUID();
       const response = await fetch("/api/ai/images", {
         method: "POST",
@@ -1155,7 +1047,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
       if (urls.length !== 3) throw new Error(`本次只取得 ${urls.length} 张图片，请重新生成以获得完整的 3 套方案。`);
       setGeneratedDesignUrls(urls);
       setGeneratedDesign(activeMode.id);
-      void archiveGeneratedAssets({ projectName: `${merchant.name} · ${activeMode.title}`, kind: "image", urls, taskIds, namePrefix: activeMode.title });
+      void archiveGeneratedAssets({ projectName: activeMode.title, kind: "image", urls, taskIds, namePrefix: activeMode.title });
     } catch (error) {
       setGeneratedDesignError(error instanceof Error ? error.message : `${activeMode.title}生成失败，请稍后重试。`);
     } finally {
@@ -1180,7 +1072,6 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
         body: JSON.stringify({
           message,
           messages: marketingMessages,
-          merchant,
           currentPrompt: prompt,
           referenceCount: referenceNames.length,
           referenceImages: optimizedReferenceImages,
@@ -1233,7 +1124,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
     }
     setDownloadStatus("正在准备图片…");
     try {
-      const canvas = drawDownloadArtwork(activeMode.id, selectedPreview, selectedSpec, merchantIndustry);
+      const canvas = drawDownloadArtwork(activeMode.id, selectedPreview, selectedSpec, "营销");
       if (activeMode.id === "material" && materialQrUrl) await overlayQrCode(canvas, materialQrUrl);
       const specName = activeSpecOptions.find((option) => option.id === selectedSpec)?.label ?? selectedSpec;
       await canvasBlob(canvas).then((blob) => triggerDownload(blob, `${activeMode.title}-方案${selectedPreview}-${specName.replace(/[^0-9A-Za-z\u4e00-\u9fa5×-]+/g, "-")}.png`));
@@ -1253,7 +1144,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
       const generatedUrl = isAgentDesign ? generatedDesignUrls[selectedPreview - 1] : "";
       const source = generatedUrl
         ? await generatedImageCanvas(generatedUrl, width, height)
-        : drawDownloadArtwork(activeMode.id, selectedPreview, selectedSpec, merchantIndustry);
+        : drawDownloadArtwork(activeMode.id, selectedPreview, selectedSpec, "营销");
       const columns = tiles === 9 ? 3 : 2;
       const tileWidth = width / columns;
       const tileHeight = height / columns;
@@ -1310,7 +1201,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
             <small>{referenceNames.length ? referenceImageUrls.length >= 8 ? "已达到 8 张上限" : `${referenceNames.join("、")} · 点击可继续添加` : "支持单张或多选上传，最多 8 张"}</small>
           </label>}
           <section className={`marketing-plan-controls ${isSocialDesign ? "is-moments" : ""}`}>
-            {!isLittleGreenBook ? <label className="marketing-final-prompt"><span>生成提示词</span><small>{activeMode.id === "material" ? "AI 会结合物料用途、摆放位置和二维码去向整理提示词" : "只整理画面内容与风格；行业自动读取商家资料，规格由下方选择"}</small><textarea aria-label={`${activeMode.title}最终生成提示词`} value={prompt} onChange={(event) => { setPrompt(event.target.value); setMarketingPromptReady(false); }} /></label> : null}
+            {!isLittleGreenBook ? <label className="marketing-final-prompt"><span>生成提示词</span><small>{activeMode.id === "material" ? "AI 会结合物料用途、摆放位置和二维码去向整理提示词" : "只使用本次填写内容与参考图片；规格由下方选择"}</small><textarea aria-label={`${activeMode.title}最终生成提示词`} value={prompt} onChange={(event) => { setPrompt(event.target.value); setMarketingPromptReady(false); }} /></label> : null}
             {isSocialDesign ? <div className={`moments-copy-control ${isLittleGreenBook ? "is-little-green-copy" : ""}`}><div><span>{isLittleGreenBook ? "小绿书文案" : "朋友圈文案"}</span>{isLittleGreenBook ? <small>标题、正文、互动句与话题</small> : null}</div><nav aria-label={`选择要编辑的${isLittleGreenBook ? "小绿书" : "朋友圈"}文案`}>{[1, 2, 3].map((candidate) => <button type="button" className={selectedPreview === candidate ? "active" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}>文案 {candidate}</button>)}</nav><textarea aria-label={`${isLittleGreenBook ? "小绿书" : "朋友圈"}发布文案${selectedPreview}`} value={momentsCaptions[selectedPreview - 1] ?? ""} placeholder="通过右侧AI对话生成，也可以在这里手动修改" onChange={(event) => setMomentsCaptions((current) => current.map((item, index) => index === selectedPreview - 1 ? event.target.value : item))} /><em>{isLittleGreenBook ? "AI 会生成3种不同传播角度，文案1、2、3分别对应下方的3:4笔记首图方案。" : "通过右侧AI对话生成、重写或调整3份文案；文案1、2、3分别对应下方的图片方案。"}</em></div> : null}
             {isMomentsDesign ? <p className="moments-spec-note">朋友圈规则：单张按所选比例生成；4张先生成一张完整方形母图，再无缝切成4张1080方图；9张先生成一张完整方形母图，再无缝切成9张1080方图。</p> : null}
             <div className={`marketing-bottom-row ${activeMode.id === "material" ? "has-material-type" : ""}`}>
@@ -1321,7 +1212,7 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
           </section>
         </div>
         <section className="prompt-zone marketing-agent-zone">
-          <div className="marketing-agent-heading"><div><b>{isLittleGreenBook ? "和 AI 一起策划小绿书" : `和 AI 一起确定${activeMode.title}`}</b><span>{isLittleGreenBook ? "AI 会读取商家资料和参考图片，完成选题、标题、正文、互动句与3:4笔记首图大纲" : `AI 会读取商家资料和参考图片，逐步整理${activeMode.id === "moments" ? "朋友圈传播" : activeMode.id === "material" ? "线下物料" : "海报"}方案`}</span></div><em className={referencesAnalyzed ? "ready" : ""}>{referencesAnalyzed ? `已分析 ${referenceImageUrls.length} 张图` : referenceImageUrls.length ? `待分析 ${referenceImageUrls.length} 张图` : "等待参考图"}</em></div>
+          <div className="marketing-agent-heading"><div><b>{isLittleGreenBook ? "和 AI 一起策划小绿书" : `和 AI 一起确定${activeMode.title}`}</b><span>{isLittleGreenBook ? "AI 会读取本次需求和参考图片，完成选题、标题、正文、互动句与3:4笔记首图大纲" : `AI 会读取本次需求和参考图片，逐步整理${activeMode.id === "moments" ? "朋友圈传播" : activeMode.id === "material" ? "线下物料" : "海报"}方案`}</span></div><em className={referencesAnalyzed ? "ready" : ""}>{referencesAnalyzed ? `已分析 ${referenceImageUrls.length} 张图` : referenceImageUrls.length ? `待分析 ${referenceImageUrls.length} 张图` : "等待参考图"}</em></div>
           <div className="marketing-chat" ref={marketingChatRef} aria-live="polite">
             {marketingMessages.map((item, index) => <div className={`marketing-message is-${item.role}`} key={`${item.role}-${index}`}><small>{item.role === "assistant" ? "AI 策划师" : "我"}</small><p>{item.content}</p></div>)}
             {marketingAgentBusy ? <div className="marketing-message is-assistant is-thinking"><small>AI 策划师</small><p><i /><i /><i /></p></div> : null}
@@ -1337,10 +1228,10 @@ function Design({ busy, action, merchant, onPointsChange }: { busy: boolean; act
     <section className="design-results-panel" ref={previewPanelRef}>
       <div className="design-result-head"><div><small>{isSocialDesign ? activeMode.id === "custom" ? "LITTLE GREEN BOOK PREVIEW" : "MOMENTS PREVIEW" : "GENERATED PREVIEW"}</small><h3>{isSocialDesign ? generatedDesignUrls.length === 3 ? `${activeMode.id === "custom" ? "小绿书" : "朋友圈海报"}方案预览` : `${activeMode.id === "custom" ? "小绿书" : "朋友圈"}实时预览` : `${activeMode.title}方案预览`}</h3></div><span>{isSocialDesign ? generatedDesignUrls.length === 3 ? "3 / 3 已生成" : generating ? "AI 生成中" : "实时同步" : generatedDesign === activeMode.id ? "3 / 3 已生成" : generating ? "AI 生成中" : "等待生成"}</span></div>
       {isLittleGreenBook ? <>
-        <div className="design-preview-grid little-green-preview-grid">{[1, 2, 3].map((candidate) => { const generatedUrl = generatedDesignUrls[candidate - 1] ?? ""; const imageAlt = `小绿书方案 ${candidate}`; return <button type="button" className={selectedPreview === candidate ? "selected" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}><LittleGreenBookPhonePreview merchantName={merchant.name} caption={momentsCaptions[candidate - 1] ?? ""} imageUrl={generatedUrl} fallbackImageUrl={referenceImageUrls[candidate - 1] || referenceImageUrls[0] || ""} onEnlarge={() => { const url = generatedUrl || referenceImageUrls[candidate - 1] || referenceImageUrls[0]; if (url) setEnlargedDesignImage({ url, alt: imageAlt }); }} /><span><b>{generatedUrl ? `图文方案 ${candidate}` : `实时预览 ${candidate}`}</b><i>{selectedPreview === candidate ? "✓ 已选择" : "选择"}</i></span></button>; })}</div>
+        <div className="design-preview-grid little-green-preview-grid">{[1, 2, 3].map((candidate) => { const generatedUrl = generatedDesignUrls[candidate - 1] ?? ""; const imageAlt = `小绿书方案 ${candidate}`; return <button type="button" className={selectedPreview === candidate ? "selected" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}><LittleGreenBookPhonePreview merchantName="创作者" caption={momentsCaptions[candidate - 1] ?? ""} imageUrl={generatedUrl} fallbackImageUrl={referenceImageUrls[candidate - 1] || referenceImageUrls[0] || ""} onEnlarge={() => { const url = generatedUrl || referenceImageUrls[candidate - 1] || referenceImageUrls[0]; if (url) setEnlargedDesignImage({ url, alt: imageAlt }); }} /><span><b>{generatedUrl ? `图文方案 ${candidate}` : `实时预览 ${candidate}`}</b><i>{selectedPreview === candidate ? "✓ 已选择" : "选择"}</i></span></button>; })}</div>
         {generating ? <div className="moments-generation-status"><i /><b>正在生成3套小绿书3:4笔记首图</b><span>3份文案仍可继续编辑，生成完成后会自动进入对应手机预览。</span></div> : generatedDesignUrls.length === 3 ? <div className="design-download-bar"><div><b>已选择小绿书图文方案 {selectedPreview}</b><span>下载的笔记首图将保持 1080×1440px · 3:4；文案可直接从手机预览上方的编辑区复制。</span></div><div><button type="button" disabled={Boolean(downloadStatus)} onClick={() => void downloadSelectedDesign()}>↓ 下载笔记首图</button></div>{downloadStatus ? <small role="status">{downloadStatus}</small> : null}</div> : <div className="moments-live-preview-foot moments-preview-note"><b>当前为小绿书实时预览</b><span>上传参考图片或与右侧AI对话后，笔记首图和文案会同步显示在三台手机中。</span></div>}
       </> : isSocialDesign ? <>
-        <div className="design-preview-grid moments-feed-preview-grid">{[1, 2, 3].map((candidate) => { const generatedUrl = generatedDesignUrls[candidate - 1] ?? ""; const imageAlt = `朋友圈方案 ${candidate}`; return <button type="button" className={selectedPreview === candidate ? "selected" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}><MomentsFeedPreview merchantName={merchant.name} avatarUrl={momentsAvatarUrl} caption={momentsCaptions[candidate - 1] ?? ""} imageUrl={generatedUrl} imageUrls={generatedUrl ? [] : referenceImageUrls} spec={selectedSpec} onEnlarge={() => { const url = generatedUrl || referenceImageUrls[0]; if (url) setEnlargedDesignImage({ url, alt: imageAlt }); }} /><span><b>{generatedUrl ? `方案 ${candidate}` : `实时预览 ${candidate}`}</b><i>{selectedPreview === candidate ? "✓ 已选择" : "选择"}</i></span></button>; })}</div>
+        <div className="design-preview-grid moments-feed-preview-grid">{[1, 2, 3].map((candidate) => { const generatedUrl = generatedDesignUrls[candidate - 1] ?? ""; const imageAlt = `朋友圈方案 ${candidate}`; return <button type="button" className={selectedPreview === candidate ? "selected" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}><MomentsFeedPreview merchantName="创作者" avatarUrl={momentsAvatarUrl} caption={momentsCaptions[candidate - 1] ?? ""} imageUrl={generatedUrl} imageUrls={generatedUrl ? [] : referenceImageUrls} spec={selectedSpec} onEnlarge={() => { const url = generatedUrl || referenceImageUrls[0]; if (url) setEnlargedDesignImage({ url, alt: imageAlt }); }} /><span><b>{generatedUrl ? `方案 ${candidate}` : `实时预览 ${candidate}`}</b><i>{selectedPreview === candidate ? "✓ 已选择" : "选择"}</i></span></button>; })}</div>
         {generating ? <div className="moments-generation-status"><i /><b>正在生成3套朋友圈图片</b><span>当前可继续查看和修改3份朋友圈文案。</span></div> : generatedDesignUrls.length === 3 ? <div className="design-download-bar"><div><b>已选择方案 {selectedPreview}</b><span>{tileCount > 1 ? `可下载完整原图，或下载 ${tileCount} 张 1080×1080px 无缝切片。` : "下载文件将保持当前选择的图片规格。"}</span></div><div><button type="button" disabled={Boolean(downloadStatus)} onClick={() => void downloadSelectedDesign()}>↓ {tileCount > 1 ? "下载完整原图" : "下载图片"}</button>{tileCount > 1 ? <button type="button" className="primary" disabled={Boolean(downloadStatus)} onClick={() => void downloadDesignTiles()}>▦ 下载{tileCount}张切片包</button> : null}</div>{downloadStatus ? <small role="status">{downloadStatus}</small> : null}</div> : <div className="moments-live-preview-foot moments-preview-note"><b>当前使用参考图片实时预览</b><span>生成完成后，3套图片会分别替换到对应的朋友圈预览中。</span></div>}
       </> : generating ? <div className="design-preview-loading"><i /><b>正在生成 3 套{activeMode.title}</b><span>真实图片生成通常需要 20 秒到 2 分钟，完成后会自动显示。</span></div> : generatedDesign === activeMode.id ? <>
         <div className="design-preview-grid">{[1, 2, 3].map((candidate) => { const generatedUrl = generatedDesignUrls[candidate - 1] ?? ""; const imageAlt = `${activeMode.title}方案 ${candidate}`; return <button type="button" className={selectedPreview === candidate ? "selected" : ""} aria-pressed={selectedPreview === candidate} onClick={() => setSelectedPreview(candidate)} key={candidate}>{generatedUrl ? <div className={`design-generated-media ${activeMode.id === "material" && materialQrUrl ? "has-material-qr" : ""}`}><img className="design-generated-image" src={generatedUrl} alt={imageAlt} title="双击放大查看" onDoubleClick={(event) => { event.stopPropagation(); setEnlargedDesignImage({ url: generatedUrl, alt: imageAlt }); }} />{activeMode.id === "material" && materialQrUrl ? <span className="material-preview-qr"><img src={materialQrUrl} alt="门店二维码" /><small>扫码参与</small></span> : null}</div> : <DesignPreviewArtwork mode={activeMode.id} candidate={candidate} spec={selectedSpec} />}<span><b>方案 {candidate}</b><i>{selectedPreview === candidate ? "✓ 已选择" : "选择"}</i></span></button>; })}</div>
@@ -1400,7 +1291,7 @@ type VideoStoryboard = {
   modelPlan: Array<{ step: string; model: string; reason: string }>;
 };
 
-type MerchantVideoQuote = {
+type VideoQuote = {
   reservedPoints: number;
   duration: number;
   resolution: string;
@@ -1409,7 +1300,7 @@ type MerchantVideoQuote = {
   note: string;
 };
 
-function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; merchant: MerchantProfile; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string } | null }) {
+function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string } | null }) {
   const [workspace, setWorkspace] = useState<"chooser" | "material" | "lip-sync" | "viral-edit">("chooser");
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
@@ -1417,17 +1308,17 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
   const [videoDuration, setVideoDuration] = useState(15);
   const [videoResolution, setVideoResolution] = useState<"480p" | "720p">("720p");
   const [videoVersion, setVideoVersion] = useState<"Mini" | "快速" | "标准">("快速");
-  const [merchantMaterialFiles, setMerchantMaterialFiles] = useState<VideoMaterialItem[]>([]);
-  const [merchantMaterialsLoading, setMerchantMaterialsLoading] = useState(false);
+  const [savedMaterialFiles, setSavedMaterialFiles] = useState<VideoMaterialItem[]>([]);
+  const [savedMaterialsLoading, setSavedMaterialsLoading] = useState(false);
   const [videoAnalysis, setVideoAnalysis] = useState<{ summary: string; platformInsight: string; missing: string[] } | null>(null);
   const [videoDirections, setVideoDirections] = useState<VideoDirection[]>([]);
   const [selectedDirection, setSelectedDirection] = useState("");
   const [campaignInfo, setCampaignInfo] = useState("");
-  const [targetAudience, setTargetAudience] = useState(merchant.audience);
+  const [targetAudience, setTargetAudience] = useState("");
   const [storyboard, setStoryboard] = useState<VideoStoryboard | null>(null);
   const [videoAgentBusy, setVideoAgentBusy] = useState<"analyze" | "storyboard" | "generate" | "">("");
   const [videoAgentError, setVideoAgentError] = useState("");
-  const [videoQuote, setVideoQuote] = useState<MerchantVideoQuote | null>(null);
+  const [videoQuote, setVideoQuote] = useState<VideoQuote | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState("");
   const [videoProgress, setVideoProgress] = useState("");
   const [voiceSource, setVoiceSource] = useState<"saved" | "upload">("saved");
@@ -1445,6 +1336,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
   const [audioFileName, setAudioFileName] = useState("");
   const [voiceUploadPreviewUrl, setVoiceUploadPreviewUrl] = useState("");
   const [voiceName, setVoiceName] = useState("");
+  const [voiceLanguage, setVoiceLanguage] = useState<"cn" | "en">("cn");
   const [uploadedVoiceReady, setUploadedVoiceReady] = useState(false);
   const [speechAudioReady, setSpeechAudioReady] = useState(false);
   const [speechAudioUrl, setSpeechAudioUrl] = useState("");
@@ -1676,6 +1568,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
       const form = new FormData();
       form.append("audio", audioFile, audioFile.name);
       form.append("name", voiceName.trim());
+      form.append("language", voiceLanguage);
       form.append("requestId", requestId);
       const response = await fetch("/api/ai/voices", {
         method: "POST",
@@ -1710,6 +1603,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
           request_id: cloneRequestId,
           name: cloneName,
           demo_audio: cloneDemoAudio,
+          language: voiceLanguage,
         });
         const statusResponse = await fetch(`/api/ai/voices?${params}`, { cache: "no-store" });
         data = await statusResponse.json() as typeof data;
@@ -1752,14 +1646,15 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
     setVoiceAuditionBusy(true);
     try {
-      const projectName = `${merchant.name} · 克隆声音试听`;
+      const projectName = "克隆声音试听";
+      const auditionText = voice.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT;
       const response = await fetch("/api/ai/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           voiceId,
           voiceName: voice.name,
-          text: VOICE_AUDITION_TEXT,
+          text: auditionText,
           projectName,
           requestId: `voice_audition_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         }),
@@ -1825,7 +1720,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           requirement,
-          merchant,
           requestId: `speech_script_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
         }),
       });
@@ -1848,6 +1742,17 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
   async function generateSpeechAudio() {
     if (!selectedVoice || !script.trim() || speechBusy) return;
+    const selectedVoiceRecord = savedVoices.find((item) => item.voiceId === selectedVoice);
+    const containsChinese = /[\u3400-\u9fff]/.test(script);
+    const containsEnglish = /[A-Za-z]/.test(script);
+    if (selectedVoiceRecord?.language === "en" && containsChinese && !containsEnglish) {
+      setSpeechError("当前选择的是英文音色，请输入英文文案或切换中文音色。");
+      return;
+    }
+    if (selectedVoiceRecord?.language !== "en" && containsEnglish && !containsChinese) {
+      setSpeechError("当前选择的是中文音色，请切换英文音色后再生成英文口播。");
+      return;
+    }
     setSpeechBusy(true);
     setSpeechError("");
     setSpeechAudioReady(false);
@@ -1856,7 +1761,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
     setLipSyncError("");
     try {
       const voice = savedVoices.find((item) => item.voiceId === selectedVoice);
-      const projectName = `${merchant.name} · 口播音频`;
+      const projectName = "口播音频";
       const response = await fetch("/api/ai/speech", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -1927,7 +1832,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
       form.append("audio", audioFileForUpload, audioFileForUpload.name);
       form.append("width", String(lipVideoSize.width));
       form.append("height", String(lipVideoSize.height));
-      form.append("projectName", `${merchant.name} · 对口型视频`);
+      form.append("projectName", "对口型视频");
       form.append("requestId", `lip_sync_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
 
       const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
@@ -1960,7 +1865,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         const params = new URLSearchParams({
           task_id: data.taskId || "",
           request_id: data.requestId || "",
-          project_name: data.projectName || `${merchant.name} · 对口型视频`,
+          project_name: data.projectName || "对口型视频",
         });
         const statusResponse = await fetch(`/api/ai/lip-sync?${params}`, { cache: "no-store" });
         data = await statusResponse.json() as typeof data;
@@ -1983,7 +1888,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
   function openLipSyncResultInViralEditor() {
     if (!lipSyncResultUrl || lipSyncBusy) return;
-    const sourceName = `${merchant.name}-对口型成片.mp4`;
+    const sourceName = "对口型成片.mp4";
     setWorkspace("viral-edit");
     setViralFiles([sourceName]);
     setViralSourceFile(null);
@@ -2086,7 +1991,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         const form = new FormData();
         form.append("video", sourceFile, sourceFile.name);
         form.append("template_id", viralTemplate);
-        form.append("merchant_json", JSON.stringify(merchant));
         if (renderFallback) form.append("title", "");
         return form;
       };
@@ -2201,7 +2105,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
           const aiResponse = await fetch("/api/ai/viral-transcript", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ captions, frames, merchant, duration: sourceDuration }),
+            body: JSON.stringify({ captions, frames, duration: sourceDuration }),
           });
           const aiData = await aiResponse.json() as {
             error?: string;
@@ -2378,7 +2282,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
     context.save();
     if (time <= introDuration) {
-      const title = content.title.trim() || `${merchant.name}｜真实体验`;
+      const title = content.title.trim() || "真实体验";
       const forceTwoLines = isCleanYellowWhite && title.length >= 6;
       const splitAt = title.length > 9 || forceTwoLines
         ? Math.max(3, Math.min(title.length - 3, Math.round(title.length / 2)))
@@ -2480,11 +2384,11 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
   async function uploadViralResult(blob: Blob, requestId: string, coverUrl = "") {
     const form = new FormData();
-    const resultName = `${merchant.name} · ${viralTitle.trim() || "一键网感成片"}`;
+    const resultName = viralTitle.trim() || "一键网感成片";
     const extension = blob.type.includes("mp4") ? "mp4" : "webm";
     form.append("file", new File([blob], `${resultName}.${extension}`, { type: blob.type || "video/webm" }));
     form.append("id", stableAssetId(`${requestId}|${resultName}`));
-    form.append("projectName", `${merchant.name} · 一键网感`);
+    form.append("projectName", "一键网感");
     form.append("kind", "video");
     form.append("name", resultName);
     form.append("sourceTaskId", requestId);
@@ -2569,7 +2473,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
           phase: "analyze",
           requestId,
           frames,
-          merchant,
           duration: source.duration || 15,
           template: {
             name: template.name,
@@ -2641,7 +2544,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
       form.append("video", sourceFile, sourceFile.name);
       form.append("template_id", viralTemplate);
       form.append("title", generatedTitle);
-      form.append("merchant_json", JSON.stringify(merchant));
       form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
       form.append("include_sfx", viralIncludeSfx ? "true" : "false");
       form.append("include_bgm", viralIncludeBgm ? "true" : "false");
@@ -2695,7 +2597,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         ? `依据镜头变化和口播停顿设置了 ${job.transition_points.length} 个效果触发点`
         : "已按模板规则编排效果触发点";
       // 成片完成后只展示由真实口播和处理任务返回的数据生成的摘要。
-      // 画面分析可能包含商家资料，只能用于模板适配，不能混入成片内容说明。
       setViralAnalysisSummary(`已通过 Faster-Whisper 读取真实口播时间轴，${titleMethod}；Template V${templateVersion} ${transitionSummary}，并按确认内容生成逐字字幕与提示音。`);
 
       setViralStage("成片已生成，正在保存到会员资产…");
@@ -2937,7 +2838,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
     const controller = new AbortController();
     fetch(`/api/ai/videos?duration=${videoDuration}&resolution=${videoResolution}&version=${encodeURIComponent(videoVersion)}`, { cache: "no-store", signal: controller.signal })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error("pricing unavailable")))
-      .then((data: { quote?: MerchantVideoQuote }) => setVideoQuote(data.quote ?? null))
+      .then((data: { quote?: VideoQuote }) => setVideoQuote(data.quote ?? null))
       .catch((error: unknown) => {
         if (!(error instanceof DOMException && error.name === "AbortError")) setVideoQuote(null);
       });
@@ -2947,8 +2848,8 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
   useEffect(() => {
     if (workspace !== "material") return;
     let cancelled = false;
-    const loadMerchantMaterials = async () => {
-      setMerchantMaterialsLoading(true);
+    const loadSavedMaterials = async () => {
+      setSavedMaterialsLoading(true);
       try {
         const response = await fetch("/api/member/assets", { cache: "no-store" });
         const data = await response.json() as { items?: MemberAssetItem[] };
@@ -2956,25 +2857,25 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         const imageAssets = data.items.filter((item) => item.kind === "image").slice(0, 6);
         const prepared = await Promise.allSettled(imageAssets.map(async (item) => {
           const imageResponse = await fetch(item.mediaUrl, { cache: "no-store" });
-          if (!imageResponse.ok) throw new Error("merchant material unavailable");
+          if (!imageResponse.ok) throw new Error("saved material unavailable");
           const aiImage = await blobToAiReferenceDataUrl(await imageResponse.blob());
           return {
-            id: `merchant-${item.id}`,
+            id: `saved-${item.id}`,
             name: `${item.projectName} · ${item.name}`,
             type: "image" as const,
             previewUrl: item.mediaUrl,
             aiImage,
           };
         }));
-        if (!cancelled) setMerchantMaterialFiles(prepared.flatMap((item) => item.status === "fulfilled" ? [item.value] : []));
+        if (!cancelled) setSavedMaterialFiles(prepared.flatMap((item) => item.status === "fulfilled" ? [item.value] : []));
       } catch {
-        if (!cancelled) setMerchantMaterialFiles([]);
+        if (!cancelled) setSavedMaterialFiles([]);
       } finally {
-        if (!cancelled) setMerchantMaterialsLoading(false);
+        if (!cancelled) setSavedMaterialsLoading(false);
       }
     };
-    void loadMerchantMaterials();
-    const refresh = () => void loadMerchantMaterials();
+    void loadSavedMaterials();
+    const refresh = () => void loadSavedMaterials();
     window.addEventListener("member-assets-updated", refresh);
     return () => {
       cancelled = true;
@@ -3066,14 +2967,14 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
   }, [workspace]);
 
   function videoReferenceImages() {
-    return [...materialFiles, ...merchantMaterialFiles]
+    return [...materialFiles, ...savedMaterialFiles]
       .filter((item) => item.aiImage)
       .slice(0, 9)
       .map((item) => item.aiImage);
   }
 
   function videoMaterialNames() {
-    return [...materialFiles, ...merchantMaterialFiles].slice(0, 12).map((item) => item.name);
+    return [...materialFiles, ...savedMaterialFiles].slice(0, 12).map((item) => item.name);
   }
 
   function toggleVideoPlatform(platform: string) {
@@ -3095,7 +2996,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           stage: "analyze",
-          merchant,
           brief: videoBrief,
           platforms: videoPlatforms,
           materialNames: videoMaterialNames(),
@@ -3117,7 +3017,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
       const directions = Array.isArray(data.directions) ? data.directions.slice(0, 3) : [];
       if (directions.length !== 3) throw new Error("AI 没有返回完整的3个视频方向，请重试。");
       setVideoAnalysis({
-        summary: data.summary || "已完成商家与素材分析。",
+        summary: data.summary || "已完成本次需求与素材分析。",
         platformInsight: data.platformInsight || "",
         missing: Array.isArray(data.missing) ? data.missing.slice(0, 3) : [],
       });
@@ -3142,7 +3042,6 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           stage: "storyboard",
-          merchant,
           brief: videoBrief,
           platforms: videoPlatforms,
           materialNames: videoMaterialNames(),
@@ -3159,7 +3058,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
       if (!response.ok) throw new Error(data.error || "分镜生成失败，请重试。");
       if (!data.generationPrompt || !Array.isArray(data.shots) || data.shots.length < 3) throw new Error("AI 没有返回完整分镜，请重试。");
       setStoryboard({
-        title: data.title || `${merchant.name}短视频`,
+        title: data.title || "短视频项目",
         script: data.script || "",
         generationPrompt: data.generationPrompt,
         shots: data.shots.slice(0, 6) as VideoShot[],
@@ -3173,7 +3072,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
     }
   }
 
-  async function generateMerchantVideo() {
+  async function generateVideo() {
     if (!storyboard) return;
     const images = videoReferenceImages();
     if (!images.length) {
@@ -3241,22 +3140,22 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
 
   if (workspace === "material") {
     const direction = videoDirections.find((item) => item.id === selectedDirection);
-    const availableMaterialCount = materialFiles.length + merchantMaterialFiles.length;
+    const availableMaterialCount = materialFiles.length + savedMaterialFiles.length;
     const availableReferenceCount = videoReferenceImages().length;
     const currentStep = generatedVideoUrl ? 5 : storyboard ? 4 : videoAnalysis ? 3 : availableMaterialCount ? 2 : 1;
     return <section className="video-workspace">
       <header className="video-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
-        <div><small>AI VIDEO DIRECTOR</small><h1>商家素材成片</h1><p>AI 先读懂商家和真实素材，只推荐 3 个最合适的方向，确认后再生成分镜与成片。</p></div>
+        <div><small>AI VIDEO DIRECTOR</small><h1>素材智能成片</h1><p>AI 读取本次需求和真实素材，推荐 3 个方向，确认后生成分镜与成片。</p></div>
       </header>
-      <nav className="video-flow-steps" aria-label="商家素材成片进度">
+      <nav className="video-flow-steps" aria-label="素材智能成片进度">
         {["素材准备", "AI 分析", "方向确认", "分镜规划", "生成成片"].map((label, index) => <span className={currentStep > index ? "complete" : currentStep === index + 1 ? "active" : ""} key={label}><i>{currentStep > index + 1 ? "✓" : String(index + 1).padStart(2, "0")}</i><b>{label}</b></span>)}
       </nav>
       <div className="video-builder-grid video-director-grid">
         <div className="video-builder-form">
           <section className="video-builder-card">
-            <div className="video-card-title"><span>01</span><div><b>添加真实商家素材</b><small>门头、环境、商品、服务过程均可多选上传，最多 12 个</small></div></div>
-            <div className="video-merchant-context"><i>商</i><div><b>商家资料与素材已接入</b><span>{merchantMaterialsLoading ? "正在读取会员资产中的商家图片…" : `AI 将结合商家设置、资料摘要和 ${merchantMaterialFiles.length} 张已保存图片进行分析`}</span></div></div>
+            <div className="video-card-title"><span>01</span><div><b>添加真实素材</b><small>环境、商品、人物、服务过程均可多选上传，最多 12 个</small></div></div>
+            <div className="video-task-context"><i>材</i><div><b>本次素材已接入</b><span>{savedMaterialsLoading ? "正在读取会员资产中的图片…" : `当前可使用 ${savedMaterialFiles.length} 张已保存图片，也可以继续上传`}</span></div></div>
             <label className={`video-file-drop ${materialFiles.length ? "has-files" : ""}`}>
               <input type="file" accept="image/*,video/*" multiple onChange={addMaterialFiles} />
               <i>＋</i><b>{materialFiles.length ? `继续添加素材（已添加 ${materialFiles.length} 个）` : "上传门头、环境、商品或服务素材"}</b>
@@ -3264,12 +3163,12 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
             </label>
             {materialFiles.length ? <div className="video-material-strip">{materialFiles.map((item) => <div key={item.id}>{item.type === "image" ? <img src={item.previewUrl} alt={item.name} /> : <video src={item.previewUrl} muted /> }<button type="button" aria-label={`删除${item.name}`} onClick={() => setMaterialFiles((current) => current.filter((file) => file.id !== item.id))}>×</button><span>{item.type === "image" ? "图片" : "视频"}</span></div>)}</div> : null}
             <div className="video-platform-row"><span>发布平台</span>{["视频号", "抖音", "小红书"].map((platform) => <button type="button" className={videoPlatforms.includes(platform) ? "active" : ""} aria-pressed={videoPlatforms.includes(platform)} onClick={() => toggleVideoPlatform(platform)} key={platform}>{platform}</button>)}</div>
-            <textarea value={videoBrief} onChange={(event) => { setVideoBrief(event.target.value); setVideoAnalysis(null); setVideoDirections([]); setSelectedDirection(""); setStoryboard(null); }} aria-label="商家素材成片需求" />
-            <button type="button" className="video-stage-action" disabled={videoAgentBusy !== "" || merchantMaterialsLoading || !videoBrief.trim()} onClick={() => void analyzeVideoMaterials()}>{videoAgentBusy === "analyze" ? "GPT‑5.5 正在阅读商家资料和素材…" : videoAnalysis ? "↻ 重新分析并换一批方向" : "✦ AI 分析商家与素材 · 预计 6–10 积分"}</button>
+            <textarea value={videoBrief} onChange={(event) => { setVideoBrief(event.target.value); setVideoAnalysis(null); setVideoDirections([]); setSelectedDirection(""); setStoryboard(null); }} aria-label="素材成片需求" />
+            <button type="button" className="video-stage-action" disabled={videoAgentBusy !== "" || savedMaterialsLoading || !videoBrief.trim()} onClick={() => void analyzeVideoMaterials()}>{videoAgentBusy === "analyze" ? "GPT‑5.5 正在阅读本次需求和素材…" : videoAnalysis ? "↻ 重新分析并换一批方向" : "✦ AI 分析需求与素材 · 预计 6–10 积分"}</button>
           </section>
 
           {videoAnalysis ? <section className="video-builder-card video-analysis-card">
-            <div className="video-card-title"><span>02</span><div><b>AI 商家与素材分析</b><small>已自动结合商家设置、真实图片和目标平台</small></div></div>
+            <div className="video-card-title"><span>02</span><div><b>AI 需求与素材分析</b><small>已结合本次填写内容、真实图片和目标平台</small></div></div>
             <div className="video-analysis-summary"><b>{videoAnalysis.summary}</b>{videoAnalysis.platformInsight ? <p>{videoAnalysis.platformInsight}</p> : null}{videoAnalysis.missing.length ? <small>建议补充：{videoAnalysis.missing.join("、")}</small> : null}</div>
             <div className="video-direction-grid">
               {videoDirections.map((item, index) => <button type="button" className={selectedDirection === item.id ? "selected" : ""} aria-pressed={selectedDirection === item.id} onClick={() => { setSelectedDirection(item.id); setStoryboard(null); }} key={item.id}><span><i>0{index + 1}</i><em>{item.tag}</em></span><b>{item.title}</b><strong>{item.hook}</strong><p>{item.story}</p><small>{item.reason}</small></button>)}
@@ -3277,11 +3176,11 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
           </section> : null}
 
           {direction ? <section className="video-builder-card">
-            <div className="video-card-title"><span>03</span><div><b>补充本次推广信息</b><small>只补充影响成交的关键信息，其余由 AI 自动读取商家资料</small></div></div>
+            <div className="video-card-title"><span>03</span><div><b>补充本次推广信息</b><small>填写影响本次内容和成交的关键信息</small></div></div>
             <div className="video-selected-direction"><small>已选方向</small><b>{direction.title}</b><span>{direction.hook}</span></div>
             <div className="video-field-row">
               <label><span>本次活动 / 主推内容（可选）</span><input value={campaignInfo} onChange={(event) => { setCampaignInfo(event.target.value); setStoryboard(null); }} placeholder="例如：新客体验、夏季新品、团购套餐" /></label>
-              <label><span>目标顾客</span><input value={targetAudience} onChange={(event) => { setTargetAudience(event.target.value); setStoryboard(null); }} placeholder="AI 已从商家资料预填" /></label>
+              <label><span>目标顾客</span><input value={targetAudience} onChange={(event) => { setTargetAudience(event.target.value); setStoryboard(null); }} placeholder="填写本次内容面向的人群" /></label>
             </div>
             <div className="video-field-row is-three">
               <label><span>成片时长</span><select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setStoryboard(null); }}><option value="8">8 秒 · 快速种草</option><option value="12">12 秒 · 完整表达</option><option value="15">15 秒 · 推荐 / 模型上限</option></select></label>
@@ -3297,12 +3196,12 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
             <details className="video-script-details"><summary>查看口播文案与模型提示词</summary><b>口播 / 字幕文案</b><p>{storyboard.script}</p><b>视频生成提示词</b><p>{storyboard.generationPrompt}</p></details>
             <div className="video-model-pipeline">
               {(storyboard.modelPlan.length ? storyboard.modelPlan : [
-                { step: "策划分析", model: "GPT‑5.5", reason: "读取商家资料与真实素材" },
+                { step: "策划分析", model: "GPT‑5.5", reason: "读取本次需求与真实素材" },
                 { step: "关键帧补充", model: "GPT Image 2", reason: "仅在镜头不足时使用" },
                 { step: "参考生视频", model: "Seedance 2.0", reason: "读取 1–9 张参考图，生成 9:16 竖版视频" },
               ]).map((item) => <span key={`${item.step}-${item.model}`}><small>{item.step}</small><b>{item.model}</b><i>{item.reason}</i></span>)}
             </div>
-            <button type="button" className="video-generate-button" disabled={videoAgentBusy !== "" || !availableReferenceCount} onClick={() => void generateMerchantVideo()}>{videoAgentBusy === "generate" ? videoProgress || "正在生成视频…" : `✦ Seedance 2.0 生成 ${videoDuration} 秒 · ${videoResolution.toUpperCase()}${videoQuote ? ` · 预授权 ${videoQuote.reservedPoints} 积分` : ""}`}</button>
+            <button type="button" className="video-generate-button" disabled={videoAgentBusy !== "" || !availableReferenceCount} onClick={() => void generateVideo()}>{videoAgentBusy === "generate" ? videoProgress || "正在生成视频…" : `✦ Seedance 2.0 生成 ${videoDuration} 秒 · ${videoResolution.toUpperCase()}${videoQuote ? ` · 预授权 ${videoQuote.reservedPoints} 积分` : ""}`}</button>
             {!availableReferenceCount ? <small className="video-inline-warning">当前没有可交给模型的图片，请上传至少 1 张图片；正式云端版会先把视频上传 COS 后再交给模型。</small> : null}
           </section> : null}
           {videoAgentError ? <div className="video-agent-error" role="alert">{videoAgentError}</div> : null}
@@ -3310,10 +3209,10 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
         <aside className="video-builder-preview video-director-preview">
           <div className="video-preview-head"><div><small>LIVE PROJECT</small><b>短视频项目状态</b></div><span>{generatedVideoUrl ? "已完成" : videoAgentBusy ? "AI 工作中" : `第 ${currentStep} 步`}</span></div>
           <div className={`video-phone-frame ${generatedVideoUrl ? "has-video" : ""}`}>
-            {generatedVideoUrl ? <video src={generatedVideoUrl} controls playsInline /> : <div><i>{videoAgentBusy ? "✦" : "▶"}</i><b>{videoAgentBusy === "analyze" ? "正在读懂商家与素材" : videoAgentBusy === "storyboard" ? "正在规划脚本与分镜" : videoAgentBusy === "generate" ? videoProgress || "Seedance 2.0 正在生成视频" : storyboard ? storyboard.title : "成片将在这里实时预览"}</b><span>Seedance 2.0 · 9:16 · {videoResolution.toUpperCase()} · 最长 15 秒</span></div>}
+            {generatedVideoUrl ? <video src={generatedVideoUrl} controls playsInline /> : <div><i>{videoAgentBusy ? "✦" : "▶"}</i><b>{videoAgentBusy === "analyze" ? "正在读懂需求与素材" : videoAgentBusy === "storyboard" ? "正在规划脚本与分镜" : videoAgentBusy === "generate" ? videoProgress || "Seedance 2.0 正在生成视频" : storyboard ? storyboard.title : "成片将在这里实时预览"}</b><span>Seedance 2.0 · 9:16 · {videoResolution.toUpperCase()} · 最长 15 秒</span></div>}
           </div>
           {storyboard ? <div className="video-project-brief"><small>当前方案</small><b>{direction?.title}</b><p>{storyboard.script}</p></div> : videoAnalysis ? <div className="video-project-brief"><small>分析完成</small><b>已推荐 3 个视频方向</b><p>选择最适合的一项，再补充本次活动即可生成分镜。</p></div> : null}
-          <ol>{["商家与素材分析", "三个方向推荐", "推广信息确认", "脚本与分镜", "Seedance 生成与归档"].map((label, index) => <li className={currentStep > index + 1 ? "done" : currentStep === index + 1 ? "active" : ""} key={label}><b>{label}</b><span>{index === 0 ? `${availableMaterialCount} 个素材 · ${videoPlatforms.join(" / ")}` : index === 4 && videoQuote ? `${videoResolution.toUpperCase()} · 预授权 ${videoQuote.reservedPoints} 积分 · 完成后按实际 Token 结算` : currentStep > index + 1 ? "已完成" : "等待上一步"}</span></li>)}</ol>
+          <ol>{["需求与素材分析", "三个方向推荐", "推广信息确认", "脚本与分镜", "Seedance 生成与归档"].map((label, index) => <li className={currentStep > index + 1 ? "done" : currentStep === index + 1 ? "active" : ""} key={label}><b>{label}</b><span>{index === 0 ? `${availableMaterialCount} 个素材 · ${videoPlatforms.join(" / ")}` : index === 4 && videoQuote ? `${videoResolution.toUpperCase()} · 预授权 ${videoQuote.reservedPoints} 积分 · 完成后按实际 Token 结算` : currentStep > index + 1 ? "已完成" : "等待上一步"}</span></li>)}</ol>
           <div className="video-cost-note"><b>费用说明</b><span>策划与 Seedance 2.0 均按实际 Token 计费。视频提交时先预授权积分上限，任务完成后按平台返回的实际 cost 结算，多余积分自动退回。</span></div>
         </aside>
       </div>
@@ -3342,8 +3241,8 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
               <button type="button" className={voiceSource === "saved" ? "active" : ""} onClick={() => { setVoiceSource("saved"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>选择已有声音</button>
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
-            {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}</option>)}</select><small>{currentSavedVoice ? "已绑定当前会员账号" : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
-            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { const file = event.target.files?.[0] ?? null; setAudioFile(file); setAudioFileName(file?.name ?? ""); setVoiceUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>要求 3–10 秒、无背景音乐，本地测试不超过 10MB</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio src={voiceUploadPreviewUrl} controls preload="metadata" /></div> : null}<div><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }} /><button type="button" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice()}>{voiceBusy ? "正在克隆…" : "克隆并保存声音 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”已保存，可用于生成口播音频`}</small> : null}</div> : null}
+            {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
+            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { const file = event.target.files?.[0] ?? null; setAudioFile(file); setAudioFileName(file?.name ?? ""); setVoiceUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>{voiceLanguage === "en" ? "英文模式：请上传清晰英文人声，无背景音乐" : "要求 3–10 秒、无背景音乐，本地测试不超过 10MB"}</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio src={voiceUploadPreviewUrl} controls preload="metadata" /></div> : null}<div><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }} /><button type="button" className={`voice-language-toggle ${voiceLanguage === "en" ? "active" : ""}`} aria-pressed={voiceLanguage === "en"} disabled={voiceBusy} onClick={() => { setVoiceLanguage((current) => current === "cn" ? "en" : "cn"); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>{voiceLanguage === "en" ? "英文克隆已开启" : "开启英文克隆"}</button><button type="button" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice()}>{voiceBusy ? "正在克隆…" : voiceLanguage === "en" ? "克隆英文声音 · 10积分" : "克隆中文声音 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className="video-builder-card">
@@ -3492,15 +3391,15 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
           <div className="viral-result-info">
             <small>当前方案</small>
             <h3>{templates.find((template) => template.id === viralTemplate)?.name}</h3>
-            <dl><div><dt>标题</dt><dd>{viralTitle || `${merchant.name}｜真实体验`}</dd></div><div><dt>字幕</dt><dd>{viralCaptions.length ? `${viralCaptions.length} 段自动字幕` : viralSubtitle || merchant.positioning}</dd></div><div><dt>处理引擎</dt><dd>{viralRenderer === "remotion-vertical-v1" ? "9:16 智能包装引擎" : viralProcessingEngine === "server" ? "兼容渲染通道 + Faster-Whisper" : viralProcessingEngine === "browser" ? "浏览器演示通道" : "等待检测"}</dd></div><div><dt>分析</dt><dd>{viralProcessingEngine === "server" ? "原片语音识别与真实时间轴" : viralAnalysisMode === "local" ? "本地模板备用模式 · 不扣AI分析积分" : viralAnalysisMode === "ai" ? "AI主通道或备用通道" : "等待分析"}</dd></div><div><dt>模板</dt><dd>{selectedViralTemplate.titleEffect} · {selectedViralTemplate.subtitleEffect} · {selectedViralTemplate.transitionLabel}</dd></div><div><dt>声音</dt><dd>保留原片声音 · {viralIncludeBgm ? "添加背景音乐" : "不添加背景音乐"} · {viralIncludeSfx ? selectedViralTemplate.sfxLabel : "不添加音效"}</dd></div><div><dt>画面</dt><dd>9:16 竖版 · {viralSourceResolution} · 首帧封面</dd></div><div><dt>资产</dt><dd>{viralSaved ? "已保存到会员资产" : viralResultUrl ? "本地成片可下载" : viralFailed ? "没有生成资产" : "等待生成"}</dd></div></dl>
+            <dl><div><dt>标题</dt><dd>{viralTitle || "真实体验"}</dd></div><div><dt>字幕</dt><dd>{viralCaptions.length ? `${viralCaptions.length} 段自动字幕` : viralSubtitle || "等待提取原片内容"}</dd></div><div><dt>处理引擎</dt><dd>{viralRenderer === "remotion-vertical-v1" ? "9:16 智能包装引擎" : viralProcessingEngine === "server" ? "兼容渲染通道 + Faster-Whisper" : viralProcessingEngine === "browser" ? "浏览器演示通道" : "等待检测"}</dd></div><div><dt>分析</dt><dd>{viralProcessingEngine === "server" ? "原片语音识别与真实时间轴" : viralAnalysisMode === "local" ? "本地模板备用模式 · 不扣AI分析积分" : viralAnalysisMode === "ai" ? "AI主通道或备用通道" : "等待分析"}</dd></div><div><dt>模板</dt><dd>{selectedViralTemplate.titleEffect} · {selectedViralTemplate.subtitleEffect} · {selectedViralTemplate.transitionLabel}</dd></div><div><dt>声音</dt><dd>保留原片声音 · {viralIncludeBgm ? "添加背景音乐" : "不添加背景音乐"} · {viralIncludeSfx ? selectedViralTemplate.sfxLabel : "不添加音效"}</dd></div><div><dt>画面</dt><dd>9:16 竖版 · {viralSourceResolution} · 首帧封面</dd></div><div><dt>资产</dt><dd>{viralSaved ? "已保存到会员资产" : viralResultUrl ? "本地成片可下载" : viralFailed ? "没有生成资产" : "等待生成"}</dd></div></dl>
             {viralStage ? <p>{viralStage}</p> : null}
             {viralError ? <div className="video-agent-error" role="alert">{viralError}</div> : null}
             <div className="viral-result-actions">
               {viralResultUrl ? <a
                 href={viralDownloadUrl
                   ? `${viralDownloadUrl}?download=1`
-                  : `/api/ai/viral-download?source=${encodeURIComponent(viralResultUrl)}&filename=${encodeURIComponent(`${merchant.name}-一键网感成片.mp4`)}`}
-                download={`${merchant.name}-一键网感成片.mp4`}
+                  : `/api/ai/viral-download?source=${encodeURIComponent(viralResultUrl)}&filename=${encodeURIComponent("一键网感成片.mp4")}`}
+                download="一键网感成片.mp4"
               >↓ 下载成片</a> : <button type="button" disabled>↓ 下载成片</button>}
               <button type="button" disabled={viralProcessBusy} onClick={() => { setViralProcessStarted(false); setViralResultUrl(""); setViralResultBlob(null); setViralDownloadUrl(""); setViralSaved(false); setViralFailed(false); setViralAnalysisMode(""); setViralProcessingEngine(""); setViralRenderer(""); setViralProgress(0); setViralStage(""); setViralError(""); }}>重新制作</button>
             </div>
@@ -3510,7 +3409,7 @@ function Video({ busy, action, merchant, onPointsChange, viralImportAsset }: { b
     </section>;
   }
 
-  return <><ToolHeading eyebrow="AI VIDEO" title="短视频制作" desc="商家素材智能成片、克隆声音对口型，以及原视频一键网感剪辑。" /><div className="video-modes"><article><span>01</span><i>▶</i><small>AI 智能成片</small><h3>商家素材成片</h3><p>根据门头、环境、商品或服务照片，自动设计内容和分镜。</p><div><b>多图成片</b><b>AI 分镜</b><b>自动文案</b></div><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><span>02</span><i>●</i><small>数字人口播</small><h3>对口型视频</h3><p>克隆自己的声音，生成口播音频，再让本人视频同步对应口型。</p><div><b>声音克隆</b><b>AI 改写</b><b>口型同步</b></div><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><span>03</span><i>✦</i><small>AI 智能剪辑</small><h3>一键网感剪辑</h3><p>读取原片内容，自动生成标题与字幕，并应用模板特效、转场和音效。</p><div><b>内容分析</b><b>模板字幕</b><b>仅加音效</b></div><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
+  return <><ToolHeading eyebrow="AI VIDEO" title="短视频制作" desc="素材智能成片、克隆声音对口型，以及原视频一键网感剪辑。" /><div className="video-modes"><article><span>01</span><i>▶</i><small>AI 智能成片</small><h3>素材智能成片</h3><p>根据环境、商品、人物或服务照片，自动设计内容和分镜。</p><div><b>多图成片</b><b>AI 分镜</b><b>自动文案</b></div><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><span>02</span><i>●</i><small>数字人口播</small><h3>对口型视频</h3><p>克隆自己的声音，生成口播音频，再让本人视频同步对应口型。</p><div><b>声音克隆</b><b>AI 改写</b><b>口型同步</b></div><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><span>03</span><i>✦</i><small>AI 智能剪辑</small><h3>一键网感剪辑</h3><p>读取原片内容，自动生成标题与字幕，并应用模板特效、转场和音效。</p><div><b>内容分析</b><b>模板字幕</b><b>仅加音效</b></div><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
 }
 
 function Cases({ onUse }: { onUse: () => void }) {
