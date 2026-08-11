@@ -2,6 +2,7 @@
   "name": "merchant-studio-web-v2",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@11.16.0",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -14,6 +15,7 @@
     "test": "pnpm run typecheck && pnpm run build && node tests/next-smoke.mjs",
     "test:smoke": "node tests/next-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "publish:production": "bash scripts/publish-production.sh",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {

@@ -1,0 +1,99 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ARCHIVE="${1:-}"
+RELEASE_SHA="${2:-}"
+APP_ROOT="/opt/merchant-studio"
+APP_DIR="${APP_ROOT}/web"
+NEW_DIR="${APP_ROOT}/web-new"
+BACKUP_DIR="${APP_ROOT}/web-backup"
+FAILED_DIR="${APP_ROOT}/web-failed"
+SERVICE="merchant-studio-web.service"
+
+fail() {
+  echo "Deployment failed: $*" >&2
+  exit 1
+}
+
+[[ -n "${ARCHIVE}" ]] || fail "archive path is required"
+[[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "release SHA is invalid"
+
+resolved_archive="$(realpath -- "${ARCHIVE}")"
+[[ "${resolved_archive}" == "/tmp/merchant-studio-web-${RELEASE_SHA}.tar.gz" ]] || fail "archive path is not allowed"
+[[ -f "${resolved_archive}" ]] || fail "archive does not exist"
+[[ "$(stat -c '%U' "${resolved_archive}")" == "merchantdeploy" ]] || fail "archive owner is invalid"
+
+exec 9>"/var/lock/merchant-studio-deploy.lock"
+flock -n 9 || fail "another deployment is already running"
+
+while IFS= read -r entry; do
+  [[ "${entry}" != /* ]] || fail "archive contains an absolute path"
+  [[ "${entry}" != ".." && "${entry}" != ../* && "${entry}" != */../* ]] || fail "archive contains a parent path"
+done < <(tar -tzf "${resolved_archive}")
+
+rm -rf -- "${NEW_DIR}" "${FAILED_DIR}"
+mkdir -p "${NEW_DIR}"
+tar -xzf "${resolved_archive}" -C "${NEW_DIR}"
+
+[[ -f "${NEW_DIR}/server.js" ]] || fail "server.js is missing from the release"
+[[ -f "${NEW_DIR}/deploy/merchant-studio-web.service" ]] || fail "systemd service is missing from the release"
+[[ "$(cat "${NEW_DIR}/RELEASE_SHA")" == "${RELEASE_SHA}" ]] || fail "release SHA does not match"
+
+rollback() {
+  local exit_code=$?
+  trap - ERR
+  echo "Deployment failed; rolling back to the previous release." >&2
+  systemctl stop "${SERVICE}" 2>/dev/null || true
+  if [[ -d "${APP_DIR}" ]]; then
+    mv "${APP_DIR}" "${FAILED_DIR}" 2>/dev/null || true
+  fi
+  if [[ -d "${BACKUP_DIR}" ]]; then
+    mv "${BACKUP_DIR}" "${APP_DIR}"
+    systemctl start "${SERVICE}" 2>/dev/null || true
+  fi
+  rm -f -- "${resolved_archive}"
+  exit "${exit_code}"
+}
+trap rollback ERR
+
+systemctl stop "${SERVICE}" 2>/dev/null || true
+rm -rf -- "${BACKUP_DIR}"
+if [[ -d "${APP_DIR}" ]]; then
+  mv "${APP_DIR}" "${BACKUP_DIR}"
+fi
+mv "${NEW_DIR}" "${APP_DIR}"
+
+if [[ -d "${BACKUP_DIR}/.data" ]]; then
+  rm -rf -- "${APP_DIR}/.data"
+  mv "${BACKUP_DIR}/.data" "${APP_DIR}/.data"
+fi
+mkdir -p "${APP_DIR}/.data"
+
+if [[ -f "${BACKUP_DIR}/.env.local" ]]; then
+  cp -f "${BACKUP_DIR}/.env.local" "${APP_DIR}/.env.local"
+fi
+
+chown -R merchantstudio:merchantstudio "${APP_DIR}"
+if [[ -f "${APP_DIR}/.env.local" ]]; then
+  chmod 600 "${APP_DIR}/.env.local"
+fi
+
+install -m 0644 "${APP_DIR}/deploy/merchant-studio-web.service" "/etc/systemd/system/${SERVICE}"
+systemctl daemon-reload
+systemctl enable "${SERVICE}" >/dev/null
+systemctl start "${SERVICE}"
+
+healthy=false
+for _ in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:3100/api/health >/dev/null && systemctl is-active --quiet "${SERVICE}"; then
+    healthy=true
+    break
+  fi
+  sleep 1
+done
+[[ "${healthy}" == "true" ]] || fail "health check did not pass"
+
+trap - ERR
+rm -f -- "${resolved_archive}"
+rm -rf -- "${FAILED_DIR}"
+echo "Merchant Studio ${RELEASE_SHA} deployed successfully."

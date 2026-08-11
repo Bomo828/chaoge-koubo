@@ -1,0 +1,102 @@
+name: Deploy production
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: merchant-studio-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and deploy to Tencent Cloud
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    environment: production
+
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.14.0
+
+      - name: Install dependencies
+        run: |
+          set -euo pipefail
+          corepack enable
+          pnpm install --frozen-lockfile
+
+      - name: Validate project
+        run: |
+          set -euo pipefail
+          pnpm run typecheck
+          pnpm run lint
+
+      - name: Build production bundle
+        run: |
+          set -euo pipefail
+          pnpm run build
+
+      - name: Package release
+        env:
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          release_dir="$RUNNER_TEMP/merchant-studio-release"
+          archive="$RUNNER_TEMP/merchant-studio-web-${RELEASE_SHA}.tar.gz"
+
+          mkdir -p "$release_dir/.next"
+          cp -R .next/standalone/. "$release_dir/"
+          cp -R .next/static "$release_dir/.next/static"
+          cp -R public "$release_dir/public"
+          cp -R deploy "$release_dir/deploy"
+          printf '%s\n' "$RELEASE_SHA" > "$release_dir/RELEASE_SHA"
+          tar -czf "$archive" -C "$release_dir" .
+
+      - name: Configure deployment SSH
+        env:
+          DEPLOY_PRIVATE_KEY: ${{ secrets.TENCENT_SSH_PRIVATE_KEY }}
+          DEPLOY_KNOWN_HOSTS: ${{ secrets.TENCENT_SSH_KNOWN_HOSTS }}
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$HOME/.ssh/tencent_deploy"
+          printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/tencent_deploy" "$HOME/.ssh/known_hosts"
+
+      - name: Upload and activate release
+        env:
+          DEPLOY_HOST: ${{ secrets.TENCENT_SSH_HOST }}
+          DEPLOY_PORT: ${{ secrets.TENCENT_SSH_PORT }}
+          DEPLOY_USER: ${{ secrets.TENCENT_SSH_USER }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          port="${DEPLOY_PORT:-22}"
+          archive="$RUNNER_TEMP/merchant-studio-web-${RELEASE_SHA}.tar.gz"
+          remote_archive="/tmp/merchant-studio-web-${RELEASE_SHA}.tar.gz"
+          ssh_options=(-i "$HOME/.ssh/tencent_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
+
+          scp "${ssh_options[@]}" -P "$port" "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          ssh "${ssh_options[@]}" -p "$port" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sudo /usr/local/sbin/deploy-merchant-studio '${remote_archive}' '${RELEASE_SHA}'"
+
+      - name: Verify public health endpoint
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 15 https://studio.chaogeai.top/api/health; then
+              exit 0
+            fi
+            sleep 5
+          done
+          exit 1
