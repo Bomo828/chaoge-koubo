@@ -2,19 +2,21 @@ import { getMemberSession } from "../../../member-session";
 import {
   chanjingErrorResponse,
   createLipSyncTask,
+  ensureChanjingBalance,
   getLipSyncTask,
   uploadLipSyncMedia,
 } from "../../../../lib/chanjing";
+import { lipSyncPoints, wavDurationSeconds } from "../../../../lib/chanjing-pricing";
 import { saveMemberAsset } from "../../../../lib/member-assets";
 import {
   getWallet,
+  getReservedAiPoints,
   pointsErrorResponse,
   refundAiPoints,
   reserveAiPoints,
   settleAiPointsByRequest,
 } from "../../../../lib/points";
 
-const LIP_SYNC_POINTS = 200;
 const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
 
@@ -86,7 +88,16 @@ export async function POST(request: Request) {
       return Response.json({ error: "口播音频需小于 30MB。" }, { status: 413 });
     }
 
-    reservation = await reserveAiPoints(member, "lip_sync_generate", 1, requestId, LIP_SYNC_POINTS);
+    const audioBytes = await audio.arrayBuffer();
+    const declaredDuration = Number(form.get("audioDuration"));
+    const detectedDuration = wavDurationSeconds(audioBytes);
+    const audioDuration = detectedDuration > 0 ? detectedDuration : declaredDuration;
+    if (!Number.isFinite(audioDuration) || audioDuration <= 0) {
+      return Response.json({ error: "无法读取口播音频时长，请重新生成口播音频。" }, { status: 400 });
+    }
+    const estimatedPoints = lipSyncPoints(audioDuration, true);
+    await ensureChanjingBalance(estimatedPoints);
+    reservation = await reserveAiPoints(member, "lip_sync_generate", 1, requestId, estimatedPoints);
     // Chanjing's upload gateway is sensitive to simultaneous signed-slot
     // creation. Upload sequentially so each media file is fully ready before
     // requesting the next slot and creating the lip-sync task.
@@ -100,7 +111,7 @@ export async function POST(request: Request) {
       service: "lip_sync_audio",
       fileName: safeFileName(audio.name, "lip-sync-audio.mp3"),
       contentType: audio.type,
-      bytes: await audio.arrayBuffer(),
+      bytes: audioBytes,
     });
     const task = await createLipSyncTask({
       videoFileId: videoUpload.fileId,
@@ -117,6 +128,8 @@ export async function POST(request: Request) {
       progress: 0,
       requestId: reservation.requestId,
       projectName,
+      estimatedPoints,
+      audioDuration,
       wallet: await getWallet(member),
     });
   } catch (error) {
@@ -141,14 +154,18 @@ export async function GET(request: Request) {
     const archived = task.state === "success" && resultUrl
       ? await archiveVideo(member, { url: resultUrl, taskId, projectName })
       : { videoUrl: "", saved: false };
+    const actualPoints = task.isFinal && requestId && task.state === "success"
+      ? getReservedAiPoints(member, requestId)
+      : 0;
     const wallet = task.isFinal && requestId
-      ? await settleAiPointsByRequest(member, requestId, task.state === "success" ? LIP_SYNC_POINTS : 0)
+      ? await settleAiPointsByRequest(member, requestId, actualPoints)
       : await getWallet(member);
     return Response.json({
       ...task,
       videoUrl: archived.videoUrl || task.videoUrl || task.previewUrl,
       saved: archived.saved,
       requestId: requestId || null,
+      actualPoints: task.isFinal ? actualPoints : null,
       wallet,
     });
   } catch (error) {

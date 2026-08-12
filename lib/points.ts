@@ -6,9 +6,9 @@ export const AI_POINT_COSTS = {
   prompt_optimize: 2,
   image_generate: 10,
   video_generate: 1,
-  voice_clone: 10,
+  voice_clone: 80,
   speech_generate: 1,
-  lip_sync_generate: 200,
+  lip_sync_generate: 80,
 } as const;
 
 export type AiPointAction = keyof typeof AI_POINT_COSTS;
@@ -182,6 +182,15 @@ function settleCharge(charge: ChargeRow, actualCost: number) {
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(`ledger_${charge.request_id}`, charge.user_id, -settledCost, balance, actionReasons[charge.action], charge.request_id, now);
   });
+}
+
+export function getReservedAiPoints(member: MemberSession, rawRequestId: unknown) {
+  const requestId = normalizeRequestId(rawRequestId);
+  const charge = getDatabase().prepare(`
+    SELECT reserved_cost FROM ai_point_charges WHERE request_id = ? AND user_id = ? LIMIT 1
+  `).get(requestId, member.id) as { reserved_cost?: number } | undefined;
+  if (!charge) throw new PointsError("没有找到本次 AI 任务的积分订单。", 404);
+  return Math.max(0, Number(charge.reserved_cost) || 0);
 }
 
 export async function settleAiPoints(reservation: Reservation, quantity: number) {

@@ -98,6 +98,23 @@ async function request(path: string, init: RequestInit = {}, retry = true): Prom
   return payload;
 }
 
+export async function getChanjingBalance() {
+  const payload = await request("/open/v1/user_duration", { method: "GET", cache: "no-store" });
+  const data = payload.data && typeof payload.data === "object" ? payload.data as JsonRecord : {};
+  const balance = Number(data.resi_total_bean);
+  if (!Number.isFinite(balance)) throw new ChanjingError("蝉镜没有返回可用余额。", 502);
+  return balance;
+}
+
+export async function ensureChanjingBalance(requiredPoints: number) {
+  const required = Math.max(0, Math.ceil(requiredPoints));
+  const balance = await getChanjingBalance();
+  if (balance < required) {
+    throw new ChanjingError(`蝉镜余额不足：当前 ${Math.floor(balance)} 蝉豆，本次预计需要 ${required} 蝉豆。请先充值蝉豆后再生成。`, 402);
+  }
+  return balance;
+}
+
 async function createUploadSlot(service: "lip_sync_video" | "lip_sync_audio", fileName: string) {
   const payload = await request(`/open/v1/common/create_upload_url?service=${encodeURIComponent(service)}&name=${encodeURIComponent(fileName)}`, {
     method: "GET",

@@ -2,6 +2,7 @@ import { getMemberSession } from "../../../member-session";
 import { isAdmin } from "../../../../lib/server/auth";
 import { lk888Fetch } from "../../../../lib/lk888";
 import { getPlatformSettings } from "../../../../lib/server/platform-settings";
+import { getChanjingBalance } from "../../../../lib/chanjing";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,14 @@ export async function GET() {
     lkError = error instanceof Error ? error.message : "连接失败";
   }
   const available = Number(balance?.balance ?? 0);
+  const chanjingSetting = settings.aiProviders.find((item) => item.id === "chanjing");
+  let chanjingBalance: number | null = null;
+  let chanjingError = "";
+  try {
+    chanjingBalance = await getChanjingBalance();
+  } catch (error) {
+    chanjingError = error instanceof Error ? error.message : "连接失败";
+  }
   const workerUrl = process.env.NEXT_PUBLIC_VIDEO_WORKER_URL?.trim() || "";
   return Response.json({
     checkedAt: Date.now(),
@@ -39,11 +48,11 @@ export async function GET() {
         id: "chanjing",
         name: "蝉镜数字人",
         configured: Boolean(process.env.CHANJING_APP_ID && process.env.CHANJING_SECRET_KEY),
-        connected: Boolean(process.env.CHANJING_APP_ID && process.env.CHANJING_SECRET_KEY),
-        balance: null,
-        unit: "接口状态",
-        sufficient: Boolean(process.env.CHANJING_APP_ID && process.env.CHANJING_SECRET_KEY),
-        message: "当前接口未提供统一余额查询，按任务回执监控",
+        connected: chanjingBalance !== null,
+        balance: chanjingBalance,
+        unit: "蝉豆",
+        sufficient: chanjingBalance !== null && chanjingBalance >= Number(chanjingSetting?.lowBalanceThreshold || 0),
+        message: chanjingError || "已读取实时蝉豆余额",
         secretHint: process.env.CHANJING_APP_ID ? "AppID 与密钥已安全配置" : "尚未配置蝉镜凭证",
       },
       {

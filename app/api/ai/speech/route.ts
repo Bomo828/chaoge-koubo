@@ -1,8 +1,10 @@
 import { getMemberSession } from "../../../member-session";
-import { chanjingErrorResponse, createSpeechTask, getSpeechTask } from "../../../../lib/chanjing";
+import { chanjingErrorResponse, createSpeechTask, ensureChanjingBalance, getSpeechTask } from "../../../../lib/chanjing";
+import { estimatedSpeechPoints, speechPoints } from "../../../../lib/chanjing-pricing";
 import { saveMemberAsset } from "../../../../lib/member-assets";
 import {
   getWallet,
+  getReservedAiPoints,
   pointsErrorResponse,
   refundAiPoints,
   reserveAiPoints,
@@ -64,7 +66,8 @@ export async function POST(request: Request) {
     if (!voiceId) return Response.json({ error: "请先选择或克隆一个声音。" }, { status: 400 });
     if (text.length < 2) return Response.json({ error: "请先填写口播文案。" }, { status: 400 });
 
-    const estimatedPoints = Math.max(1, Math.ceil(text.length / 100));
+    const estimatedPoints = estimatedSpeechPoints(text, speed);
+    await ensureChanjingBalance(estimatedPoints);
     reservation = await reserveAiPoints(member, "speech_generate", 1, body.requestId, estimatedPoints);
     const task = await createSpeechTask({ voiceId, text, speed });
     submitted = true;
@@ -101,14 +104,17 @@ export async function GET(request: Request) {
     const archived = task.audioUrl
       ? await archiveAudio(member, { audioUrl: task.audioUrl, taskId, projectName, voiceName })
       : { audioUrl: "", saved: false };
+    const reservedPoints = requestId ? getReservedAiPoints(member, requestId) : estimatedPoints;
+    const actualPoints = task.state === "success" ? Math.min(reservedPoints, speechPoints(task.duration)) : 0;
     const wallet = task.isFinal && requestId
-      ? await settleAiPointsByRequest(member, requestId, task.state === "success" ? estimatedPoints : 0)
+      ? await settleAiPointsByRequest(member, requestId, actualPoints)
       : await getWallet(member);
     return Response.json({
       ...task,
       audioUrl: archived.audioUrl || task.audioUrl,
       saved: archived.saved,
       requestId: requestId || null,
+      actualPoints: task.isFinal ? actualPoints : null,
       wallet,
     });
   } catch (error) {

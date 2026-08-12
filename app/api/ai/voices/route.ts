@@ -1,5 +1,6 @@
 import { getMemberSession } from "../../../member-session";
-import { ChanjingError, chanjingErrorResponse, createCustomVoice, getCustomVoice } from "../../../../lib/chanjing";
+import { ChanjingError, chanjingErrorResponse, createCustomVoice, ensureChanjingBalance, getCustomVoice } from "../../../../lib/chanjing";
+import { CHANJING_VOICE_CLONE_POINTS } from "../../../../lib/chanjing-pricing";
 import { listMemberAssets, saveMemberAsset } from "../../../../lib/member-assets";
 import { listClonedVoicesForMember, upsertClonedVoice } from "../../../../lib/server/cloned-voices";
 import {
@@ -265,7 +266,7 @@ export async function GET(request: Request) {
       }
     }
     const wallet = task.isFinal && requestId
-      ? await settleAiPointsByRequest(member, requestId, task.state === "success" ? 10 : 0)
+      ? await settleAiPointsByRequest(member, requestId, task.state === "success" ? CHANJING_VOICE_CLONE_POINTS : 0)
       : await getWallet(member);
     return Response.json({
       ...task,
@@ -341,7 +342,8 @@ export async function POST(request: Request) {
       return Response.json({ error: "请上传 MP3、WAV、M4A、AAC、OGG 或 WebM 音频。" }, { status: 400 });
     }
 
-    reservation = await reserveAiPoints(member, "voice_clone", 1, requestId, 10);
+    await ensureChanjingBalance(CHANJING_VOICE_CLONE_POINTS);
+    reservation = await reserveAiPoints(member, "voice_clone", 1, requestId, CHANJING_VOICE_CLONE_POINTS);
     const audioUrl = await uploadPublicVoiceSample(member, file);
     const created = await createCustomVoice({ name, audioUrl, language });
     submitted = true;

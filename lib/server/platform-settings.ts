@@ -56,9 +56,9 @@ export const defaultPlatformSettings: PlatformSettings = {
     { action: "prompt_optimize", name: "AI 文案与方案分析", points: 2, enabled: true },
     { action: "image_generate", name: "AI 图片生成（基础单张）", points: 10, enabled: true },
     { action: "video_generate", name: "AI 视频与网感剪辑", points: 28, enabled: true },
-    { action: "voice_clone", name: "克隆声音", points: 10, enabled: true },
-    { action: "speech_generate", name: "生成口播音频", points: 1, enabled: true },
-    { action: "lip_sync_generate", name: "生成对口型视频", points: 200, enabled: true },
+    { action: "voice_clone", name: "克隆声音（每次）", points: 80, enabled: true },
+    { action: "speech_generate", name: "口播音频（按 0.15 积分/秒）", points: 1, enabled: true },
+    { action: "lip_sync_generate", name: "对口型（80 基础积分 + 2 积分/秒）", points: 80, enabled: true },
   ],
   rechargePackages: [
     { id: "starter", name: "体验包", points: 1000, bonus: 0, priceYuan: 99, enabled: true },
@@ -85,7 +85,19 @@ export function getPlatformSettings(): PlatformSettings {
     features: (Array.isArray(saved.features) ? saved.features : defaultPlatformSettings.features)
       .filter((item) => String(item.entry) !== "decorate") as PlatformFeature[],
     pointRules: (Array.isArray(saved.pointRules) ? saved.pointRules : defaultPlatformSettings.pointRules)
-      .filter((item) => String(item.action) !== "theme_analysis") as PointRule[],
+      .filter((item) => String(item.action) !== "theme_analysis")
+      .map((item) => {
+        if (item.action === "voice_clone" && Number(item.points) === 10) {
+          return { ...item, name: "克隆声音（每次）", points: 80 };
+        }
+        if (item.action === "speech_generate") {
+          return { ...item, name: "口播音频（按 0.15 积分/秒）", points: 1 };
+        }
+        if (item.action === "lip_sync_generate" && Number(item.points) === 200) {
+          return { ...item, name: "对口型（80 基础积分 + 2 积分/秒）", points: 80 };
+        }
+        return item;
+      }) as PointRule[],
     rechargePackages: Array.isArray(saved.rechargePackages) ? saved.rechargePackages : defaultPlatformSettings.rechargePackages,
     aiProviders: Array.isArray(saved.aiProviders) ? saved.aiProviders : defaultPlatformSettings.aiProviders,
   };
