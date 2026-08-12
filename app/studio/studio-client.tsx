@@ -7,6 +7,7 @@ import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } fr
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
+import { segmentViralCaptions } from "../../lib/viral-caption-segmentation";
 import { IndustryImageLab } from "./image-lab";
 
 type ImagePriceQuote = {
@@ -75,14 +76,13 @@ function normalizeViralCaptionsForReview(captions: ViralCaption[]) {
   // The transcription worker already returns AI-corrected short phrases with
   // precise Tencent ASR timestamps. Keep that detailed timeline intact for
   // review instead of merging several phrases into long paragraphs.
-  return captions
+  return segmentViralCaptions(captions
     .map((caption) => ({
       start: Math.max(0, caption.start),
       end: Math.max(caption.start + 0.04, caption.end),
       text: caption.text.trim().replace(/[。！？!?…]+$/g, ""),
     }))
-    .filter((caption) => caption.text)
-    .sort((left, right) => left.start - right.start);
+    .filter((caption) => caption.text));
 }
 
 type ViralWorkerJob = {
@@ -2206,7 +2206,6 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setViralTranscriptProgress(88);
       const directVideoAi = [
         "direct-video-multimodal",
-        "tencent-flash-asr-multimodal",
       ].includes(job.analysis_mode || "");
       let frames: string[] = [];
       let sourceDuration = Math.max(1, Number(job.metadata?.duration) || 60);

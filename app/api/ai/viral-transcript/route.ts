@@ -1,5 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
+import { repairEnglishWordFragments } from "../../../../lib/viral-caption-segmentation";
 
 type Caption = {
   start: number;
@@ -37,24 +38,59 @@ function parseJson(content: string) {
 }
 
 function plainText(value: string) {
-  return value.replace(/[\s，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
+  return value
+    .toLocaleLowerCase()
+    .replace(/[\s，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
+}
+
+function languageOf(value: string) {
+  const cjk = (value.match(/[\u3400-\u9fff]/g) || []).length;
+  const latinWords = value.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || [];
+  return latinWords.length * 2 > cjk ? "en" as const : "zh" as const;
+}
+
+function textUnits(value: string) {
+  if (languageOf(value) === "en") {
+    return (value.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || []).length;
+  }
+  return [...plainText(value)].length;
+}
+
+function joinCaptionText(left: string, right: string) {
+  const joiner = languageOf(`${left} ${right}`) === "en" ? " " : "";
+  return `${left.trim()}${joiner}${right.trim()}`.replace(/\s+/g, " ").trim();
 }
 
 function punctuation(value: string) {
-  const text = value.replace(/\s+/g, "").trim();
+  const text = languageOf(value) === "en"
+    ? value.replace(/\s+/g, " ").trim()
+    : value.replace(/\s+/g, "").trim();
   if (!text) return "";
-  return /[。！？!?]$/.test(text) ? text : `${text}。`;
+  if (/[。！？.!?]$/.test(text)) return text;
+  return languageOf(text) === "en" ? `${text}.` : `${text}。`;
 }
 
 function phraseText(value: string) {
-  return value
-    .replace(/\s+/g, "")
-    .replace(/^[，,。！？!?；;：:、]+|[，,。！？!?；;：:、]+$/gu, "")
+  const normalized = languageOf(value) === "en"
+    ? value.replace(/\s+/g, " ")
+    : value.replace(/\s+/g, "");
+  return normalized
+    .replace(/^[，,.。！？!?；;：:、]+|[，,.。！？!?；;：:、]+$/gu, "")
     .trim();
 }
 
 function completeTitle(value: unknown) {
   if (typeof value !== "string") return "";
+  if (languageOf(value) === "en") {
+    const title = value
+      .replace(/^[\s'"“”‘’.,!?;:—-]+|[\s'"“”‘’.,!?;:—-]+$/gu, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const words = title.match(/[A-Za-z0-9]+(?:['’-][A-Za-z0-9]+)*/g) || [];
+    if (words.length < 3 || words.length > 12) return "";
+    if (/\b(?:and|or|but|because|so|the|a|an|to|of|for|with|that|which)$/i.test(title)) return "";
+    return title;
+  }
   const title = value
     .replace(/[《》“”"'‘’：:。！？!?，,；;、*#\s]+/gu, "")
     .trim();
@@ -69,6 +105,29 @@ function completeTitle(value: unknown) {
 }
 
 function chunkPhrase(value: string, maxChars = 15, minTailChars = 5) {
+  if (languageOf(value) === "en") {
+    const words = value.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
+    const maxWords = 11;
+    const minTailWords = 4;
+    if (words.length <= maxWords) return words.length ? [words.join(" ")] : [];
+    const output: string[] = [];
+    let cursor = 0;
+    while (cursor < words.length) {
+      const remaining = words.length - cursor;
+      let size = Math.min(maxWords, remaining);
+      if (remaining > maxWords && remaining - size < minTailWords) {
+        size = Math.max(minTailWords, remaining - minTailWords);
+      }
+      const window = words.slice(cursor, cursor + size);
+      const semanticBreak = window.findLastIndex((word, index) => (
+        index >= 4 && /^(?:and|but|or|because|so|while|when|that|which|who)$/i.test(word)
+      ));
+      if (semanticBreak > 4 && remaining - semanticBreak >= minTailWords) size = semanticBreak;
+      output.push(words.slice(cursor, cursor + size).join(" "));
+      cursor += size;
+    }
+    return output;
+  }
   const chars = [...phraseText(value)];
   if (chars.length <= maxChars) return chars.length ? [chars.join("")] : [];
   const output: string[] = [];
@@ -87,7 +146,7 @@ function chunkPhrase(value: string, maxChars = 15, minTailChars = 5) {
 
 function normalizeSourceCaptions(value: unknown, duration: number): Caption[] {
   if (!Array.isArray(value)) return [];
-  return value
+  const captions = value
     .map((item) => {
       const record = item && typeof item === "object" ? item as Record<string, unknown> : {};
       const start = Math.max(0, Math.min(duration, Number(record.start) || 0));
@@ -98,6 +157,7 @@ function normalizeSourceCaptions(value: unknown, duration: number): Caption[] {
     .filter((item) => item.text && item.end > item.start)
     .sort((a, b) => a.start - b.start)
     .slice(0, 160);
+  return repairEnglishWordFragments(captions);
 }
 
 function localSentenceCaptions(captions: Caption[]): Caption[] {
@@ -107,13 +167,13 @@ function localSentenceCaptions(captions: Caption[]): Caption[] {
     if (!current) current = { ...caption };
     else {
       current.end = Math.max(current.end, caption.end);
-      current.text = `${current.text}${caption.text}`.replace(/\s+/g, "");
+      current.text = joinCaptionText(current.text, caption.text);
     }
     const next = captions[index + 1];
     const pause = next ? Math.max(0, next.start - caption.end) : 0;
-    const shouldClose = /[。！？!?]$/.test(current.text.trim())
+    const shouldClose = /[.。！？!?]$/.test(current.text.trim())
       || pause >= 0.78
-      || plainText(current.text).length >= 42
+      || textUnits(current.text) >= (languageOf(current.text) === "en" ? 24 : 42)
       || !next;
     if (shouldClose) {
       const text = punctuation(current.text);
@@ -142,11 +202,11 @@ function textCoverage(source: string, result: string) {
 function splitCaptionPhrases(captions: Caption[]): Caption[] {
   return captions.flatMap((caption) => {
     const parts = caption.text
-      .split(/[，,。！？!?；;：:\n]+/u)
+      .split(/[，,.。！？!?；;：:\n]+/u)
       .flatMap((part) => chunkPhrase(part))
       .filter(Boolean);
     if (parts.length <= 1) return parts.length ? [{ ...caption, text: parts[0] }] : [];
-    const weights = parts.map((part) => Math.max(1, plainText(part).length));
+    const weights = parts.map((part) => Math.max(1, textUnits(part)));
     const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
     const duration = Math.max(0.1, caption.end - caption.start);
     let cursor = caption.start;
@@ -180,8 +240,10 @@ function normalizedAiCaptions(value: unknown, source: Caption[], duration: numbe
     };
   }).filter((item) => item.text && item.end > item.start);
   if (!captions.length) return [];
-  const sourceText = source.map((item) => item.text).join("");
-  const resultText = captions.map((item) => item.text).join("");
+  const sourceLanguage = languageOf(source.map((item) => item.text).join(" "));
+  const joiner = sourceLanguage === "en" ? " " : "";
+  const sourceText = source.map((item) => item.text).join(joiner);
+  const resultText = captions.map((item) => item.text).join(joiner);
   const lengthRatio = plainText(resultText).length / Math.max(1, plainText(sourceText).length);
   if (lengthRatio < 0.72 || lengthRatio > 1.35 || textCoverage(sourceText, resultText) < 0.62) return [];
   return splitCaptionPhrases(captions);
@@ -205,15 +267,16 @@ export async function POST(request: Request) {
     const frames = Array.isArray(body.frames)
       ? body.frames.filter((item): item is string => typeof item === "string" && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item)).slice(0, 5)
       : [];
-    const sourceText = sourceCaptions.map((item) => item.text).join("");
-    const system = `你是中文短视频口播校对师。输入已经包含从视频人声识别出的原始文字和真实时间轴，另有视频关键帧供你核对专有名词。
+    const sourceLanguage = languageOf(sourceCaptions.map((item) => item.text).join(" "));
+    const sourceText = sourceCaptions.map((item) => item.text).join(sourceLanguage === "en" ? " " : "");
+    const system = `你是多语言短视频口播校对师。输入已经包含从视频人声识别出的原始文字和真实时间轴，另有视频关键帧供你核对专有名词。
 要求：
 1. 保留原口播的全部有效信息，不总结、不缩写、不加入营销文案，不虚构原片没有说过的内容。
 2. 结合整段上下文和关键画面校正同音错字、品牌名、机构名、数字与明显漏字；不能确认时保留原词。
-3. 输出用于视频字幕列表的“口播短句”，不是长段落。优先按照真实停顿、逗号和语义短语拆分；一般每条4到15个中文字、持续0.8到3.5秒，问候语等自然短句可少于4字。
+3. 保持原口播语言。英文必须保留单词之间的空格，按完整单词、标点、真实停顿和语义从句分段，绝不能从单词中间截断；通常每条4到11个英文单词。中文通常每条4到15个中文字。持续时间一般为0.8到3.5秒。
 4. 每条只保留字幕文字，不带句末标点。start和end必须对应这段话真实出现的位置；时间递增、不重叠、不超过视频时长。
 5. 输出句子的纯文字按顺序拼接后，应与原始口播基本一致。
-6. 标题必须先理解完整口播的主题、对象和最终结论后再提炼，不能截取第一句，也不能把开头两段机械拼接。生成3个不同角度的候选，再选择语义最完整、最准确的一条；标题控制在8到15字，必须可以独立阅读，不能在“不是、而是、因为、所以、很多岗位”等半句话处结束。
+6. 标题必须先理解完整口播的主题、对象和最终结论后再提炼，保持原语言，不能截取第一句，也不能把开头两段机械拼接。中文标题8到15字；英文标题3到12个单词。标题必须可以独立阅读，不能停在连接词或半句话处。
 7. 32秒口播通常应整理为10到18条短句，不能把多个句子合成一个长段。只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能"}]}。`;
     const content = [
       {

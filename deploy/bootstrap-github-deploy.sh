@@ -5,6 +5,7 @@ PUBLIC_KEY_FILE="${1:-}"
 PROJECT_DIR="${2:-}"
 DEPLOY_USER="merchantdeploy"
 DEPLOY_COMMAND="/usr/local/sbin/deploy-merchant-studio"
+VIDEO_WORKER_DEPLOY_COMMAND="/usr/local/sbin/deploy-video-worker"
 SUDOERS_FILE="/etc/sudoers.d/merchant-studio-deploy"
 
 if [[ "${EUID}" -ne 0 ]]; then
@@ -35,7 +36,8 @@ if ! grep -qxF "${public_key}" "/home/${DEPLOY_USER}/.ssh/authorized_keys"; then
 fi
 
 install -m 0755 "${PROJECT_DIR}/deploy/deploy-merchant-studio" "${DEPLOY_COMMAND}"
-printf '%s ALL=(root) NOPASSWD: %s\n' "${DEPLOY_USER}" "${DEPLOY_COMMAND}" > "${SUDOERS_FILE}"
+install -m 0755 "${PROJECT_DIR}/deploy/deploy-video-worker" "${VIDEO_WORKER_DEPLOY_COMMAND}"
+printf '%s ALL=(root) NOPASSWD: %s, %s\n' "${DEPLOY_USER}" "${DEPLOY_COMMAND}" "${VIDEO_WORKER_DEPLOY_COMMAND}" > "${SUDOERS_FILE}"
 chmod 0440 "${SUDOERS_FILE}"
 visudo -cf "${SUDOERS_FILE}"
 

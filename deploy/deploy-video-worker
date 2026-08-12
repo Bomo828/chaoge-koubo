@@ -1,0 +1,97 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ARCHIVE="${1:-}"
+RELEASE_SHA="${2:-}"
+APP_ROOT="/opt/merchant-studio"
+WORKER_DIR="${APP_ROOT}/video-worker"
+NEW_DIR="${APP_ROOT}/video-worker-new"
+BACKUP_DIR="${APP_ROOT}/video-worker-backup"
+FAILED_DIR="${APP_ROOT}/video-worker-failed"
+DATA_DIR="/var/lib/merchant-studio/video"
+SERVICE="merchant-video-worker.service"
+
+fail() {
+  echo "Video worker deployment failed: $*" >&2
+  exit 1
+}
+
+[[ -n "${ARCHIVE}" ]] || fail "archive path is required"
+[[ "${RELEASE_SHA}" =~ ^[0-9a-f]{40}$ ]] || fail "release SHA is invalid"
+
+resolved_archive="$(realpath -- "${ARCHIVE}")"
+[[ "${resolved_archive}" == "/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz" ]] || fail "archive path is not allowed"
+[[ -f "${resolved_archive}" ]] || fail "archive does not exist"
+[[ "$(stat -c '%U' "${resolved_archive}")" == "merchantdeploy" ]] || fail "archive owner is invalid"
+
+exec 9>"/var/lock/merchant-video-worker-deploy.lock"
+flock -n 9 || fail "another video worker deployment is already running"
+
+while IFS= read -r entry; do
+  [[ "${entry}" != /* ]] || fail "archive contains an absolute path"
+  [[ "${entry}" != ".." && "${entry}" != ../* && "${entry}" != */../* ]] || fail "archive contains a parent path"
+done < <(tar -tzf "${resolved_archive}")
+
+rm -rf -- "${NEW_DIR}" "${FAILED_DIR}"
+mkdir -p "${NEW_DIR}"
+tar -xzf "${resolved_archive}" -C "${NEW_DIR}"
+[[ -f "${NEW_DIR}/main.py" ]] || fail "main.py is missing from the release"
+[[ -f "${NEW_DIR}/RELEASE_SHA" ]] || fail "release marker is missing"
+[[ "$(cat "${NEW_DIR}/RELEASE_SHA")" == "${RELEASE_SHA}" ]] || fail "release SHA does not match"
+
+rollback() {
+  local exit_code=$?
+  trap - ERR
+  systemctl stop "${SERVICE}" 2>/dev/null || true
+  if [[ -d "${WORKER_DIR}" ]]; then
+    mv "${WORKER_DIR}" "${FAILED_DIR}" 2>/dev/null || true
+  fi
+  if [[ -d "${BACKUP_DIR}" ]]; then
+    mv "${BACKUP_DIR}" "${WORKER_DIR}"
+    systemctl start "${SERVICE}" 2>/dev/null || true
+  fi
+  rm -f -- "${resolved_archive}"
+  exit "${exit_code}"
+}
+trap rollback ERR
+
+if [[ -d "${WORKER_DIR}/.venv" ]]; then
+  mv "${WORKER_DIR}/.venv" "${NEW_DIR}/.venv"
+fi
+if [[ -f "${WORKER_DIR}/.env" ]]; then
+  cp -f "${WORKER_DIR}/.env" "${NEW_DIR}/.env"
+  sed -i 's/^TENCENT_ASR_ENGINE_TYPE=.*/TENCENT_ASR_ENGINE_TYPE=16k_zh_en/' "${NEW_DIR}/.env"
+fi
+for preserved in templates-v2 templates.json template-registry.json authoring-skill; do
+  if [[ -e "${WORKER_DIR}/${preserved}" && ! -e "${NEW_DIR}/${preserved}" ]]; then
+    cp -a "${WORKER_DIR}/${preserved}" "${NEW_DIR}/${preserved}"
+  fi
+done
+
+systemctl stop "${SERVICE}" 2>/dev/null || true
+rm -rf -- "${BACKUP_DIR}"
+if [[ -d "${WORKER_DIR}" ]]; then
+  mv "${WORKER_DIR}" "${BACKUP_DIR}"
+fi
+mv "${NEW_DIR}" "${WORKER_DIR}"
+
+mkdir -p "${DATA_DIR}"
+chown -R merchant-studio:merchant-studio "${WORKER_DIR}" "${DATA_DIR}"
+chmod -R a+rX "${WORKER_DIR}"
+[[ ! -f "${WORKER_DIR}/.env" ]] || chmod 600 "${WORKER_DIR}/.env"
+systemctl start "${SERVICE}"
+
+healthy=false
+for _ in $(seq 1 30); do
+  if curl -fsS http://127.0.0.1:8790/health >/dev/null && systemctl is-active --quiet "${SERVICE}"; then
+    healthy=true
+    break
+  fi
+  sleep 1
+done
+[[ "${healthy}" == "true" ]] || fail "health check did not pass"
+
+trap - ERR
+rm -f -- "${resolved_archive}"
+rm -rf -- "${FAILED_DIR}"
+echo "Merchant video worker ${RELEASE_SHA} deployed successfully."
