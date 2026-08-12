@@ -1,6 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
-import { repairEnglishWordFragments } from "../../../../lib/viral-caption-segmentation";
+import { repairEnglishWordFragments, segmentViralCaptions } from "../../../../lib/viral-caption-segmentation";
 
 type Caption = {
   start: number;
@@ -104,6 +104,13 @@ function completeTitle(value: unknown) {
     if ((title.split("而是").pop() || "").length < 4) return "";
   }
   return title;
+}
+
+function fallbackEnglishTitle(captions: Caption[]) {
+  const candidate = captions
+    .map((caption) => caption.text.replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim())
+    .find((text) => textUnits(text) >= 3 && textUnits(text) <= 12) || "";
+  return completeTitle(candidate);
 }
 
 function chunkPhrase(value: string, maxChars = 15, minTailChars = 5) {
@@ -243,12 +250,21 @@ function normalizedAiCaptions(value: unknown, source: Caption[], duration: numbe
   }).filter((item) => item.text && item.end > item.start);
   if (!captions.length) return [];
   const sourceLanguage = languageOf(source.map((item) => item.text).join(" "));
+  const resultLanguage = languageOf(captions.map((item) => item.text).join(" "));
+  if (resultLanguage !== sourceLanguage) return [];
   const joiner = sourceLanguage === "en" ? " " : "";
   const sourceText = source.map((item) => item.text).join(joiner);
   const resultText = captions.map((item) => item.text).join(joiner);
   const lengthRatio = plainText(resultText).length / Math.max(1, plainText(sourceText).length);
   if (lengthRatio < 0.72 || lengthRatio > 1.35 || textCoverage(sourceText, resultText) < 0.62) return [];
-  return splitCaptionPhrases(captions);
+  const segmented = sourceLanguage === "en" ? segmentViralCaptions(captions) : splitCaptionPhrases(captions);
+  if (sourceLanguage === "en") {
+    const wordCounts = segmented.map((caption) => textUnits(caption.text));
+    const singleWordRatio = wordCounts.filter((count) => count <= 1).length / Math.max(1, wordCounts.length);
+    const averageWords = wordCounts.reduce((sum, count) => sum + count, 0) / Math.max(1, wordCounts.length);
+    if (singleWordRatio > 0.18 || averageWords < 3.5) return [];
+  }
+  return segmented;
 }
 
 export async function POST(request: Request) {
@@ -283,7 +299,7 @@ export async function POST(request: Request) {
     const content = [
       {
         type: "text",
-        text: `视频时长：${duration.toFixed(2)}秒\n原始口播时间轴：${JSON.stringify(sourceCaptions)}\n原始口播全文：${sourceText}`,
+        text: `原始口播语言：${sourceLanguage === "en" ? "英文；标题和字幕必须全部使用英文" : "中文"}\n视频时长：${duration.toFixed(2)}秒\n原始口播时间轴：${JSON.stringify(sourceCaptions)}\n原始口播全文：${sourceText}`,
       },
       ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
     ];
@@ -349,12 +365,19 @@ export async function POST(request: Request) {
       }
     }
     const aiCaptions = normalizedAiCaptions(parsed.captions, sourceCaptions, duration);
-    const captions = aiCaptions.length ? aiCaptions : localSentenceCaptions(sourceCaptions);
+    const captions = aiCaptions.length
+      ? aiCaptions
+      : sourceLanguage === "en"
+        ? segmentViralCaptions(sourceCaptions)
+        : localSentenceCaptions(sourceCaptions);
     const titleCandidates = [
       parsed.title,
       ...(Array.isArray(parsed.titleCandidates) ? parsed.titleCandidates : []),
     ];
-    const title = titleCandidates.map(completeTitle).find(Boolean) || "";
+    const aiTitle = titleCandidates
+      .map(completeTitle)
+      .find((candidate) => candidate && languageOf(candidate) === sourceLanguage) || "";
+    const title = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : "");
     return Response.json({
       title,
       summary: typeof parsed.summary === "string"

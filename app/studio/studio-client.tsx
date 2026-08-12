@@ -7,7 +7,7 @@ import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } fr
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
-import { segmentViralCaptions } from "../../lib/viral-caption-segmentation";
+import { segmentViralCaptions, viralSpeechLanguage } from "../../lib/viral-caption-segmentation";
 import { IndustryImageLab } from "./image-lab";
 
 type ImagePriceQuote = {
@@ -2277,7 +2277,15 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setViralCaptions(sentenceCaptions);
       setViralCaptionsConfirmed(false);
       setViralSubtitle(sentenceCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
-      setViralTitle(aiTitle || job.title || "口播内容提炼");
+      const transcriptLanguage = viralSpeechLanguage(sentenceCaptions.map((caption) => caption.text).join(" "));
+      const titleCandidate = aiTitle || job.title || "";
+      const languageMatchedTitle = titleCandidate && viralSpeechLanguage(titleCandidate) === transcriptLanguage
+        ? titleCandidate
+        : "";
+      const localEnglishTitle = transcriptLanguage === "en"
+        ? sentenceCaptions.find((caption) => caption.text.trim().split(/\s+/).length >= 3)?.text.replace(/[.!?]+$/g, "") || "English Video Highlights"
+        : "口播内容提炼";
+      setViralTitle(languageMatchedTitle || localEnglishTitle);
       setViralAnalysisMode("ai");
       setViralAnalysisSummary(`${aiSummary} 已整理为 ${sentenceCaptions.length} 条字幕短句${compatibilityMode ? "；当前云端旧版已由兼容通道完成识别" : ""}。修改后将按当前文本生成字幕。`);
       setViralTranscriptProgress(100);
@@ -3495,11 +3503,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {viralCaptions.length ? <>
               <label className="viral-confirm-title">
                 <span><b>标题文案</b><small>AI 根据完整口播提炼，可手动修改</small></span>
-                <input type="text" maxLength={16} value={viralTitle} aria-label="标题文案" onChange={(event) => {
+                <input type="text" maxLength={viralSpeechLanguage(viralCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralTitle} aria-label="标题文案" onChange={(event) => {
                   setViralCaptionsConfirmed(false);
                   setViralTitle(event.target.value);
                 }} />
-                <em>{viralTitle.trim().length}/16</em>
+                <em>{viralTitle.trim().length}/{viralSpeechLanguage(viralCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em>
               </label>
               <div className="viral-source-transcript-list">{viralCaptions.map((caption, index) => <label key={`${caption.start}-${index}`}>
                 <span>{viralTimestamp(caption.start)}–{viralTimestamp(caption.end)}</span>

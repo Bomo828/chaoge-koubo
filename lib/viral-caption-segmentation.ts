@@ -62,6 +62,75 @@ function unitCount(value: string) {
   return [...value.replace(/[^\u3400-\u9fffA-Za-z0-9]/g, "")].length;
 }
 
+function endsSentence(value: string) {
+  return /[.!?。！？]$/.test(value.trim());
+}
+
+function mergeEnglishCaptionWords(captions: ViralCaptionSegment[]) {
+  if (viralSpeechLanguage(captions.map((caption) => caption.text).join(" ")) !== "en") return captions;
+  const output: ViralCaptionSegment[] = [];
+  let current: ViralCaptionSegment | null = null;
+  const flush = () => {
+    if (current?.text) output.push(current);
+    current = null;
+  };
+  captions.forEach((caption, index) => {
+    const text = normalizeSpeechText(caption.text);
+    if (!text) return;
+    if (!current) current = { ...caption, text };
+    else {
+      const gap = Math.max(0, caption.start - current.end);
+      const combinedWords = unitCount(`${current.text} ${text}`);
+      if (gap > 0.72 || endsSentence(current.text) || combinedWords > 12) {
+        flush();
+        current = { ...caption, text };
+      } else {
+        current.text = `${current.text} ${text}`.replace(/\s+/g, " ").trim();
+        current.end = Math.max(current.end, caption.end);
+      }
+    }
+    const next = captions[index + 1];
+    const nextGap = next ? Math.max(0, next.start - caption.end) : 0;
+    if (current && (endsSentence(text) || unitCount(current.text) >= 8 || nextGap > 0.72 || !next)) flush();
+  });
+  flush();
+
+  const balanced = output.map((caption) => ({ ...caption }));
+  for (let index = 0; index < balanced.length; index += 1) {
+    const caption = balanced[index];
+    const currentWords = unitCount(caption.text);
+    if (currentWords >= 4) continue;
+    const previous = balanced[index - 1];
+    const next = balanced[index + 1];
+    const previousGap = previous ? Math.max(0, caption.start - previous.end) : Infinity;
+    const nextGap = next ? Math.max(0, next.start - caption.end) : Infinity;
+    if (
+      previous
+      && previousGap <= 1.25
+      && unitCount(previous.text) + currentWords <= 14
+      && !endsSentence(previous.text)
+    ) {
+      previous.text = `${previous.text} ${caption.text}`.replace(/\s+/g, " ").trim();
+      previous.end = caption.end;
+      balanced.splice(index, 1);
+      index -= 1;
+      continue;
+    }
+    if (
+      next
+      && nextGap <= 1.25
+      && currentWords + unitCount(next.text) <= 14
+      && !endsSentence(caption.text)
+    ) {
+      next.text = `${caption.text} ${next.text}`.replace(/\s+/g, " ").trim();
+      next.start = caption.start;
+      balanced.splice(index, 1);
+      index -= 1;
+    }
+  }
+  return balanced;
+}
+
 function englishChunks(value: string) {
   const words = normalizeSpeechText(value).split(" ").filter(Boolean);
   const output: string[] = [];
@@ -128,7 +197,7 @@ function splitTimedCaption(caption: ViralCaptionSegment) {
 }
 
 export function segmentViralCaptions(captions: ViralCaptionSegment[]) {
-  return repairEnglishWordFragments(captions)
+  return mergeEnglishCaptionWords(repairEnglishWordFragments(captions))
     .flatMap(splitTimedCaption)
     .filter((caption) => caption.text)
     .sort((left, right) => left.start - right.start);
