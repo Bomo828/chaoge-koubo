@@ -532,7 +532,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   return (
     <main className={`studio-shell ${active === "design" ? "is-image-lab" : ""}`}>
       <aside className="studio-sidebar">
-        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><img src="/media/flash-lab-logo.png" alt="" /></span><div><b>爆点实验室</b><small>FLASH LAB</small></div></Link>
+        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><img src="/media/flash-lab-logo.png" alt="" /></span><div><b>爆点实验室</b></div></Link>
         <nav>
           {visibleMenu.map((item, index) => {
             const MenuIcon = menuIcons[item.id as keyof typeof menuIcons] ?? House;
@@ -572,8 +572,8 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
                   <span>{walletPoints.toLocaleString()} 积分可用</span>
                 </div>
                 <div className="member-dropdown-actions">
-                  {member.role === "admin" || member.role === "super_admin" ? <a role="menuitem" href="/admin"><span><b>管理后台</b><small>项目、模板与平台配置</small></span><i>›</i></a> : null}
-                  <button type="button" role="menuitem" onClick={() => { setAccountDialog("password"); setDialogMessage(""); setMemberMenuOpen(false); }}><span><b>修改密码</b><small>更新会员登录密码</small></span><i>›</i></button>
+                  {member.role === "admin" || member.role === "super_admin" ? <a role="menuitem" href="/admin"><span><b>管理后台</b></span><i>›</i></a> : null}
+                  <button type="button" role="menuitem" onClick={() => { setAccountDialog("password"); setDialogMessage(""); setMemberMenuOpen(false); }}><span><b>修改密码</b></span><i>›</i></button>
                 </div>
                 <a className="member-logout" role="menuitem" href="/api/auth/logout"><span>退出登录</span><i>↗</i></a>
               </div>
@@ -641,7 +641,7 @@ function AccountDialog({ message, onMessage, onClose }: { message: string; onMes
       <section className="account-dialog" role="dialog" aria-modal="true" aria-labelledby="account-dialog-title">
         <button className="account-dialog-close" type="button" aria-label="关闭" onClick={onClose}>×</button>
         <form onSubmit={submitPassword}>
-          <header className="account-dialog-header"><small>账号安全</small><h2 id="account-dialog-title">修改密码</h2><p>为了账号安全，请使用与其他平台不同的密码。</p></header>
+          <header className="account-dialog-header"><h2 id="account-dialog-title">修改密码</h2></header>
           <div className="account-form-grid is-single">
             <label><span>当前密码</span><input name="currentPassword" type="password" autoComplete="current-password" placeholder="输入当前密码" required /></label>
             <label><span>新密码</span><input name="nextPassword" type="password" autoComplete="new-password" placeholder="不少于 8 个字符" minLength={8} required /></label>
@@ -712,13 +712,12 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
         aria-hidden="true"
       />
       <div className="hyper-hero-copy">
-        <small>CREATE WITHOUT LIMITS</small>
         <h1>把灵感<br /><span>放大</span></h1>
         <p>图片、视频、声音，一站式完成。</p>
       </div>
       <div className="hyper-main-actions">
-        <button className="is-image" onClick={() => onOpen("design")}><span>图片创作</span><b>IMAGE LAB</b></button>
-        <button className="is-video" onClick={() => onOpen("video")}><span>视频创作</span><b>VIDEO LAB</b></button>
+        <button className="is-image" onClick={() => onOpen("design")}><span>图片创作</span></button>
+        <button className="is-video" onClick={() => onOpen("video")}><span>视频创作</span></button>
       </div>
     </section>
 
@@ -727,7 +726,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
     </section>
 
     <section className="hyper-recent">
-      <header><div><small>RECENT PROJECTS</small><h2>最近项目</h2></div><button disabled={assetsLoading} onClick={() => void loadOverviewAssets()}>{assetsLoading ? "同步中" : "同步作品"}</button></header>
+      <header><h2>最近项目</h2><button disabled={assetsLoading} onClick={() => void loadOverviewAssets()}>{assetsLoading ? "同步中" : "同步作品"}</button></header>
       <div className="hyper-project-grid">
         {recentProjects.length ? recentProjects.map((item, index) => <button className={`hyper-project-card tone-${index + 1}`} key={item.id} onClick={() => onOpen("assets")}>
           <span className="hyper-project-media">{item.kind === "image" ? <img src={item.mediaUrl} alt={item.projectName} /> : item.kind === "video" ? <video src={item.mediaUrl} preload="metadata" muted /> : <b>{item.kind === "voice" ? "VOICE" : "AUDIO"}</b>}</span>
@@ -1180,7 +1179,7 @@ function Design({ busy, action, onPointsChange }: { busy: boolean; action: () =>
   const momentsAvatarUrl = referenceImageUrls[avatarReferenceIndex >= 0 ? avatarReferenceIndex : 0] ?? "";
 
   return <>
-    <ToolHeading eyebrow="IMAGE DESIGN" title="图片设计" desc="从行业模板或参考图片出发，生成可直接投放的商家视觉。" />
+    <ToolHeading title="图片设计" />
     <div className="design-types">{designModes.map((mode) => <button type="button" className={activeDesign === mode.id ? "active" : ""} aria-pressed={activeDesign === mode.id} onClick={() => openDesign(mode)} key={mode.id}><i>{mode.icon}</i><b>{mode.title}</b><span>{mode.desc}</span><small>{activeDesign === mode.id ? "当前已打开" : "点击打开 →"}</small></button>)}</div>
     <div className={`creator-panel ${isAgentDesign ? "marketing-creator-panel" : ""} ${activeMode.id === "marketing" ? "is-marketing" : ""} ${activeMode.id === "material" ? "is-material" : ""} ${isLittleGreenBook ? "is-little-green" : ""}`} ref={creatorPanelRef}>
       {isAgentDesign ? <>
@@ -3161,7 +3160,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return <section className="video-workspace">
       <header className="video-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
-        <div><small>AI VIDEO DIRECTOR</small><h1>素材智能成片</h1><p>AI 读取本次需求和真实素材，推荐 3 个方向，确认后生成分镜与成片。</p></div>
+        <div><h1>素材智能成片</h1></div>
       </header>
       <nav className="video-flow-steps" aria-label="素材智能成片进度">
         {["素材准备", "AI 分析", "方向确认", "分镜规划", "生成成片"].map((label, index) => <span className={currentStep > index ? "complete" : currentStep === index + 1 ? "active" : ""} key={label}><i>{currentStep > index + 1 ? "✓" : String(index + 1).padStart(2, "0")}</i><b>{label}</b></span>)}
@@ -3169,7 +3168,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       <div className="video-builder-grid video-director-grid">
         <div className="video-builder-form">
           <section className="video-builder-card">
-            <div className="video-card-title"><span>01</span><div><b>添加真实素材</b><small>环境、商品、人物、服务过程均可多选上传，最多 12 个</small></div></div>
+            <div className="video-card-title"><div><b>添加真实素材</b></div></div>
             <div className="video-task-context"><i>材</i><div><b>本次素材已接入</b><span>{savedMaterialsLoading ? "正在读取会员资产中的图片…" : `当前可使用 ${savedMaterialFiles.length} 张已保存图片，也可以继续上传`}</span></div></div>
             <label className={`video-file-drop ${materialFiles.length ? "has-files" : ""}`}>
               <input type="file" accept="image/*,video/*" multiple onChange={addMaterialFiles} />
@@ -3183,7 +3182,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </section>
 
           {videoAnalysis ? <section className="video-builder-card video-analysis-card">
-            <div className="video-card-title"><span>02</span><div><b>AI 需求与素材分析</b><small>已结合本次填写内容、真实图片和目标平台</small></div></div>
+            <div className="video-card-title"><div><b>AI 需求与素材分析</b></div></div>
             <div className="video-analysis-summary"><b>{videoAnalysis.summary}</b>{videoAnalysis.platformInsight ? <p>{videoAnalysis.platformInsight}</p> : null}{videoAnalysis.missing.length ? <small>建议补充：{videoAnalysis.missing.join("、")}</small> : null}</div>
             <div className="video-direction-grid">
               {videoDirections.map((item, index) => <button type="button" className={selectedDirection === item.id ? "selected" : ""} aria-pressed={selectedDirection === item.id} onClick={() => { setSelectedDirection(item.id); setStoryboard(null); }} key={item.id}><span><i>0{index + 1}</i><em>{item.tag}</em></span><b>{item.title}</b><strong>{item.hook}</strong><p>{item.story}</p><small>{item.reason}</small></button>)}
@@ -3191,7 +3190,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </section> : null}
 
           {direction ? <section className="video-builder-card">
-            <div className="video-card-title"><span>03</span><div><b>补充本次推广信息</b><small>填写影响本次内容和成交的关键信息</small></div></div>
+            <div className="video-card-title"><div><b>补充推广信息</b></div></div>
             <div className="video-selected-direction"><small>已选方向</small><b>{direction.title}</b><span>{direction.hook}</span></div>
             <div className="video-field-row">
               <label><span>本次活动 / 主推内容（可选）</span><input value={campaignInfo} onChange={(event) => { setCampaignInfo(event.target.value); setStoryboard(null); }} placeholder="例如：新客体验、夏季新品、团购套餐" /></label>
@@ -3206,7 +3205,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </section> : null}
 
           {storyboard ? <section className="video-builder-card video-storyboard-card">
-            <div className="video-card-title"><span>04</span><div><b>{storyboard.title}</b><small>分镜、字幕与素材来源已经匹配，可生成前检查</small></div></div>
+            <div className="video-card-title"><div><b>{storyboard.title}</b></div></div>
             <div className="video-shot-list">{storyboard.shots.map((shot, index) => <article key={`${shot.time}-${index}`}><span>{shot.time}</span><div><b>{shot.title}</b><p>{shot.visual}</p><small>字幕：{shot.caption || "无"} · 素材：{shot.source}</small></div></article>)}</div>
             <details className="video-script-details"><summary>查看口播文案与模型提示词</summary><b>口播 / 字幕文案</b><p>{storyboard.script}</p><b>视频生成提示词</b><p>{storyboard.generationPrompt}</p></details>
             <div className="video-model-pipeline">
@@ -3222,7 +3221,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           {videoAgentError ? <div className="video-agent-error" role="alert">{videoAgentError}</div> : null}
         </div>
         <aside className="video-builder-preview video-director-preview">
-          <div className="video-preview-head"><div><small>LIVE PROJECT</small><b>短视频项目状态</b></div><span>{generatedVideoUrl ? "已完成" : videoAgentBusy ? "AI 工作中" : `第 ${currentStep} 步`}</span></div>
+          <div className="video-preview-head"><div><b>短视频项目状态</b></div><span>{generatedVideoUrl ? "已完成" : videoAgentBusy ? "AI 工作中" : `第 ${currentStep} 步`}</span></div>
           <div className={`video-phone-frame ${generatedVideoUrl ? "has-video" : ""}`}>
             {generatedVideoUrl ? <video src={generatedVideoUrl} controls playsInline /> : <div><i>{videoAgentBusy ? "✦" : "▶"}</i><b>{videoAgentBusy === "analyze" ? "正在读懂需求与素材" : videoAgentBusy === "storyboard" ? "正在规划脚本与分镜" : videoAgentBusy === "generate" ? videoProgress || "Seedance 2.0 正在生成视频" : storyboard ? storyboard.title : "成片将在这里实时预览"}</b><span>Seedance 2.0 · 9:16 · {videoResolution.toUpperCase()} · 最长 15 秒</span></div>}
           </div>
@@ -3245,13 +3244,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return <section className="video-workspace">
       <header className="video-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
-        <div><small>AI LIP SYNC</small><h1>对口型视频</h1><p>先准备声音和口播音频，再上传本人视频，最后完成口型同步。</p></div>
-        <span>02 / 数字人口播</span>
+        <div><h1>对口型视频</h1></div>
+        <span>数字人口播</span>
       </header>
       <div className="video-builder-grid lip-sync-grid">
         <div className="video-builder-form">
           <section className="video-builder-card">
-            <div className="video-card-title"><span>01</span><div><b>选择或克隆声音</b><small>选择已保存的声音模型，或上传清晰音频创建新声音</small></div></div>
+            <div className="video-card-title"><div><b>选择或克隆声音</b></div></div>
             <nav className="voice-source-tabs">
               <button type="button" className={voiceSource === "saved" ? "active" : ""} onClick={() => { setVoiceSource("saved"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>选择已有声音</button>
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
@@ -3261,7 +3260,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className="video-builder-card">
-            <div className="video-card-title"><span>02</span><div><b>生成口播音频</b><small>用上一步选择或克隆的声音朗读口播文案</small></div></div>
+            <div className="video-card-title"><div><b>生成口播音频</b></div></div>
             <textarea value={script} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
               <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
@@ -3281,12 +3280,12 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {speechAudioReady && speechAudioUrl ? <div className="speech-audio-preview"><div><i>♪</i><span><b>口播音频已生成</b><small>{`${currentVoiceName} · ${script.length} 字 · ${speechSpeed}×`}</small></span></div><audio src={speechAudioUrl} controls preload="metadata" /></div> : null}
           </section>
           <section className="video-builder-card">
-            <div className="video-card-title"><span>03</span><div><b>上传本人视频</b><small>上传需要进行口型同步的正脸视频，并先检查画面</small></div></div>
+            <div className="video-card-title"><div><b>上传本人视频</b></div></div>
             <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0] ?? null; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(file ? URL.createObjectURL(file) : ""); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
             {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 })} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
           </section>
           <section className="video-builder-card lip-sync-final-card">
-            <div className="video-card-title"><span>04</span><div><b>生成对口型视频</b><small>使用上传的视频与已生成的口播音频完成口型同步</small></div></div>
+            <div className="video-card-title"><div><b>生成对口型视频</b></div></div>
             <div className="lip-sync-final-actions">
               <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : canGenerateLipSync ? "✦ 开始生成对口型视频 · 200积分" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
@@ -3295,7 +3294,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </section>
         </div>
         <aside className="video-builder-preview">
-          <div className="video-preview-head"><div><small>LIP SYNC PREVIEW</small><b>口播预览</b></div><span>{lipSyncBusy ? `${lipSyncProgress || 0}%` : lipSyncResultUrl ? "已完成" : "等待制作"}</span></div>
+          <div className="video-preview-head"><div><b>口播预览</b></div><span>{lipSyncBusy ? `${lipSyncProgress || 0}%` : lipSyncResultUrl ? "已完成" : "等待制作"}</span></div>
           <div className={`video-phone-frame is-lip ${lipVideoPreviewUrl || lipSyncResultUrl ? "has-video" : ""}`}>{lipSyncResultUrl ? <video src={lipSyncResultUrl} controls playsInline preload="metadata" /> : lipVideoPreviewUrl ? <video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" /> : <div><i>●</i><b>上传视频后在这里预览</b><span>{currentVoiceName} · 9:16 竖版</span></div>}</div>
           <ol><li className={voiceReady ? "done" : "active"}><b>选择或克隆声音</b><span>{voiceReady ? `已选择：${currentVoiceName}` : "等待选择声音"}</span></li><li className={speechAudioReady ? "done" : voiceReady ? "active" : ""}><b>生成口播音频</b><span>{speechAudioReady ? "口播音频已生成，可试听" : "等待生成口播音频"}</span></li><li className={lipVideoName ? "done" : speechAudioReady ? "active" : ""}><b>上传本人视频</b><span>{lipVideoName || "等待上传正脸视频"}</span></li><li className={lipSyncResultUrl ? "done" : canGenerateLipSync ? "active" : ""}><b>口型同步</b><span>{lipSyncResultUrl ? "对口型视频已生成并保存" : canGenerateLipSync ? "素材已齐，可以开始生成" : "等待视频与口播音频"}</span></li></ol>
         </aside>
@@ -3309,13 +3308,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return <section className="video-workspace">
       <header className="video-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
-        <div><small>SMART VIRAL EDIT</small><h1>一键网感剪辑</h1><p>把示例视频蒸馏成可复用规则，再根据新原片的口播、停顿和镜头变化重新编排。</p></div>
+        <div><h1>一键网感剪辑</h1></div>
         <span>{viralAnalyzed ? "原片已就绪" : "等待导入"}</span>
       </header>
       <div className="viral-quick-shell">
         <section className="viral-source-pane">
           <div className="viral-pane-heading">
-            <span><small>01 / ORIGINAL</small><b>快速导入原片</b></span>
+            <span><b>快速导入原片</b></span>
             <label><input type="file" accept="video/*" onChange={addViralFiles} />{viralFiles.length ? "更换原片" : "导入原片"}</label>
           </div>
           <div className={`viral-main-preview template-${viralTemplate}`}>
@@ -3356,7 +3355,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         </section>
         <section className="viral-template-pane">
           <div className="viral-pane-heading">
-            <span><small>02 / STYLE</small><b>选择网感模板</b></span>
+            <span><b>选择网感模板</b></span>
             <em>已选：{templates.find((template) => template.id === viralTemplate)?.name}</em>
           </div>
           <div className="viral-template-grid is-quick">
@@ -3397,7 +3396,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       </div>
       {viralProcessStarted ? <section className="viral-result-shell">
         <header>
-          <div><small>03 / RESULT</small><h2>{viralProcessBusy ? "正在生成网感成片" : viralResultUrl ? "网感成片已完成" : viralFailed ? "本次处理未完成" : "处理状态"}</h2></div>
+          <div><h2>{viralProcessBusy ? "正在生成网感成片" : viralResultUrl ? "网感成片已完成" : viralFailed ? "本次处理未完成" : "处理状态"}</h2></div>
           <span className={viralResultUrl ? "done" : viralFailed ? "failed" : ""}>{viralResultUrl ? "已完成" : viralProcessBusy ? `${viralProgress}%` : viralFailed ? "已停止并退款" : "未完成"}</span>
         </header>
         <div className="viral-progress-track"><i style={{ width: `${viralProgress}%` }} /></div>
@@ -3424,11 +3423,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     </section>;
   }
 
-  return <><ToolHeading eyebrow="AI VIDEO" title="短视频制作" desc="素材智能成片、克隆声音对口型，以及原视频一键网感剪辑。" /><div className="video-modes"><article><span>01</span><i>▶</i><small>AI 智能成片</small><h3>素材智能成片</h3><p>根据环境、商品、人物或服务照片，自动设计内容和分镜。</p><div><b>多图成片</b><b>AI 分镜</b><b>自动文案</b></div><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><span>02</span><i>●</i><small>数字人口播</small><h3>对口型视频</h3><p>克隆自己的声音，生成口播音频，再让本人视频同步对应口型。</p><div><b>声音克隆</b><b>AI 改写</b><b>口型同步</b></div><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><span>03</span><i>✦</i><small>AI 智能剪辑</small><h3>一键网感剪辑</h3><p>读取原片内容，自动生成标题与字幕，并应用模板特效、转场和音效。</p><div><b>内容分析</b><b>模板字幕</b><b>仅加音效</b></div><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
+  return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
 }
 
 function Cases({ onUse }: { onUse: () => void }) {
-  return <><ToolHeading eyebrow="INDUSTRY CASES" title="行业案例" desc="按行业查看优秀图片和短视频案例，选择后直接作为创作参考。" /><div className="industry-tabs"><button className="active">餐饮美食</button><button>零售百货</button><button>丽人美业</button><button>休闲娱乐</button><button>生活服务</button><button>教育培训</button></div><div className="case-library">{["招牌必吃榜","节气新品上新","家庭聚餐推荐","午市限时优惠","30秒门店探访","团购套餐展示"].map((item,index) => <article className={`library-${index%3}`} key={item}><small>{index>3?"短视频":"图片案例"}</small><b>{item}</b><span>{index>3?"00:30":"营销海报"}</span><button onClick={onUse}>参考创作 ↗</button></article>)}</div></>;
+  return <><ToolHeading title="行业案例" /><div className="industry-tabs"><button className="active">餐饮美食</button><button>零售百货</button><button>丽人美业</button><button>休闲娱乐</button><button>生活服务</button><button>教育培训</button></div><div className="case-library">{["招牌必吃榜","节气新品上新","家庭聚餐推荐","午市限时优惠","30秒门店探访","团购套餐展示"].map((item,index) => <article className={`library-${index%3}`} key={item}><b>{item}</b><span>{index>3?"00:30":"营销海报"}</span><button onClick={onUse}>参考创作 ↗</button></article>)}</div></>;
 }
 
 function formatAssetTime(value: number) {
@@ -3498,7 +3497,7 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
   const usedBytes = items.reduce((total, item) => total + item.sizeBytes, 0);
 
   return <>
-    <ToolHeading eyebrow="MEMBER ASSET CLOUD" title="会员资产空间" desc="生成的图片、短视频和声音按项目名称与生成时间自动归档。" />
+    <ToolHeading title="会员资产空间" />
     <div className="asset-summary asset-summary-live"><div><b>{usedBytes ? formatAssetSize(usedBytes) : `${items.length} 个资产`}</b><span>{items.length ? `共 ${projects.length} 个项目 · 最近生成 ${formatAssetTime(items[0]?.createdAt ?? 0)}` : "等待保存第一份生成结果"}</span><i><em style={{ width: `${Math.min(100, Math.max(3, usedBytes / (1024 * 1024 * 1024) * 100))}%` }} /></i></div><button disabled={syncing} onClick={() => { setSyncing(true); void loadAssets().finally(() => window.setTimeout(() => setSyncing(false), 500)); }}>{syncing ? "同步中…" : "↻ 立即同步"}</button></div>
     <div className="asset-groups asset-filter-groups">
       <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><i>全</i><b>全部资产</b><span>{items.length} 个</span></button>
@@ -3507,7 +3506,6 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
       <button className={filter === "audio" ? "active" : ""} onClick={() => setFilter("audio")}><i>声</i><b>声音与音频</b><span>{audioCount} 个</span></button>
     </div>
     {error ? <div className="asset-state is-error"><b>资产空间暂时无法打开</b><span>{error}</span><button onClick={() => void loadAssets()}>重新加载</button></div> : loading ? <div className="asset-state"><i /><b>正在读取会员资产</b><span>生成记录正在按项目整理</span></div> : projects.length ? <div className="asset-project-list">{projects.map(([projectName, projectItems]) => <section className="asset-project" key={projectName}><header><div><small>项目</small><h2>{projectName}</h2></div><span>{formatAssetTime(projectItems[0].createdAt)} · {projectItems.length} 个文件</span></header><div className="asset-item-grid">{projectItems.map((item) => <article className={`asset-item is-${item.kind}`} key={item.id}><button className="asset-media" onClick={() => setSelectedAsset(item)} aria-label={`打开${item.name}`}>{item.kind === "image" ? <img src={item.mediaUrl} alt={item.name} loading="lazy" /> : item.kind === "video" ? <video src={item.mediaUrl} poster={item.coverUrl || undefined} preload="metadata" muted /> : <span>{item.kind === "voice" ? "声" : "音"}</span>}<i>{item.kind === "video" ? "▶" : item.kind === "image" ? "查看" : "播放"}</i></button><div><b>{item.name}</b><span>{formatAssetTime(item.createdAt)} · {formatAssetSize(item.sizeBytes)}</span></div><div className="asset-item-actions"><a href={`${item.mediaUrl}?download=1`} download={item.name}>下载</a><button onClick={() => void deleteAsset(item)}>删除</button></div></article>)}</div></section>)}</div> : <div className="asset-state is-empty"><b>还没有{filter === "all" ? "会员资产" : filter === "image" ? "生成图片" : filter === "video" ? "生成短视频" : "声音文件"}</b><span>完成一次 AI 生成后，结果会自动按项目名称与时间出现在这里。</span></div>}
-    <div className="asset-sync-note"><span className="online-dot" /><div><b>会员资产自动归档已开启</b><small>新生成结果会保存到会员独立空间；网站与小程序后续共用同一份资产记录。</small></div></div>
     {selectedAsset ? <div className="asset-viewer-backdrop" role="dialog" aria-modal="true" aria-label="查看会员资产" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedAsset(null); }}><section className="asset-viewer"><button className="asset-viewer-close" aria-label="关闭" onClick={() => setSelectedAsset(null)}>×</button><header><small>{selectedAsset.projectName}</small><h2>{selectedAsset.name}</h2><span>{formatAssetTime(selectedAsset.createdAt)}</span></header>{selectedAsset.kind === "image" ? <img src={selectedAsset.mediaUrl} alt={selectedAsset.name} /> : selectedAsset.kind === "video" ? <video src={selectedAsset.mediaUrl} poster={selectedAsset.coverUrl || undefined} controls autoPlay playsInline disablePictureInPicture /> : <audio src={selectedAsset.mediaUrl} controls autoPlay />}<footer><a href={`${selectedAsset.mediaUrl}?download=1`} download={selectedAsset.name}>↓ 下载文件</a>{selectedAsset.kind === "video" ? <button className="asset-viewer-viral" onClick={() => onUseViral(selectedAsset)}>✦ 一键网感</button> : null}<button onClick={() => setSelectedAsset(null)}>关闭</button></footer></section></div> : null}
   </>;
 }
@@ -3590,7 +3588,7 @@ function Member({
   const voiceCount = assetItems.filter((item) => item.kind === "voice" || item.kind === "audio").length;
 
   const currentPackage = rechargePackages.find((item) => item.id === selectedRecharge);
-  return <><ToolHeading eyebrow="MEMBERSHIP" title="会员与商家资产" desc="查看会员积分、AI 消费记录和当前商户的数字资产。" /><div className="member-balance"><div><small>会员积分账户</small><b>{points.toLocaleString()} <span>POINTS</span></b><p>AI 使用前由服务器预留积分；成功后结算，失败自动退回，重复请求不会二次扣费。</p>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div><div className="member-recharge-actions"><select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select><button type="button" disabled={recharging || !currentPackage} onClick={() => void rechargeDemoPoints()}>{recharging ? "充值处理中…" : currentPackage ? `演示充值 ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button></div></div><div className="member-assets-heading"><div><small>MERCHANT ASSETS</small><h2>商家资产</h2><p>点击分类进入会员资产空间，可放大图片、播放视频或试听克隆声音。</p></div><span>{assetsLoading ? "正在同步…" : `共 ${assetItems.length} 个资产`}</span></div><div className="member-grid"><article><span>账户状态</span><b>正常</b><small>独立会员账户</small></article><button type="button" onClick={() => onOpenAssets("image")} aria-label={`打开图片素材，共 ${imageCount} 个`}><span>图片素材</span><b>{assetsLoading ? "—" : imageCount}</b><small>查看与放大预览 <i>→</i></small></button><button type="button" onClick={() => onOpenAssets("video")} aria-label={`打开视频素材，共 ${videoCount} 个`}><span>视频素材</span><b>{assetsLoading ? "—" : videoCount}</b><small>播放与下载视频 <i>→</i></small></button><button type="button" onClick={() => onOpenAssets("audio")} aria-label={`打开克隆声音，共 ${voiceCount} 个`}><span>克隆声音</span><b>{assetsLoading ? "—" : voiceCount}</b><small>试听声音与音频 <i>→</i></small></button></div></>;
+  return <><ToolHeading title="会员与资产" /><div className="member-balance"><div><small>会员积分</small><b>{points.toLocaleString()} <span>PTS</span></b>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div><div className="member-recharge-actions"><select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select><button type="button" disabled={recharging || !currentPackage} onClick={() => void rechargeDemoPoints()}>{recharging ? "充值处理中…" : currentPackage ? `演示充值 ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button></div></div><div className="member-assets-heading"><h2>我的资产</h2><span>{assetsLoading ? "正在同步…" : `共 ${assetItems.length} 个资产`}</span></div><div className="member-grid"><article><span>账户状态</span><b>正常</b></article><button type="button" onClick={() => onOpenAssets("image")} aria-label={`打开图片素材，共 ${imageCount} 个`}><span>图片素材</span><b>{assetsLoading ? "—" : imageCount}</b></button><button type="button" onClick={() => onOpenAssets("video")} aria-label={`打开视频素材，共 ${videoCount} 个`}><span>视频素材</span><b>{assetsLoading ? "—" : videoCount}</b></button><button type="button" onClick={() => onOpenAssets("audio")} aria-label={`打开克隆声音，共 ${voiceCount} 个`}><span>克隆声音</span><b>{assetsLoading ? "—" : voiceCount}</b></button></div></>;
 }
 
-function ToolHeading({ eyebrow, title, desc }: { eyebrow: string; title: string; desc: string }) { return <div className="tool-heading"><div><small>{eyebrow}</small><h1>{title}</h1></div><p>{desc}</p></div>; }
+function ToolHeading({ title }: { title: string }) { return <div className="tool-heading"><h1>{title}</h1></div>; }

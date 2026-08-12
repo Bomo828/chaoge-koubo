@@ -515,7 +515,7 @@ export function IndustryImageLab({ onPointsChange }: Props) {
 
       <div className="proof-workspace">
         <aside className="proof-ticket" aria-label="创作需求">
-          <div className="proof-panel-heading"><div><span>01</span><h2>创作需求</h2></div></div>
+          <div className="proof-panel-heading"><div><h2>创作需求</h2></div></div>
           <div className="proof-ticket-fields">
             <div className="proof-field proof-industry-field" ref={industryPickerRef}>
               <span>营销行业</span>
@@ -538,7 +538,7 @@ export function IndustryImageLab({ onPointsChange }: Props) {
         <main className="proof-build-panel">
           <div className="proof-visual-inputs">
             <section className="proof-materials-panel" aria-label="参考素材">
-              <div className="proof-panel-heading"><div><span>02</span><h2>参考素材</h2></div><small>{references.length}/10</small></div>
+              <div className="proof-panel-heading"><div><h2>参考素材</h2></div><small>{references.length}/10</small></div>
               <input ref={fileInputRef} type="file" accept="image/*" multiple hidden onChange={(event) => void addReferences(event.target.files)} />
               {references.length ? <div className="proof-reference-list">{references.map((item) => <div key={item.id}><img src={item.url} alt="" /><select aria-label={`${item.name}的用途`} value={item.role} onChange={(event) => updateReferenceRole(item.id, event.target.value as ReferenceRole)}>{referenceRoles.map((role) => <option key={role}>{role}</option>)}</select><button type="button" aria-label={`移除 ${item.name}`} onClick={() => removeReference(item.id)}><X /></button></div>)}</div> : null}
               <button type="button" className="proof-upload" onClick={() => fileInputRef.current?.click()} disabled={references.length >= 10}><UploadSimple /><b>添加参考图</b></button>
@@ -546,12 +546,12 @@ export function IndustryImageLab({ onPointsChange }: Props) {
 
             <section className="proof-directions" aria-label="创意方向">
               <div className="proof-section-label"><span>创意方向</span></div>
-              <div>{concepts.map((item, index) => <button type="button" key={item.id} aria-pressed={selectedConceptId === item.id} className={selectedConceptId === item.id ? "active" : ""} onClick={() => { setSelectedConceptId(item.id); resetVisualOutput(selectedPlatform.ratio); }}><img src={item.image} alt="" /><span><small>0{index + 1}</small><b>{item.name}</b><i>{item.reaction}</i></span></button>)}</div>
+              <div>{concepts.map((item) => <button type="button" key={item.id} aria-pressed={selectedConceptId === item.id} className={selectedConceptId === item.id ? "active" : ""} onClick={() => { setSelectedConceptId(item.id); resetVisualOutput(selectedPlatform.ratio); }}><img src={item.image} alt="" /><span><b>{item.name}</b><i>{item.reaction}</i></span></button>)}</div>
             </section>
           </div>
 
           <section className="proof-copy-panel" aria-label="文案信息">
-            <div className="proof-panel-heading"><div><span>03</span><h2>文案信息</h2></div><button type="button" className="proof-copy-generate" onClick={() => void generateMarketingCopy()} disabled={copyBusy}><Sparkle weight="fill" />{copyBusy ? "分析画面中" : copyHeadline ? "AI 重新排版" : "AI 文案与排版"}</button></div>
+            <div className="proof-panel-heading"><div><h2>文案信息</h2></div><button type="button" className="proof-copy-generate" onClick={() => void generateMarketingCopy()} disabled={copyBusy}><Sparkle weight="fill" />{copyBusy ? "分析画面中" : copyHeadline ? "AI 重新排版" : "AI 文案与排版"}</button></div>
             <div className="proof-copy-fields">
               <label><span>主标题</span><input value={copyHeadline} maxLength={24} placeholder="由 AI 生成，可手动修改" onChange={(event) => updateCopyVariant(selectedResult, { headline: event.target.value, headlineLines: event.target.value ? [event.target.value] : [] })} /></label>
               <label><span>副标题</span><textarea value={copySubheadline} maxLength={48} rows={2} placeholder="补充卖点或使用场景" onChange={(event) => updateCopyVariant(selectedResult, { subheadline: event.target.value })} /></label>
@@ -562,7 +562,7 @@ export function IndustryImageLab({ onPointsChange }: Props) {
         </main>
 
         <aside className="proof-preview-panel" aria-label="画布预览">
-          <div className="proof-panel-heading proof-canvas-heading"><div><span>04</span><h2>{generatedUrls.length ? "成品预览" : "画布预览"}</h2></div></div>
+          <div className="proof-panel-heading proof-canvas-heading"><div><h2>{generatedUrls.length ? "成品预览" : "画布预览"}</h2></div></div>
           <div className="proof-stage">
             <span className="proof-register proof-register-a" aria-hidden="true" />
             <span className="proof-register proof-register-b" aria-hidden="true" />

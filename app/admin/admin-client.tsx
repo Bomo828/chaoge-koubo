@@ -300,12 +300,12 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
 
   return <main className="admin-shell">
     <aside className="admin-sidebar">
-      <a className="admin-brand" href="/studio"><i><img src="/media/flash-lab-logo.png" alt="" /></i><span><b>爆点实验室</b><small>ADMIN CONSOLE</small></span></a>
+      <a className="admin-brand" href="/studio"><i><img src="/media/flash-lab-logo.png" alt="" /></i><span><b>爆点实验室</b></span></a>
       <nav>{navItems.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => { setTab(item.id); if (item.id === "ai" && !aiStatuses.length) void refreshAiStatus(); }}><i>{item.icon}</i><span>{item.label}</span></button>)}</nav>
       <div className="admin-account"><span>{member.displayName}</span><small>{member.role === "super_admin" ? "超级管理员" : "运营管理员"}</small><a href="/studio">返回创作平台 →</a></div>
     </aside>
     <section className="admin-main">
-      <header className="admin-header"><div><small>PLATFORM CONTROL</small><h1>平台管理后台</h1><p>管理用户端功能、网感模板、会员积分、充值套餐与 AI 服务。</p></div><span className="admin-live"><i />系统运行中</span></header>
+      <header className="admin-header"><h1>平台管理</h1><span className="admin-live"><i />系统运行中</span></header>
       <div className="admin-stats">
         <article><small>会员用户</small><b>{users.length}</b><span>账号与权限</span></article>
         <article><small>用户端功能</small><b>{enabledFeatureCount}</b><span>{settings.features.length} 个已配置</span></article>
@@ -316,8 +316,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
 
       {tab === "features" ? <>
         <section className="admin-list">
-          <header><div><small>FEATURE CATALOG</small><h2>用户端功能管理</h2></div><button className="admin-add" onClick={addFeature}>＋ 新增功能</button></header>
-          <p className="admin-section-note">这里控制工作台左侧菜单的名称、顺序与是否显示。新增功能可先绑定现有页面；全新的业务页面仍需完成对应功能开发。</p>
+          <header><h2>用户端功能</h2><button className="admin-add" onClick={addFeature}>＋ 新增功能</button></header>
           <div className="admin-feature-list">
             {[...settings.features].sort((a, b) => a.sortOrder - b.sortOrder).map((item) => <article key={item.id}>
               <input className="feature-icon" value={item.icon} maxLength={2} onChange={(event) => updateFeature(item.id, { icon: event.target.value })} aria-label="功能图标" />
@@ -333,7 +332,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
         </section>
       </> : tab === "templates" ? <>
         <section className="admin-editor">
-          <header><div><small>VIRAL TEMPLATE EDITOR</small><h2>{editingTemplate ? "修改网感模板" : "新增网感模板"}</h2><p className="admin-editor-note">上传参考原视频后，系统会逐帧学习并自动生成标题、字幕、配色、转场和音效规则。</p></div>{editingTemplate ? <button onClick={() => { setEditingTemplate(null); setTemplateForm(emptyTemplate); setTemplateVideoFile(null); setLearningJob(null); }}>取消修改</button> : null}</header>
+          <header><h2>{editingTemplate ? "修改网感模板" : "新增网感模板"}</h2>{editingTemplate ? <button onClick={() => { setEditingTemplate(null); setTemplateForm(emptyTemplate); setTemplateVideoFile(null); setLearningJob(null); }}>取消修改</button> : null}</header>
           <form onSubmit={saveTemplate}>
             <label><span>模板名称</span><input required value={templateForm.name} onChange={(event) => setTemplateForm({ ...templateForm, name: event.target.value })} placeholder="例如：轻奢白·双语" /></label>
             <label><span>模板标识</span><input required pattern="[a-z0-9][a-z0-9-]{1,48}" value={templateForm.slug} onChange={(event) => setTemplateForm({ ...templateForm, slug: event.target.value })} placeholder="luxury-white-bilingual" /></label>
@@ -348,24 +347,23 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
             <button className="admin-primary" type="submit" disabled={busy || uploading || learning}>{busy ? "正在保存…" : editingTemplate ? "仅保存当前修改" : "仅保存模板资料"}</button>
           </form>
         </section>
-        <section className="admin-list"><header><div><small>TEMPLATE LIBRARY</small><h2>网感模板库</h2></div><span>{templates.length} 个模板</span></header><div className="admin-template-grid">
+        <section className="admin-list"><header><h2>网感模板库</h2><span>{templates.length} 个模板</span></header><div className="admin-template-grid">
           {templates.map((item) => <article key={item.id}><div className="admin-template-media">{item.previewUrl ? <video src={item.previewUrl} muted playsInline preload="metadata" /> : <span>暂无预览</span>}<em>V{item.version}</em></div><div className="admin-template-info"><small>{item.category === "viral_video" ? "一键网感" : item.category}</small><h3>{item.name}</h3><p>{item.description || "尚未填写模板说明"}</p><span className={item.status}>{item.status === "published" ? "已上架" : "草稿"}</span></div><footer><button onClick={() => editTemplate(item)}>修改</button><button className="danger" onClick={() => void removeTemplate(item)}>删除</button></footer></article>)}
         </div></section>
       </> : tab === "points" ? <>
         <section className="admin-list">
-          <header><div><small>POINT RULES</small><h2>AI 积分扣费规则</h2></div><span>按功能独立设置</span></header>
+          <header><h2>AI 积分扣费规则</h2><span>按功能独立设置</span></header>
           <div className="admin-point-rules">{settings.pointRules.map((rule) => <article key={rule.action}><div><b>{rule.name}</b><small>{rule.action}</small></div><label><span>每次基础积分</span><input type="number" min="0" value={rule.points} onChange={(event) => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, points: Number(event.target.value) } : item) }))} /></label><button className={`admin-switch ${rule.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, enabled: !item.enabled } : item) }))}>{rule.enabled ? "计费中" : "免费"}</button></article>)}</div>
         </section>
         <section className="admin-list">
-          <header><div><small>RECHARGE PACKAGES</small><h2>充值套餐</h2></div><button className="admin-add" onClick={() => setSettings((current) => ({ ...current, rechargePackages: [...current.rechargePackages, { id: `package-${Date.now()}`, name: "新套餐", points: 1000, bonus: 0, priceYuan: 99, enabled: false }] }))}>＋ 新增套餐</button></header>
+          <header><h2>充值套餐</h2><button className="admin-add" onClick={() => setSettings((current) => ({ ...current, rechargePackages: [...current.rechargePackages, { id: `package-${Date.now()}`, name: "新套餐", points: 1000, bonus: 0, priceYuan: 99, enabled: false }] }))}>＋ 新增套餐</button></header>
           <div className="admin-package-grid">{settings.rechargePackages.map((item) => <RechargeEditor key={item.id} item={item} onChange={(next) => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.map((entry) => entry.id === item.id ? next : entry) }))} onDelete={() => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.filter((entry) => entry.id !== item.id) }))} />)}</div>
           <div className="admin-payment-row"><label><span>新会员赠送积分</span><input type="number" min="0" value={settings.newUserPoints} onChange={(event) => setSettings({ ...settings, newUserPoints: Number(event.target.value) })} /></label><label><span>支付接入模式</span><select value={settings.paymentMode} onChange={(event) => setSettings({ ...settings, paymentMode: event.target.value === "wechat" ? "wechat" : "demo" })}><option value="demo">本地演示充值</option><option value="wechat">微信支付（部署时接入）</option></select></label><p>{settings.paymentMode === "demo" ? "当前仅模拟积分到账，不发生真实支付。" : "正式部署时需要商户号、API v3 密钥、证书和支付回调域名。"}</p></div>
           <footer className="admin-savebar"><span>浮动成本任务仍按上游实际 cost 结算，基础积分用于预授权。</span><button disabled={busy} onClick={() => void saveSettings(settings, "积分规则和充值套餐已保存。")}>{busy ? "正在保存…" : "保存积分与充值设置"}</button></footer>
         </section>
       </> : tab === "ai" ? <>
         <section className="admin-list">
-          <header><div><small>AI SERVICE CENTER</small><h2>AI 接口与余额监控</h2></div><button className="admin-add" disabled={checkingAi} onClick={() => void refreshAiStatus()}>{checkingAi ? "正在检测…" : "↻ 刷新实时状态"}</button></header>
-          <p className="admin-section-note">API Key 和 Secret 只保存在服务器环境变量中，后台不会显示明文。余额低于阈值时标记为不足。</p>
+          <header><h2>AI 接口与余额</h2><button className="admin-add" disabled={checkingAi} onClick={() => void refreshAiStatus()}>{checkingAi ? "正在检测…" : "↻ 刷新实时状态"}</button></header>
           <div className="admin-ai-grid">{settings.aiProviders.map((provider) => {
             const status = aiStatuses.find((item) => item.id === provider.id);
             return <article key={provider.id} className={status ? status.sufficient ? "is-ok" : "is-warning" : ""}><header><i>{provider.id === "lk888" ? "AI" : provider.id === "chanjing" ? "声" : "视"}</i><div><b>{provider.name}</b><span>{provider.purpose}</span></div><em>{status ? status.connected ? "已连接" : "异常" : "待检测"}</em></header><div className="ai-balance"><small>实时余额 / 状态</small><b>{status?.balance === null || status?.balance === undefined ? status?.unit || "—" : `${status.balance.toFixed(4)} ${status.unit}`}</b><span>{status?.message || "点击刷新读取状态"}</span></div><label><span>余额预警阈值</span><input type="number" min="0" value={provider.lowBalanceThreshold} onChange={(event) => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, lowBalanceThreshold: Number(event.target.value) } : item) }))} /></label><button className={`admin-switch ${provider.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, enabled: !item.enabled } : item) }))}>{provider.enabled ? "服务启用" : "服务停用"}</button><footer>{status?.secretHint || "密钥状态尚未读取"}</footer></article>;
@@ -373,8 +371,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           <footer className="admin-savebar"><span>停用状态与阈值保存到平台配置；密钥更新在服务器部署环境完成。</span><button disabled={busy} onClick={() => void saveSettings(settings, "AI 服务开关和余额阈值已保存。")}>{busy ? "正在保存…" : "保存 AI 服务设置"}</button></footer>
         </section>
       </> : tab === "voices" ? <section className="admin-list admin-voice-section">
-        <header><div><small>CLONED VOICE ASSETS</small><h2>会员克隆声音</h2></div><span>{voices.length} 个声音模型</span></header>
-        <p className="admin-section-note">会员克隆成功的声音会自动同步到这里。管理员可以核对归属、模型 ID 和试听样本，测试调用仍按会员所选的声音 ID 执行。</p>
+        <header><h2>会员克隆声音</h2><span>{voices.length} 个声音模型</span></header>
         {voices.length ? <div className="admin-voice-list">{voices.map((voice) => <article key={voice.id}>
           <i>{voice.name.slice(0, 1) || "声"}</i>
           <div className="admin-voice-name"><h3>{voice.name}</h3><p>{voice.ownerName} · @{voice.ownerUsername}</p></div>
@@ -384,8 +381,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           {voice.sampleAssetId ? <audio controls preload="none" src={`/api/admin/voices/${encodeURIComponent(voice.id)}/sample`} /> : <small className="admin-voice-no-sample">暂无试听样本</small>}
         </article>)}</div> : <div className="admin-empty">暂无克隆声音，会员完成声音克隆后会自动同步。</div>}
       </section> : <section className="admin-list admin-user-section">
-        <header><div><small>MEMBERS</small><h2>会员、权限与积分</h2></div><div className="admin-user-heading-actions"><span>{users.length} 个账号</span><button className="admin-add" onClick={() => setMemberForm({ ...emptyMember })}>＋ 新增会员</button></div></header>
-        <p className="admin-section-note">暂未开放新用户自助注册。管理员可在这里创建会员账号、修改资料或重置密码。</p>
+        <header><h2>会员、权限与积分</h2><div className="admin-user-heading-actions"><span>{users.length} 个账号</span><button className="admin-add" onClick={() => setMemberForm({ ...emptyMember })}>＋ 新增会员</button></div></header>
         {memberForm ? <form className="admin-member-editor" onSubmit={(event) => void saveMemberAccount(event)}>
           <header><div><b>{memberForm.id ? "编辑会员资料" : "新增会员账号"}</b><span>{memberForm.id ? "密码留空表示不修改" : "创建后会员可立即登录"}</span></div><button type="button" onClick={() => setMemberForm(null)}>取消</button></header>
           <label><span>登录账号</span><input value={memberForm.username} onChange={(event) => setMemberForm({ ...memberForm, username: event.target.value })} placeholder="3–32 位字母或数字" minLength={3} maxLength={32} required /></label>
