@@ -82,3 +82,17 @@ body{background:var(--admin-bg);color:var(--admin-ink)}
 .admin-user-points strong,.admin-voice-id code{color:#8de0e9}
 .admin-empty{color:var(--admin-muted)}
 @media(max-width:760px){.admin-sidebar{padding:8px 10px;border-right:0;border-bottom:1px solid #292c33}.admin-brand,.admin-account{display:none}.admin-sidebar nav{margin:0;grid-template-columns:repeat(3,minmax(96px,1fr));overflow-x:auto}.admin-main{padding:20px 14px 48px}.admin-stats{grid-template-columns:repeat(2,1fr)}}
+
+/* Electric depth */
+:root{--admin-bg:#0c1334;--admin-line:#3c4f97;--admin-surface:#17204f;--admin-raised:#202c69;--admin-field:#10183d;--admin-muted:#b3bde7}
+body,.admin-shell{background-color:var(--admin-bg);background-image:radial-gradient(circle at 14% 6%,rgba(89,217,232,.15),transparent 26%),radial-gradient(circle at 88% 5%,rgba(255,77,141,.17),transparent 28%),linear-gradient(145deg,#101947 0%,#0c1334 50%,#171044 100%);background-attachment:fixed}
+.admin-sidebar{border-right-color:#31458d;background:linear-gradient(180deg,#151e55 0%,#10173d 60%,#16113f 100%);box-shadow:16px 0 44px rgba(2,5,29,.24)}
+.admin-brand{border-bottom-color:#33478d}.admin-brand>i{border-color:#5d75d7;background:#182459}
+.admin-sidebar nav button{color:#aeb9ec}.admin-sidebar nav button:hover{background:#22316d}.admin-sidebar nav button.active{background:linear-gradient(100deg,rgba(255,77,141,.24),rgba(116,67,217,.22));box-shadow:inset 0 0 0 1px #b15292,inset 3px 0 #ff4d8d}
+.admin-account{border-color:#40539b;background:linear-gradient(145deg,#1a285f,#241b57)}
+.admin-main{position:relative;isolation:isolate}.admin-main::before{content:"";position:fixed;z-index:-1;right:3vw;top:10vh;width:min(48vw,720px);height:min(48vw,720px);border-radius:50%;background:conic-gradient(from 210deg,transparent 0 38%,rgba(89,217,232,.08) 46%,rgba(255,77,141,.12) 60%,transparent 70%);filter:blur(24px);pointer-events:none}
+.admin-header h1{text-shadow:3px 3px 0 rgba(255,77,141,.4)}
+.admin-stats article,.admin-editor,.admin-list{border-color:var(--admin-line);background:linear-gradient(145deg,rgba(25,35,86,.97),rgba(18,25,65,.97));box-shadow:0 18px 48px rgba(2,5,29,.22)}
+.admin-feature-list article,.admin-point-rules article,.admin-template-grid article,.admin-package-grid>article,.admin-ai-grid>article,.admin-voice-list article,.admin-user-list article,.admin-member-editor{border-color:#35488e;background:#111940}
+.admin-live,.admin-add,.admin-editor header button,.admin-switch,.admin-template-grid footer button,.admin-project-list button,.admin-payment-row,.ai-balance{background:#202c69}
+.admin-message{border-color:#3b6e6c;background:#152d37}.admin-ai-grid>article.is-warning{background:#3a2230}
