@@ -103,7 +103,8 @@ function initialize(db: DatabaseSync) {
       size_bytes INTEGER NOT NULL DEFAULT 0,
       metadata_json TEXT NOT NULL DEFAULT '{}',
       created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
+      updated_at INTEGER NOT NULL,
+      expires_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS assets_owner_idx ON assets(owner_id, created_at DESC);
 
@@ -156,6 +157,21 @@ function initialize(db: DatabaseSync) {
   if (!clonedVoiceColumns.some((column) => column.name === "language")) {
     db.exec("ALTER TABLE cloned_voices ADD COLUMN language TEXT NOT NULL DEFAULT 'cn'");
   }
+
+  const assetColumns = db.prepare("PRAGMA table_info(assets)").all() as Array<{ name: string }>;
+  if (!assetColumns.some((column) => column.name === "expires_at")) {
+    db.exec("ALTER TABLE assets ADD COLUMN expires_at INTEGER");
+  }
+  db.exec(`
+    UPDATE assets
+    SET expires_at = CASE
+      WHEN kind = 'video' THEN created_at + 7 * 24 * 60 * 60
+      WHEN kind = 'image' THEN created_at + 30 * 24 * 60 * 60
+      ELSE NULL
+    END
+    WHERE expires_at IS NULL AND kind IN ('video', 'image');
+    CREATE INDEX IF NOT EXISTS assets_expiry_idx ON assets(expires_at) WHERE expires_at IS NOT NULL;
+  `);
 
   const now = Math.floor(Date.now() / 1000);
   const insert = db.prepare(`

@@ -18,6 +18,7 @@ export type MemberAssetRow = {
   cover_object_key: string | null;
   cover_content_type: string | null;
   created_at: number;
+  expires_at: number | null;
 };
 
 type AssetDbRow = {
@@ -30,7 +31,13 @@ type AssetDbRow = {
   size_bytes: number;
   metadata_json: string;
   created_at: number;
+  expires_at: number | null;
 };
+
+const ASSET_RETENTION_SECONDS = {
+  image: 30 * 24 * 60 * 60,
+  video: 7 * 24 * 60 * 60,
+} as const;
 
 function dataDirectory() {
   return process.env.APP_DATA_DIR?.trim() || ".data";
@@ -69,7 +76,13 @@ function mapRow(row: AssetDbRow): MemberAssetRow {
     cover_object_key: metadata.coverObjectKey || null,
     cover_content_type: metadata.coverContentType || null,
     created_at: Number(row.created_at),
+    expires_at: row.expires_at === null ? null : Number(row.expires_at),
   };
+}
+
+function retentionExpiry(kind: MemberAssetRow["kind"], createdAt: number) {
+  if (kind !== "image" && kind !== "video") return null;
+  return createdAt + ASSET_RETENTION_SECONDS[kind];
 }
 
 function extensionFor(contentType: string, kind: MemberAssetRow["kind"]) {
@@ -86,21 +99,73 @@ function extensionFor(contentType: string, kind: MemberAssetRow["kind"]) {
 
 function getAssetRow(memberId: string, id: string) {
   return getDatabase().prepare(`
-    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at
+    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
     FROM assets WHERE id = ? AND owner_id = ? LIMIT 1
   `).get(id, memberId) as AssetDbRow | undefined;
 }
 
+function removeAssetFiles(row: AssetDbRow) {
+  const filename = absoluteObjectPath(row.object_key);
+  if (existsSync(filename)) unlinkSync(filename);
+  const asset = mapRow(row);
+  if (asset.cover_object_key) {
+    const coverFilename = absoluteObjectPath(asset.cover_object_key);
+    if (existsSync(coverFilename)) unlinkSync(coverFilename);
+  }
+}
+
+export function purgeExpiredMemberAssets(memberId?: string) {
+  const now = unixNow();
+  const database = getDatabase();
+  const rows = (memberId
+    ? database.prepare(`
+        SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+        FROM assets WHERE owner_id = ? AND expires_at IS NOT NULL AND expires_at <= ?
+      `).all(memberId, now)
+    : database.prepare(`
+        SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+        FROM assets WHERE expires_at IS NOT NULL AND expires_at <= ?
+      `).all(now)) as AssetDbRow[];
+
+  for (const row of rows) {
+    try {
+      removeAssetFiles(row);
+      database.prepare("DELETE FROM assets WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?").run(row.id, now);
+    } catch (error) {
+      console.error(`Purge expired member asset failed: ${row.id}`, error);
+    }
+  }
+  return rows.length;
+}
+
+function getActiveAssetRow(memberId: string, id: string) {
+  const source = getAssetRow(memberId, id);
+  if (!source) return undefined;
+  if (source.expires_at !== null && Number(source.expires_at) <= unixNow()) {
+    try {
+      removeAssetFiles(source);
+      getDatabase().prepare("DELETE FROM assets WHERE id = ? AND owner_id = ?").run(id, memberId);
+    } catch (error) {
+      console.error(`Remove expired member asset failed: ${id}`, error);
+    }
+    return undefined;
+  }
+  return source;
+}
+
 export async function listMemberAssets(member: MemberSession) {
+  purgeExpiredMemberAssets(member.id);
   const rows = getDatabase().prepare(`
-    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at
-    FROM assets WHERE owner_id = ? ORDER BY created_at DESC LIMIT 300
-  `).all(member.id) as AssetDbRow[];
+    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+    FROM assets
+    WHERE owner_id = ? AND (expires_at IS NULL OR expires_at > ?)
+    ORDER BY created_at DESC LIMIT 300
+  `).all(member.id, unixNow()) as AssetDbRow[];
   return rows.map(mapRow);
 }
 
 export async function getMemberAsset(member: MemberSession, id: string) {
-  const source = getAssetRow(member.id, id);
+  const source = getActiveAssetRow(member.id, id);
   if (!source) return null;
   const row = mapRow(source);
   const filename = absoluteObjectPath(row.object_key);
@@ -117,7 +182,7 @@ export async function getMemberAsset(member: MemberSession, id: string) {
 }
 
 export async function getMemberAssetCover(member: MemberSession, id: string) {
-  const source = getAssetRow(member.id, id);
+  const source = getActiveAssetRow(member.id, id);
   if (!source) return null;
   const row = mapRow(source);
   if (!row.cover_object_key) return null;
@@ -149,10 +214,11 @@ function insertAsset(member: MemberSession, input: {
   const createdAt = Number.isFinite(rawCreatedAt)
     ? Math.floor(rawCreatedAt / (rawCreatedAt > 10_000_000_000 ? 1000 : 1))
     : now;
+  const expiresAt = retentionExpiry(input.kind, createdAt);
   getDatabase().prepare(`
     INSERT OR IGNORE INTO assets
-      (id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, updated_at)
-    VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?, ?)
+      (id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, updated_at, expires_at)
+    VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.id,
     member.id,
@@ -169,6 +235,7 @@ function insertAsset(member: MemberSession, input: {
     }),
     createdAt,
     now,
+    expiresAt,
   );
   const saved = getAssetRow(member.id, input.id);
   return saved ? mapRow(saved) : null;
@@ -183,7 +250,7 @@ export async function saveMemberAsset(member: MemberSession, input: {
   sourceTaskId?: string | null;
   createdAt?: number;
 }) {
-  const existing = getAssetRow(member.id, input.id);
+  const existing = getActiveAssetRow(member.id, input.id);
   if (existing) return mapRow(existing);
   const source = await fetch(input.sourceUrl);
   if (!source.ok || !source.body) throw new Error("生成文件暂时无法保存，请稍后在资产空间重试同步。");
@@ -208,7 +275,7 @@ export async function saveUploadedMemberAsset(member: MemberSession, input: {
   sourceTaskId?: string | null;
   createdAt?: number;
 }) {
-  const existing = getAssetRow(member.id, input.id);
+  const existing = getActiveAssetRow(member.id, input.id);
   if (existing) return mapRow(existing);
   const contentType = input.contentType || (input.kind === "video" ? "video/webm" : "application/octet-stream");
   const objectKey = path.join(member.id, input.kind, `${input.id}.${extensionFor(contentType, input.kind)}`);
@@ -236,13 +303,7 @@ export async function saveUploadedMemberAsset(member: MemberSession, input: {
 export async function deleteMemberAsset(member: MemberSession, id: string) {
   const source = getAssetRow(member.id, id);
   if (!source) return false;
-  const filename = absoluteObjectPath(source.object_key);
-  if (existsSync(filename)) unlinkSync(filename);
-  const row = mapRow(source);
-  if (row.cover_object_key) {
-    const coverFilename = absoluteObjectPath(row.cover_object_key);
-    if (existsSync(coverFilename)) unlinkSync(coverFilename);
-  }
+  removeAssetFiles(source);
   const result = getDatabase().prepare("DELETE FROM assets WHERE id = ? AND owner_id = ?").run(id, member.id);
   return Number(result.changes) > 0;
 }

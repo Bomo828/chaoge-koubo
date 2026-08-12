@@ -16,6 +16,8 @@ function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
     // 会员资产接口不返回克隆声音的服务商模型 ID。
     sourceTaskId: item.kind === "voice" ? null : item.source_task_id,
     createdAt: Number(item.created_at) * 1000,
+    expiresAt: item.expires_at === null ? null : Number(item.expires_at) * 1000,
+    retentionDays: item.kind === "video" ? 7 : item.kind === "image" ? 30 : null,
     mediaUrl: `/api/member/assets/${encodeURIComponent(item.id)}`,
     coverUrl: item.cover_object_key ? `/api/member/assets/${encodeURIComponent(item.id)}?cover=1` : "",
   };

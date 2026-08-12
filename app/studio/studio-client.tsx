@@ -42,6 +42,8 @@ type MemberAssetItem = {
   sizeBytes: number;
   sourceTaskId: string | null;
   createdAt: number;
+  expiresAt: number | null;
+  retentionDays: number | null;
   mediaUrl: string;
   coverUrl?: string;
 };
@@ -3672,7 +3674,7 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
 
   return <>
     <ToolHeading title="会员资产空间" />
-    <div className="asset-summary asset-summary-live"><div><b>{usedBytes ? formatAssetSize(usedBytes) : `${items.length} 个资产`}</b><span>{items.length ? `共 ${projects.length} 个项目 · 最近生成 ${formatAssetTime(items[0]?.createdAt ?? 0)}` : "等待保存第一份生成结果"}</span><i><em style={{ width: `${Math.min(100, Math.max(3, usedBytes / (1024 * 1024 * 1024) * 100))}%` }} /></i></div><button disabled={syncing} onClick={() => { setSyncing(true); void loadAssets().finally(() => window.setTimeout(() => setSyncing(false), 500)); }}>{syncing ? "同步中…" : "↻ 立即同步"}</button></div>
+    <div className="asset-summary asset-summary-live"><div><b>{usedBytes ? formatAssetSize(usedBytes) : `${items.length} 个资产`}</b><span>图片保存 30 天 · 视频保存 7 天</span><i><em style={{ width: `${Math.min(100, Math.max(3, usedBytes / (1024 * 1024 * 1024) * 100))}%` }} /></i></div><button disabled={syncing} onClick={() => { setSyncing(true); void loadAssets().finally(() => window.setTimeout(() => setSyncing(false), 500)); }}>{syncing ? "同步中…" : "↻ 立即同步"}</button></div>
     <div className="asset-groups asset-filter-groups">
       <button className={filter === "all" ? "active" : ""} onClick={() => setFilter("all")}><i>全</i><b>全部资产</b><span>{items.length} 个</span></button>
       <button className={filter === "image" ? "active" : ""} onClick={() => setFilter("image")}><i>图</i><b>生成图片</b><span>{imageCount} 个</span></button>
