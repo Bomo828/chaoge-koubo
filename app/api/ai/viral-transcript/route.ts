@@ -13,6 +13,8 @@ type ProviderResponse = {
   output_text?: string;
 };
 
+const TRANSCRIPT_MODELS = ["gpt-5.5", "gpt-5.4-mini"] as const;
+
 function extractText(value: unknown): string {
   if (typeof value === "string") return value.trim();
   if (!value || typeof value !== "object") return "";
@@ -286,46 +288,66 @@ export async function POST(request: Request) {
       ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
     ];
     const tokenBudget = Math.max(1600, Math.min(5000, plainText(sourceText).length * 8));
-    let endpoint: "chat-completions" | "responses" = "responses";
-    let response: ProviderResponse;
-    try {
-      response = await lk888Fetch<ProviderResponse>("/v1/responses", {
-        method: "POST",
-        signal: AbortSignal.timeout(55_000),
-        body: JSON.stringify({
-          model: "gpt-5.5",
-          instructions: system,
-          input: [{
-            role: "user",
-            content: content.map((part) => "image_url" in part
-              ? { type: "input_image", image_url: part.image_url.url }
-              : { type: "input_text", text: part.text }),
-          }],
-          temperature: 0.05,
-          max_output_tokens: tokenBudget,
-        }),
-      });
-      if (!extractText(response)) throw new AiProviderError("主识别通道没有返回有效内容。", 502);
-    } catch {
-      // 多模态主通道异常时自动切换兼容接口，不让用户重新上传视频。
-      endpoint = "chat-completions";
-      response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(55_000),
-        body: JSON.stringify({
-          model: "gpt-5.5",
-          temperature: 0.05,
-          max_tokens: tokenBudget,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content },
-          ],
-        }),
-      });
-      if (!extractText(response)) throw new AiProviderError("备用识别通道没有返回有效内容。", 502);
+    let endpoint: "chat-completions" | "responses" | "local" = "local";
+    let selectedModel: string = "local-segmentation";
+    let response: ProviderResponse | null = null;
+    for (const model of TRANSCRIPT_MODELS) {
+      try {
+        response = await lk888Fetch<ProviderResponse>("/v1/responses", {
+          method: "POST",
+          signal: AbortSignal.timeout(55_000),
+          body: JSON.stringify({
+            model,
+            instructions: system,
+            input: [{
+              role: "user",
+              content: content.map((part) => "image_url" in part
+                ? { type: "input_image", image_url: part.image_url.url }
+                : { type: "input_text", text: part.text }),
+            }],
+            temperature: 0.05,
+            max_output_tokens: tokenBudget,
+          }),
+        });
+        if (!extractText(response)) throw new AiProviderError("主识别通道没有返回有效内容。", 502);
+        endpoint = "responses";
+        selectedModel = model;
+        break;
+      } catch {
+        try {
+          response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
+            method: "POST",
+            signal: AbortSignal.timeout(55_000),
+            body: JSON.stringify({
+              model,
+              temperature: 0.05,
+              max_tokens: tokenBudget,
+              response_format: { type: "json_object" },
+              messages: [
+                { role: "system", content: system },
+                { role: "user", content },
+              ],
+            }),
+          });
+          if (!extractText(response)) throw new AiProviderError("备用识别通道没有返回有效内容。", 502);
+          endpoint = "chat-completions";
+          selectedModel = model;
+          break;
+        } catch {
+          response = null;
+        }
+      }
     }
-    const parsed = parseJson(extractText(response));
+    let parsed: Record<string, unknown> = {};
+    if (response) {
+      try {
+        parsed = parseJson(extractText(response));
+      } catch {
+        response = null;
+        endpoint = "local";
+        selectedModel = "local-segmentation";
+      }
+    }
     const aiCaptions = normalizedAiCaptions(parsed.captions, sourceCaptions, duration);
     const captions = aiCaptions.length ? aiCaptions : localSentenceCaptions(sourceCaptions);
     const titleCandidates = [
@@ -335,11 +357,15 @@ export async function POST(request: Request) {
     const title = titleCandidates.map(completeTitle).find(Boolean) || "";
     return Response.json({
       title,
-      summary: typeof parsed.summary === "string" ? parsed.summary.trim().slice(0, 180) : "",
+      summary: typeof parsed.summary === "string"
+        ? parsed.summary.trim().slice(0, 180)
+        : response
+          ? "AI 已完成英文口播校对与整句分段。"
+          : "AI 模型繁忙，已自动使用完整单词与停顿分段，可继续编辑。",
       captions,
-      model: "gpt-5.5",
+      model: selectedModel,
       endpoint,
-      degraded: !aiCaptions.length,
+      degraded: !response || !aiCaptions.length,
     });
   } catch (error) {
     return aiErrorResponse(error);
