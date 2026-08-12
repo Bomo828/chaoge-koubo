@@ -3146,6 +3146,17 @@
   background: var(--lip-field);
 }
 .lip-sync-workspace .voice-upload-preview span { color: var(--lip-muted); font-size: 12px; }
+.lip-sync-workspace .voice-upload-preview audio { min-width: 0; height: 38px; }
+.lip-sync-workspace .voice-preview-error {
+  margin-top: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(255, 103, 124, .62);
+  border-radius: 10px;
+  background: rgba(123, 31, 55, .3);
+  color: #ffc2cd;
+  font-size: 12px;
+  line-height: 1.5;
+}
 .lip-sync-workspace .video-file-drop.is-compact {
   min-height: 112px;
   margin-top: 14px;

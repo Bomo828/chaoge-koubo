@@ -1340,6 +1340,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioFileName, setAudioFileName] = useState("");
   const [voiceUploadPreviewUrl, setVoiceUploadPreviewUrl] = useState("");
+  const [voiceUploadPreviewError, setVoiceUploadPreviewError] = useState("");
   const [voiceName, setVoiceName] = useState("");
   const [voiceLanguage, setVoiceLanguage] = useState<"cn" | "en">("cn");
   const [uploadedVoiceReady, setUploadedVoiceReady] = useState(false);
@@ -1552,10 +1553,6 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   }, [viralImportAsset, viralSourceFile, viralVideoPreviewUrl]);
 
   useEffect(() => () => {
-    if (voiceUploadPreviewUrl) URL.revokeObjectURL(voiceUploadPreviewUrl);
-  }, [voiceUploadPreviewUrl]);
-
-  useEffect(() => () => {
     if (lipVideoPreviewUrl) URL.revokeObjectURL(lipVideoPreviewUrl);
   }, [lipVideoPreviewUrl]);
 
@@ -1642,6 +1639,40 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     } finally {
       setVoiceBusy(false);
     }
+  }
+
+  function prepareVoiceAudioPreview(file: File | null) {
+    setAudioFile(file);
+    setAudioFileName(file?.name ?? "");
+    setVoiceUploadPreviewUrl("");
+    setVoiceUploadPreviewError("");
+    setUploadedVoiceReady(false);
+    setSelectedVoice("");
+    setSpeechAudioReady(false);
+    setSpeechAudioUrl("");
+    setSpeechError("");
+    setVoiceError("");
+    setVoiceNotice("");
+    if (!file) return;
+    if (file.size > 10 * 1024 * 1024) {
+      setVoiceUploadPreviewError("音频文件不能超过 10MB，请重新选择。");
+      return;
+    }
+    const extension = file.name.split(".").pop()?.toLowerCase();
+    const normalizedType = extension === "mp3"
+      ? "audio/mpeg"
+      : extension === "wav"
+        ? "audio/wav"
+        : extension === "m4a" || extension === "mp4"
+          ? "audio/mp4"
+          : file.type || "audio/mpeg";
+    const reader = new FileReader();
+    reader.onload = () => {
+      if (typeof reader.result === "string") setVoiceUploadPreviewUrl(reader.result);
+      else setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
+    };
+    reader.onerror = () => setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
+    reader.readAsDataURL(new Blob([file], { type: normalizedType }));
   }
 
   async function auditionClonedVoice(voiceId: string) {
@@ -3283,7 +3314,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
             {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
-            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { const file = event.target.files?.[0] ?? null; setAudioFile(file); setAudioFileName(file?.name ?? ""); setVoiceUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); resetVoiceResult(); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio src={voiceUploadPreviewUrl} controls preload="metadata" /></div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : "克隆中文 · 10积分"}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : "克隆英文 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
+            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => setVoiceUploadPreviewError("浏览器无法播放该音频，请确认文件是有效的 MP3、WAV 或 M4A。")}>当前浏览器不支持音频试听。</audio></div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : "克隆中文 · 10积分"}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : "克隆英文 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>
