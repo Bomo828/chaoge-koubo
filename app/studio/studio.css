@@ -3106,12 +3106,12 @@
   background: var(--lip-field);
 }
 .lip-sync-workspace .voice-source-tabs button {
-  min-height: 46px;
+  min-height: 50px;
   border: 0;
   border-radius: 8px;
   background: transparent;
   color: #9eacd9;
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 800;
   cursor: pointer;
   transition: background .18s ease, color .18s ease;
@@ -3165,51 +3165,35 @@
 .lip-sync-workspace .voice-clone-controls {
   margin-top: 10px;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 210px 220px;
+  grid-template-columns: minmax(0, 1fr) 170px 170px;
   gap: 8px;
 }
 .lip-sync-workspace .voice-clone-controls > input { height: 48px; color: var(--lip-text); font-size: 13px; }
-.voice-language-segment {
-  position: relative;
-  z-index: 3;
-  padding: 4px;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 3px;
-  border: 1px solid var(--lip-line-soft);
-  border-radius: 10px;
-  background: var(--lip-field);
-}
-.lip-sync-workspace .voice-language-segment button {
-  position: relative;
-  z-index: 4;
+.lip-sync-workspace .voice-clone-action {
   min-width: 0;
-  min-height: 38px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 7px;
-  background: transparent;
-  color: var(--lip-muted);
+  min-height: 48px;
+  padding: 0 14px;
+  border: 1px solid rgba(89, 217, 232, .64);
+  border-radius: 10px;
+  background: rgba(89, 217, 232, .14);
+  color: #c7faff;
   font-size: 13px;
   font-weight: 900;
-  line-height: 1;
-  pointer-events: auto;
   cursor: pointer;
+  transition: border-color .18s ease, background .18s ease, color .18s ease;
 }
-.lip-sync-workspace .voice-language-segment button:hover { background: rgba(83, 107, 208, .22); color: var(--lip-text); }
-.lip-sync-workspace .voice-language-segment button.active {
+.lip-sync-workspace .voice-clone-action.is-english {
+  border-color: rgba(255, 77, 141, .64);
+  background: rgba(255, 77, 141, .14);
+  color: #ffc2da;
+}
+.lip-sync-workspace .voice-clone-action.is-chinese:not(:disabled):hover {
   background: var(--lip-cyan);
   color: #071a20;
-  box-shadow: 0 5px 14px rgba(89, 217, 232, .18);
 }
-.lip-sync-workspace .voice-clone-controls .voice-clone-submit {
-  min-width: 0;
-  border: 0;
-  border-radius: 10px;
-  background: var(--lip-cyan);
-  color: #071a20;
-  font-size: 13px;
-  font-weight: 900;
+.lip-sync-workspace .voice-clone-action.is-english:not(:disabled):hover {
+  background: var(--lip-pink);
+  color: #210711;
 }
 .lip-sync-workspace .voice-clone-controls button:disabled { opacity: .42; cursor: not-allowed; }
 .lip-sync-workspace .voice-clone-ready { color: #aef4fb; font-size: 12px; }
@@ -3228,13 +3212,35 @@
   height: 44px;
   border-color: var(--lip-line-soft);
   border-radius: 10px;
-  background: var(--lip-field);
+  background: #27356f;
   color: var(--lip-text);
   font-size: 13px;
   font-weight: 800;
 }
 .lip-sync-workspace .speech-speed-field > span { color: var(--lip-muted); font-size: 11px; }
-.lip-sync-workspace .speech-speed-field > select { color: var(--lip-text); font-size: 13px; }
+.studio-shell:not(.is-image-lab) .lip-sync-workspace .speech-speed-field > select {
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px;
+  border: 0;
+  background: transparent;
+  color: var(--lip-text);
+  font-size: 13px;
+  font-weight: 800;
+  text-align: center;
+  text-align-last: center;
+  box-shadow: none;
+}
+.studio-shell:not(.is-image-lab) .lip-sync-workspace .speech-speed-field > select option {
+  background: #27356f;
+  color: var(--lip-text);
+  text-align: center;
+}
+.lip-sync-workspace .speech-speed-field {
+  grid-template-columns: auto minmax(0, 1fr);
+  justify-content: center;
+  background: linear-gradient(135deg, #2a3a7a, #233064);
+}
 .lip-sync-workspace .video-speech-actions > button:not(:disabled):hover { border-color: var(--lip-cyan); }
 .lip-sync-workspace .video-speech-actions > button.primary {
   border-color: var(--lip-pink);
