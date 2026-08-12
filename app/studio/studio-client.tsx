@@ -3241,26 +3241,51 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       && Boolean(lipVideoFile);
     const currentSavedVoice = savedVoices.find((item) => item.voiceId === selectedVoice);
     const currentVoiceName = currentSavedVoice?.name || (voiceSource === "upload" ? voiceName || "待克隆声音" : "尚未选择声音");
-    return <section className="video-workspace">
-      <header className="video-workspace-head">
+    const lipSyncCurrentStep = lipSyncResultUrl || canGenerateLipSync ? 4 : speechAudioReady ? 3 : voiceReady ? 2 : 1;
+    const resetVoiceResult = () => {
+      setUploadedVoiceReady(false);
+      setSelectedVoice("");
+      setSpeechAudioReady(false);
+      setSpeechAudioUrl("");
+      setSpeechError("");
+      setVoiceError("");
+      setVoiceNotice("");
+    };
+    return <section className="video-workspace lip-sync-workspace">
+      <header className="video-workspace-head lip-sync-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
         <div><h1>对口型视频</h1></div>
-        <span>数字人口播</span>
+        <span>{lipSyncResultUrl ? "视频已完成" : `正在制作 · 第 ${lipSyncCurrentStep} 步`}</span>
       </header>
+      <nav className="lip-sync-progress" aria-label="对口型视频制作进度">
+        {[
+          { label: "声音", detail: voiceReady ? currentVoiceName : "选择或克隆" },
+          { label: "口播", detail: speechAudioReady ? "音频已生成" : "输入文案" },
+          { label: "视频", detail: lipVideoName || "上传正脸视频" },
+          { label: "合成", detail: lipSyncResultUrl ? "制作完成" : "同步人物口型" },
+        ].map((item, index) => {
+          const step = index + 1;
+          const isComplete = step < lipSyncCurrentStep || Boolean(lipSyncResultUrl);
+          const isActive = step === lipSyncCurrentStep && !lipSyncResultUrl;
+          return <span className={isComplete ? "complete" : isActive ? "active" : ""} aria-current={isActive ? "step" : undefined} key={item.label}>
+            <i>{step}</i><b>{item.label}</b><small>{item.detail}</small>
+          </span>;
+        })}
+      </nav>
       <div className="video-builder-grid lip-sync-grid">
         <div className="video-builder-form">
-          <section className="video-builder-card">
-            <div className="video-card-title"><div><b>选择或克隆声音</b></div></div>
+          <section className={`video-builder-card lip-sync-step-card ${voiceReady ? "is-complete" : "is-active"}`}>
+            <div className="video-card-title lip-sync-card-title"><span>01</span><div><b>选择或克隆声音</b><small>{voiceReady ? `已选择 ${currentVoiceName}` : "先确定口播使用的声音"}</small></div>{voiceReady ? <em>已完成</em> : <em>当前步骤</em>}</div>
             <nav className="voice-source-tabs">
               <button type="button" className={voiceSource === "saved" ? "active" : ""} onClick={() => { setVoiceSource("saved"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>选择已有声音</button>
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
             {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
-            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { const file = event.target.files?.[0] ?? null; setAudioFile(file); setAudioFileName(file?.name ?? ""); setVoiceUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>{voiceLanguage === "en" ? "英文模式：请上传清晰英文人声，无背景音乐" : "要求 3–10 秒、无背景音乐，本地测试不超过 10MB"}</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio src={voiceUploadPreviewUrl} controls preload="metadata" /></div> : null}<div><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }} /><button type="button" className={`voice-language-toggle ${voiceLanguage === "en" ? "active" : ""}`} aria-pressed={voiceLanguage === "en"} disabled={voiceBusy} onClick={() => { setVoiceLanguage((current) => current === "cn" ? "en" : "cn"); setUploadedVoiceReady(false); setSelectedVoice(""); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>{voiceLanguage === "en" ? "英文克隆已开启" : "开启英文克隆"}</button><button type="button" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice()}>{voiceBusy ? "正在克隆…" : voiceLanguage === "en" ? "克隆英文声音 · 10积分" : "克隆中文声音 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
+            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { const file = event.target.files?.[0] ?? null; setAudioFile(file); setAudioFileName(file?.name ?? ""); setVoiceUploadPreviewUrl(file ? URL.createObjectURL(file) : ""); resetVoiceResult(); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>{voiceLanguage === "en" ? "英文人声 · 无背景音乐 · 3–10 秒" : "中文人声 · 无背景音乐 · 3–10 秒"}</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio src={voiceUploadPreviewUrl} controls preload="metadata" /></div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><div className="voice-language-segment" role="group" aria-label="克隆声音语言"><button type="button" className={voiceLanguage === "cn" ? "active" : ""} aria-pressed={voiceLanguage === "cn"} disabled={voiceBusy} onClick={() => { setVoiceLanguage("cn"); resetVoiceResult(); }}>中文</button><button type="button" className={voiceLanguage === "en" ? "active" : ""} aria-pressed={voiceLanguage === "en"} disabled={voiceBusy} onClick={() => { setVoiceLanguage("en"); resetVoiceResult(); }}>英文</button></div><button type="button" className="voice-clone-submit" disabled={!audioFile || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice()}>{voiceBusy ? "正在克隆…" : `克隆${voiceLanguage === "en" ? "英文" : "中文"}声音 · 10积分`}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
-          <section className="video-builder-card">
-            <div className="video-card-title"><div><b>生成口播音频</b></div></div>
+          <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>
+            <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>生成口播音频</b><small>{speechAudioReady ? "音频已生成，可以试听" : "输入文案并调整说话速度"}</small></div>{speechAudioReady ? <em>已完成</em> : voiceReady ? <em>当前步骤</em> : <em>等待声音</em>}</div>
             <textarea value={script} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
               <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
@@ -3279,13 +3304,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {speechError ? <div className="video-agent-error" role="alert">{speechError}</div> : null}
             {speechAudioReady && speechAudioUrl ? <div className="speech-audio-preview"><div><i>♪</i><span><b>口播音频已生成</b><small>{`${currentVoiceName} · ${script.length} 字 · ${speechSpeed}×`}</small></span></div><audio src={speechAudioUrl} controls preload="metadata" /></div> : null}
           </section>
-          <section className="video-builder-card">
-            <div className="video-card-title"><div><b>上传本人视频</b></div></div>
+          <section className={`video-builder-card lip-sync-step-card ${lipVideoName ? "is-complete" : speechAudioReady ? "is-active" : "is-pending"}`}>
+            <div className="video-card-title lip-sync-card-title"><span>03</span><div><b>上传本人视频</b><small>{lipVideoName ? "人物视频已就绪" : "使用正脸、清晰、嘴部无遮挡的视频"}</small></div>{lipVideoName ? <em>已完成</em> : speechAudioReady ? <em>当前步骤</em> : <em>等待口播</em>}</div>
             <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0] ?? null; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(file ? URL.createObjectURL(file) : ""); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
             {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 })} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
           </section>
-          <section className="video-builder-card lip-sync-final-card">
-            <div className="video-card-title"><div><b>生成对口型视频</b></div></div>
+          <section className={`video-builder-card lip-sync-step-card lip-sync-final-card ${lipSyncResultUrl ? "is-complete" : canGenerateLipSync ? "is-active" : "is-pending"}`}>
+            <div className="video-card-title lip-sync-card-title"><span>04</span><div><b>生成对口型视频</b><small>{lipSyncResultUrl ? "成片已保存，可继续网感剪辑" : "声音和人物视频将自动同步"}</small></div>{lipSyncResultUrl ? <em>已完成</em> : canGenerateLipSync ? <em>可以生成</em> : <em>等待素材</em>}</div>
             <div className="lip-sync-final-actions">
               <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : canGenerateLipSync ? "✦ 开始生成对口型视频 · 200积分" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
@@ -3293,10 +3318,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {lipSyncError ? <div className="video-agent-error" role="alert">{lipSyncError}</div> : null}
           </section>
         </div>
-        <aside className="video-builder-preview">
-          <div className="video-preview-head"><div><b>口播预览</b></div><span>{lipSyncBusy ? `${lipSyncProgress || 0}%` : lipSyncResultUrl ? "已完成" : "等待制作"}</span></div>
+        <aside className="video-builder-preview lip-sync-preview">
+          <div className="video-preview-head"><div><b>成片监看</b><small>{lipSyncResultUrl ? "对口型结果" : lipVideoPreviewUrl ? "原始视频" : "等待视频"}</small></div><span>{lipSyncBusy ? `${lipSyncProgress || 0}%` : lipSyncResultUrl ? "已完成" : `第 ${lipSyncCurrentStep} 步`}</span></div>
           <div className={`video-phone-frame is-lip ${lipVideoPreviewUrl || lipSyncResultUrl ? "has-video" : ""}`}>{lipSyncResultUrl ? <video src={lipSyncResultUrl} controls playsInline preload="metadata" /> : lipVideoPreviewUrl ? <video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" /> : <div><i>●</i><b>上传视频后在这里预览</b><span>{currentVoiceName} · 9:16 竖版</span></div>}</div>
-          <ol><li className={voiceReady ? "done" : "active"}><b>选择或克隆声音</b><span>{voiceReady ? `已选择：${currentVoiceName}` : "等待选择声音"}</span></li><li className={speechAudioReady ? "done" : voiceReady ? "active" : ""}><b>生成口播音频</b><span>{speechAudioReady ? "口播音频已生成，可试听" : "等待生成口播音频"}</span></li><li className={lipVideoName ? "done" : speechAudioReady ? "active" : ""}><b>上传本人视频</b><span>{lipVideoName || "等待上传正脸视频"}</span></li><li className={lipSyncResultUrl ? "done" : canGenerateLipSync ? "active" : ""}><b>口型同步</b><span>{lipSyncResultUrl ? "对口型视频已生成并保存" : canGenerateLipSync ? "素材已齐，可以开始生成" : "等待视频与口播音频"}</span></li></ol>
+          <div className="lip-sync-preview-state"><small>当前任务</small><b>{lipSyncResultUrl ? "成片已生成" : lipSyncBusy ? "正在同步人物口型" : lipSyncCurrentStep === 1 ? "先选择声音" : lipSyncCurrentStep === 2 ? "生成口播音频" : lipSyncCurrentStep === 3 ? "上传人物视频" : "素材齐全，可以生成"}</b><span>{lipSyncResultUrl ? "可播放检查，或进入一键网感继续包装" : `${currentVoiceName}${lipVideoName ? ` · ${lipVideoSize.width} × ${lipVideoSize.height}` : ""}`}</span></div>
         </aside>
       </div>
     </section>;
