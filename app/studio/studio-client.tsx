@@ -1337,10 +1337,14 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [voiceNotice, setVoiceNotice] = useState("");
   const voiceRecoveryStarted = useRef(false);
   const voiceRecoveryPending = useRef(false);
+  const voicePreviewRequest = useRef(0);
+  const voicePreviewConversionStarted = useRef(false);
+  const voicePreviewConverted = useRef(false);
   const [audioFile, setAudioFile] = useState<File | null>(null);
   const [audioFileName, setAudioFileName] = useState("");
   const [voiceUploadPreviewUrl, setVoiceUploadPreviewUrl] = useState("");
   const [voiceUploadPreviewError, setVoiceUploadPreviewError] = useState("");
+  const [voiceUploadPreviewConverting, setVoiceUploadPreviewConverting] = useState(false);
   const [voiceName, setVoiceName] = useState("");
   const [voiceLanguage, setVoiceLanguage] = useState<"cn" | "en">("cn");
   const [uploadedVoiceReady, setUploadedVoiceReady] = useState(false);
@@ -1641,11 +1645,16 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     }
   }
 
-  function prepareVoiceAudioPreview(file: File | null) {
-    setAudioFile(file);
+  async function prepareVoiceAudioPreview(file: File | null) {
+    const request = voicePreviewRequest.current + 1;
+    voicePreviewRequest.current = request;
+    setAudioFile(null);
     setAudioFileName(file?.name ?? "");
     setVoiceUploadPreviewUrl("");
     setVoiceUploadPreviewError("");
+    setVoiceUploadPreviewConverting(false);
+    voicePreviewConversionStarted.current = false;
+    voicePreviewConverted.current = false;
     setUploadedVoiceReady(false);
     setSelectedVoice("");
     setSpeechAudioReady(false);
@@ -1658,21 +1667,111 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setVoiceUploadPreviewError("音频文件不能超过 10MB，请重新选择。");
       return;
     }
-    const extension = file.name.split(".").pop()?.toLowerCase();
-    const normalizedType = extension === "mp3"
-      ? "audio/mpeg"
-      : extension === "wav"
-        ? "audio/wav"
-        : extension === "m4a" || extension === "mp4"
-          ? "audio/mp4"
-          : file.type || "audio/mpeg";
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setVoiceUploadPreviewUrl(reader.result);
-      else setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
-    };
-    reader.onerror = () => setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
-    reader.readAsDataURL(new Blob([file], { type: normalizedType }));
+    try {
+      const header = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+      if (voicePreviewRequest.current !== request) return;
+      const ascii = String.fromCharCode(...header);
+      const isMp4Audio = ascii.slice(4, 8) === "ftyp";
+      const isWave = ascii.startsWith("RIFF") && ascii.slice(8, 12) === "WAVE";
+      const isOgg = ascii.startsWith("OggS");
+      const isWebm = header[0] === 0x1a && header[1] === 0x45 && header[2] === 0xdf && header[3] === 0xa3;
+      const isMp3 = ascii.startsWith("ID3") || (header[0] === 0xff && (header[1] & 0xe0) === 0xe0);
+      const extension = file.name.split(".").pop()?.toLowerCase();
+      const normalizedType = isMp4Audio
+        ? "audio/mp4"
+        : isWave
+          ? "audio/wav"
+          : isOgg
+            ? "audio/ogg"
+            : isWebm
+              ? "audio/webm"
+              : isMp3
+                ? "audio/mpeg"
+                : file.type || (extension === "m4a" || extension === "mp4" ? "audio/mp4" : "audio/mpeg");
+      const normalizedExtension = normalizedType === "audio/mp4"
+        ? "m4a"
+        : normalizedType === "audio/wav"
+          ? "wav"
+          : normalizedType === "audio/ogg"
+            ? "ogg"
+            : normalizedType === "audio/webm"
+              ? "webm"
+              : "mp3";
+      const baseName = file.name.replace(/\.[^.]+$/, "") || "voice-sample";
+      const normalizedFile = new File([file], `${baseName}.${normalizedExtension}`, {
+        type: normalizedType,
+        lastModified: file.lastModified,
+      });
+      setAudioFile(normalizedFile);
+      setAudioFileName(file.name);
+      const reader = new FileReader();
+      reader.onload = () => {
+        if (voicePreviewRequest.current !== request) return;
+        if (typeof reader.result === "string") setVoiceUploadPreviewUrl(reader.result);
+        else setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
+      };
+      reader.onerror = () => {
+        if (voicePreviewRequest.current === request) setVoiceUploadPreviewError("音频读取失败，请重新选择文件。");
+      };
+      reader.readAsDataURL(normalizedFile);
+    } catch {
+      if (voicePreviewRequest.current === request) setVoiceUploadPreviewError("无法识别音频格式，请重新导出为 MP3、WAV 或 M4A。");
+    }
+  }
+
+  async function convertVoiceAudioForBrowser() {
+    const source = audioFile;
+    if (!source || voiceUploadPreviewConverting || voicePreviewConversionStarted.current) return;
+    const request = voicePreviewRequest.current;
+    voicePreviewConversionStarted.current = true;
+    setVoiceUploadPreviewConverting(true);
+    setVoiceUploadPreviewError("");
+    try {
+      const { FFmpeg } = await import("@ffmpeg/ffmpeg");
+      if (voicePreviewRequest.current !== request) return;
+      const ffmpeg = new FFmpeg();
+      let converted: Uint8Array | string;
+      try {
+        await ffmpeg.load({
+          classWorkerURL: "/ffmpeg/ffmpeg-worker.js",
+          coreURL: "/ffmpeg/ffmpeg-core.js",
+          wasmURL: "/ffmpeg/ffmpeg-core.wasm",
+        });
+        const inputName = `voice-input-${request}.m4a`;
+        const outputName = `voice-output-${request}.mp3`;
+        await ffmpeg.writeFile(inputName, new Uint8Array(await source.arrayBuffer()));
+        const exitCode = await ffmpeg.exec(["-i", inputName, "-ac", "1", "-ar", "24000", "-b:a", "96k", outputName], 120_000);
+        if (exitCode !== 0) throw new Error("音频转换失败");
+        converted = await ffmpeg.readFile(outputName);
+      } finally {
+        ffmpeg.terminate();
+      }
+      if (!(converted instanceof Uint8Array) || !converted.byteLength) throw new Error("音频转换结果为空");
+      if (voicePreviewRequest.current !== request) return;
+      const baseName = source.name.replace(/\.[^.]+$/, "") || "voice-sample";
+      const convertedBytes = new Uint8Array(converted.byteLength);
+      convertedBytes.set(converted);
+      const convertedFile = new File([convertedBytes.buffer], `${baseName}.mp3`, { type: "audio/mpeg" });
+      const previewUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("兼容音频读取失败"));
+        reader.onerror = () => reject(new Error("兼容音频读取失败"));
+        reader.readAsDataURL(convertedFile);
+      });
+      if (voicePreviewRequest.current !== request) return;
+      voicePreviewConverted.current = true;
+      setAudioFile(convertedFile);
+      setVoiceUploadPreviewUrl(previewUrl);
+      setVoiceUploadPreviewError("");
+    } catch (error) {
+      if (voicePreviewRequest.current === request) {
+        setVoiceUploadPreviewError(error instanceof Error
+          ? `自动转换失败：${error.message}。请将录音导出为标准 MP3、WAV 或 AAC。`
+          : "自动转换失败，请将录音导出为标准 MP3、WAV 或 AAC。");
+      }
+    } finally {
+      if (voicePreviewRequest.current === request) setVoiceUploadPreviewConverting(false);
+    }
   }
 
   async function auditionClonedVoice(voiceId: string) {
@@ -3314,7 +3413,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
             {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
-            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm" onChange={(event) => { prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => setVoiceUploadPreviewError("浏览器无法播放该音频，请确认文件是有效的 MP3、WAV 或 M4A。")}>当前浏览器不支持音频试听。</audio></div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : "克隆中文 · 10积分"}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : "克隆英文 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
+            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm" onChange={(event) => { void prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => { if (voicePreviewConverted.current) setVoiceUploadPreviewError("浏览器仍无法播放转换后的音频，请重新导出为标准 MP3 或 WAV。"); else void convertVoiceAudioForBrowser(); }}>当前浏览器不支持音频试听。</audio>{voiceUploadPreviewConverting ? <em>正在转换兼容格式…</em> : null}</div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : "克隆中文 · 10积分"}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : "克隆英文 · 10积分"}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>

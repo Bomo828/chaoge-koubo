@@ -14,11 +14,13 @@
     "typecheck": "tsc --noEmit --incremental false --pretty false",
     "test": "pnpm run typecheck && pnpm run build && node tests/next-smoke.mjs",
     "test:smoke": "node tests/next-smoke.mjs",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern public/ffmpeg",
     "publish:production": "bash scripts/publish-production.sh",
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
+    "@ffmpeg/core": "0.12.10",
+    "@ffmpeg/ffmpeg": "0.12.15",
     "@phosphor-icons/react": "^2.1.10",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",

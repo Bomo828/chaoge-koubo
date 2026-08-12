@@ -3147,6 +3147,13 @@
 }
 .lip-sync-workspace .voice-upload-preview span { color: var(--lip-muted); font-size: 12px; }
 .lip-sync-workspace .voice-upload-preview audio { min-width: 0; height: 38px; }
+.lip-sync-workspace .voice-upload-preview em {
+  color: var(--lip-cyan);
+  font-size: 11px;
+  font-style: normal;
+  font-weight: 800;
+  white-space: nowrap;
+}
 .lip-sync-workspace .voice-preview-error {
   margin-top: 8px;
   padding: 10px 12px;
