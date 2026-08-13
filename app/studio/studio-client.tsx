@@ -3542,7 +3542,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         <section className="viral-template-pane">
           <div className="viral-pane-heading">
             <span><b>选择网感模板</b></span>
-            <em>已选：{templates.find((template) => template.id === viralTemplate)?.name}</em>
+            <em>{templates.find((template) => template.id === viralTemplate)?.name}</em>
           </div>
           <div className="viral-template-grid is-quick">
             {viralTemplatesLoading ? <p className="viral-template-state">正在同步管理员模板库…</p> : null}
@@ -3570,7 +3570,6 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
                 {viralTemplate === template.id ? <i>已选</i> : null}
               </span>
               <strong>{template.name}</strong>
-              <small>{template.description || template.titleEffect}</small>
             </button>)}
           </div>
           {viralAnalysisSummary ? <p className="viral-analysis-summary">{viralAnalysisSummary}</p> : null}
