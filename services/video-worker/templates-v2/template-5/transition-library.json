@@ -1,0 +1,1 @@
+{"schema_version":2,"template_id":"template-5","items":[{"style":"drift-right","duration":0.36,"intensity":0.2},{"style":"soft-flash","duration":0.24,"intensity":0.18}],"rule":"只在语义停顿或真实场景变化触发。"}

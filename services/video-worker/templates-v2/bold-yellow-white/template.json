@@ -1,0 +1,137 @@
+{
+  "version": 2,
+  "package_contract_version": 3,
+  "id": "bold-yellow-white",
+  "name": "醒目黄白",
+  "package_mode": "isolated",
+  "renderer_key": "bold-yellow-white-impact-v1",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "file:///Users/chaoge/Downloads/mb4.mp4",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover"
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "actual_first_frame": true,
+    "standalone_export": true,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg"
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 2.8,
+    "title_mode": "persistent",
+    "title_lines": 2,
+    "title_animation": "staggered-punch",
+    "title_font_size": 92,
+    "title_line_gap": -7,
+    "safe_top_px": 172,
+    "title_font_size_px": 92,
+    "sfx": "opening-impact"
+  },
+  "body": {
+    "caption_min_chars": 2,
+    "caption_max_chars": 8,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 1.9,
+    "pause_split_seconds": 0.34,
+    "bilingual": false,
+    "word_timing": true,
+    "word_highlight": true,
+    "caption_safe_inset": 104,
+    "caption_max_width": 872,
+    "caption_y": 1235,
+    "transition_trigger": "scene-change-or-long-pause-or-cadence",
+    "transition_pool": [
+      {"style": "soft-punch", "duration": 0.22, "intensity": 0.72},
+      {"style": "drift-left", "duration": 0.25, "intensity": 0.48},
+      {"style": "soft-flash", "duration": 0.18, "intensity": 0.42}
+    ],
+    "rhythm_interval_seconds": 3.6,
+    "minimum_transition_gap_seconds": 2.8,
+    "scene_threshold": 0.31,
+    "maximum_effects_per_minute": 20,
+    "punch_scale": 0.026
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1.0,
+    "mode": "soft-fade",
+    "sfx": "end-confirm"
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H0000F3FF",
+    "outline": "&H00000000",
+    "title_size_ratio": 0.085,
+    "subtitle_size_ratio": 0.052,
+    "title_y_ratio": 0.09,
+    "subtitle_y_ratio": 0.64,
+    "title_animation": "staggered-punch",
+    "subtitle_animation": "impact-pop",
+    "caption_mode": "kinetic-bold-yellow-white",
+    "keyword_color": "#fff300",
+    "subtitle_italic": true,
+    "outline_width": 5,
+    "shadow": "3px 6px 0 rgba(0,0,0,0.9)"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1.0,
+    "sfx_gain": 0.18,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-pool",
+      "pool_id": "bold-yellow-white-v1",
+      "track_id": "bright-training",
+      "file": "music/bold-yellow-white/bright-training.ogg",
+      "volume": 0.05,
+      "fade_in_seconds": 0.8,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true,
+      "tracks": [
+        {"id": "bright-training", "file": "music/bold-yellow-white/bright-training.ogg", "moods": ["明快", "培训", "知识"], "match_keywords": ["课程", "学习", "职场", "效率"], "weight": 4, "volume": 0.052},
+        {"id": "airy-knowledge", "file": "music/bold-yellow-white/airy-knowledge.ogg", "moods": ["清爽", "知识", "分享"], "match_keywords": ["方法", "技能", "经验"], "weight": 3, "volume": 0.048},
+        {"id": "soft-explainer", "file": "music/bold-yellow-white/soft-explainer.ogg", "moods": ["讲解", "轻松"], "match_keywords": ["介绍", "说明", "教程"], "weight": 3, "volume": 0.045},
+        {"id": "calm-service", "file": "music/bold-yellow-white/calm-service.ogg", "moods": ["服务", "稳重"], "match_keywords": ["门店", "服务", "体验"], "weight": 2, "volume": 0.043},
+        {"id": "energetic-action", "file": "music/bold-yellow-white/energetic-action.mp3", "moods": ["行动", "冲击"], "match_keywords": ["提升", "马上", "改变"], "weight": 2, "volume": 0.055}
+      ]
+    },
+    "sfx": {
+      "mode": "template-owned-adaptive-pool",
+      "minimum_gap_seconds": 1.8,
+      "maximum_hits_per_minute": 18,
+      "opening_pool": ["sfx/bold-yellow-white/open-impact.ogg"],
+      "accent_pool": ["sfx/bold-yellow-white/keyword-tick.ogg", "sfx/bold-yellow-white/caption-pop.ogg", "sfx/bold-yellow-white/punch-rise.ogg"],
+      "transition_pool": ["sfx/bold-yellow-white/transition-whiff.ogg", "sfx/bold-yellow-white/transition-swish.ogg"],
+      "ending_pool": ["sfx/bold-yellow-white/end-confirm.ogg"]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

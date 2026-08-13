@@ -1,0 +1,92 @@
+{
+  "schema_version": 3,
+  "template_id": "template-3",
+  "display_name": "智识卡片",
+  "ownership": "template-exclusive",
+  "reference_evidence": [
+    "A080/10个高级感字幕预设/两排字幕4：思源粗宋+玫红手写，右下擦开+逐字放大",
+    "A080/10个高级感字幕预设/两排字幕5：右侧错位双排，打字机II+日出+模糊退出"
+  ],
+  "title_materials": [
+    {
+      "id": "paper-note-title-primary",
+      "variant": "primary",
+      "selection": "hook/强开场"
+    },
+    {
+      "id": "paper-note-title-secondary",
+      "variant": "secondary",
+      "selection": "观点/品牌/稳定讲解"
+    }
+  ],
+  "caption_materials": [
+    {
+      "id": "note-card-yellow-blue",
+      "palette": [
+        "#f9fbff",
+        "#ffd64f",
+        "#78d9ff"
+      ],
+      "motion": "paper-note-title",
+      "implementation": "responsive-code-reconstruction"
+    }
+  ],
+  "music": [
+    {
+      "file": "music/template-3/minimal-tech.mp3",
+      "sha256": "5db0c67b3083d8dbc69e89284b7175fb1132cb8bf03d1af3399c3c475bdf1585",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/这种最小的技术yu（纯）.mp3",
+      "role": "科技、知识、极简",
+      "speech_safe_volume": 0.047
+    },
+    {
+      "file": "music/template-3/elegant-science.mp3",
+      "sha256": "e332ec787dd3dc5762589ffe05a214c5074c3b7a270fc12a89f2bfdb55cbe461",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/优雅的环境k科学.mp3",
+      "role": "知识、科普、专业",
+      "speech_safe_volume": 0.046
+    },
+    {
+      "file": "music/template-3/lofi-study.mp3",
+      "sha256": "7e1c5715443c6fb2e4af66af3316adce4638f2f8c53680d70665aeed41d74cf5",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/洛菲之研究p.mp3",
+      "role": "学习、专注、低存在",
+      "speech_safe_volume": 0.044
+    },
+    {
+      "file": "music/template-3/ambient-context.mp3",
+      "sha256": "56b8dacd0ee38abcf5594c4b661cda3181f0a9e095af4b06c4337d202b2dcb19",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/那个背景环境po.mp3",
+      "role": "信息、稳定、现代",
+      "speech_safe_volume": 0.042
+    },
+    {
+      "file": "music/template-3/record-focus.mp3",
+      "sha256": "d045475301ab75ebbcc7ce2725a8716a9e047e246a212f269dd3525e2ed2e6a9",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/记录1.mp3",
+      "role": "纪录、专注、思考",
+      "speech_safe_volume": 0.072
+    },
+    {
+      "file": "music/template-3/quiet-moment.mp3",
+      "sha256": "10f3cab28d98a45653337ae4e2a0923703d021fcb93c88975402802ee39fe6b1",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/片n刻.mp3",
+      "role": "克制、空间、深度",
+      "speech_safe_volume": 0.078
+    }
+  ],
+  "sfx": [
+    "sfx/template-3/open.ogg",
+    "sfx/template-3/accent.ogg",
+    "sfx/template-3/transition.ogg",
+    "sfx/template-3/ending.ogg"
+  ],
+  "license_record": "licenses/bgm-commercial-pack-user-statement.txt",
+  "rule": "Only template-3 owned namespaces may be selected."
+}

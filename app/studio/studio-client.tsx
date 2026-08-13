@@ -124,6 +124,7 @@ type ViralTemplateSpec = {
   id: string;
   name: string;
   previewUrl: string;
+  coverUrl?: string;
   accent: string;
   titleColor: string;
   panel: string;
@@ -147,6 +148,14 @@ const VIRAL_TEMPLATES: ViralTemplateSpec[] = [
   { id: "high-red", name: "高级红", previewUrl: "https://action-public.meitudata.com/video/6881a63f229982215NNFeOVoJ96101.mp4", accent: "#ffe8d9", titleColor: "#fff8ef", panel: "rgba(126,35,35,.92)", align: "left", titleEffect: "强钩子弹入", subtitleEffect: "红色重点字幕", transition: "flash", transitionLabel: "高能闪切", sfx: "impact", sfxLabel: "冲击强调音" },
   { id: "warm-gold", name: "青绿知识·双语", previewUrl: "https://action-public.meitudata.com/video/689d4b87827624340I8IjRwLiG5755.mp4", accent: "#71efd0", titleColor: "#fffefa", panel: "transparent", align: "left", titleEffect: "左上固定双行知识标题", subtitleEffect: "打字机双语字幕 · 青绿关键词", transition: "zoom", transitionLabel: "语义节点轻推近与柔和闪切", sfx: "click", sfxLabel: "青绿知识独立音效与背景音乐池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 2 },
   { id: "bold-yellow-white", name: "醒目黄白", previewUrl: "https://action-public.meitudata.com/video/693bcecd2740535809WJejI0Dz8630.mp4", accent: "#fff300", titleColor: "#fffdf7", panel: "transparent", align: "center", titleEffect: "顶部双行白色冲击标题", subtitleEffect: "黄白短句 · 语义标黄", transition: "flash", transitionLabel: "节奏点轻推近与柔光闪切", sfx: "bright", sfxLabel: "醒目黄白独立音效与背景音乐池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 2 },
+  { id: "viral-pulse", name: "爆点笔记", previewUrl: "", coverUrl: "/template-covers/viral-pulse.jpg", accent: "#ff287f", titleColor: "#fffdf8", panel: "rgba(24,20,22,.88)", align: "left", titleEffect: "玫红手写错位标题", subtitleEffect: "双排粗宋字幕 · 关键词玫红强调", transition: "hard-cut-punch", transitionLabel: "语义节点轻推近、漂移与柔光闪切", sfx: "impact", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-2", name: "柔光叙说", previewUrl: "", coverUrl: "/template-covers/template-2.jpg", accent: "#904565", titleColor: "#fffdfb", panel: "rgba(62,32,47,.88)", align: "right", titleEffect: "柔粉右侧双排标题", subtitleEffect: "柔粉错位字幕 · 关键词轻强调", transition: "fade", transitionLabel: "语义停顿触发柔和漂移与淡出", sfx: "soft", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-3", name: "智识卡片", previewUrl: "", coverUrl: "/template-covers/template-3.jpg", accent: "#ffd64f", titleColor: "#102d3d", panel: "rgba(248,251,255,.94)", align: "left", titleEffect: "黄蓝知识卡标题", subtitleEffect: "卡片式粗体字幕 · 黄蓝重点词", transition: "slide", transitionLabel: "章节节点触发卡片滑入与轻推近", sfx: "click", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-4", name: "步骤主场", previewUrl: "", coverUrl: "/template-covers/template-4.jpg", accent: "#ff7849", titleColor: "#fffdf7", panel: "rgba(36,27,21,.9)", align: "left", titleEffect: "橙色章节标题", subtitleEffect: "粗体步骤字幕 · 橙色关键词", transition: "slide", transitionLabel: "步骤节点触发章节切换与轻推近", sfx: "wood", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-5", name: "薄荷清言", previewUrl: "", coverUrl: "/template-covers/template-5.jpg", accent: "#77e6bd", titleColor: "#ffffff", panel: "transparent", align: "center", titleEffect: "薄荷留白标题", subtitleEffect: "白字薄荷重点词 · 下划线逐字呈现", transition: "fade", transitionLabel: "语义停顿触发柔和呼吸与淡入淡出", sfx: "soft", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-6", name: "深度引言", previewUrl: "", coverUrl: "/template-covers/template-6.jpg", accent: "#d8b36a", titleColor: "#fffaf0", panel: "rgba(82,30,48,.9)", align: "left", titleEffect: "酒红引言标题", subtitleEffect: "引言卡字幕 · 金色重点词", transition: "fade", transitionLabel: "观点停顿触发克制淡出与轻漂移", sfx: "wood", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-7", name: "橙意画报", previewUrl: "", coverUrl: "/template-covers/template-7.jpg", accent: "#ff5a36", titleColor: "#251b16", panel: "rgba(255,250,239,.94)", align: "left", titleEffect: "橙色分栏标题", subtitleEffect: "画报式字幕 · 橙色关键词", transition: "slide", transitionLabel: "内容节点触发分栏切换与海报式闪切", sfx: "bright", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
+  { id: "template-8", name: "黑白观点", previewUrl: "", coverUrl: "/template-covers/template-8.jpg", accent: "#d8dadd", titleColor: "#ffffff", panel: "rgba(7,7,8,.72)", align: "center", titleEffect: "黑白极简标题 · 打字机进入", subtitleEffect: "白色描边字幕 · 克制关键词强调", transition: "fade", transitionLabel: "逻辑停顿触发极简淡切与轻推近", sfx: "click", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 22 },
 ];
 
 function viralTemplateById(id: string, templates: ViralTemplateSpec[] = VIRAL_TEMPLATES) {
@@ -1386,7 +1395,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralTranscriptError, setViralTranscriptError] = useState("");
   const [viralProcessStarted, setViralProcessStarted] = useState(false);
   const [viralIncludeSfx, setViralIncludeSfx] = useState(true);
-  const [viralIncludeBgm, setViralIncludeBgm] = useState(false);
+  const [viralIncludeBgm, setViralIncludeBgm] = useState(true);
   const [viralAnalysisSummary, setViralAnalysisSummary] = useState("");
   const [viralAnalysisMode, setViralAnalysisMode] = useState<"ai" | "local" | "">("");
   const [viralProcessingEngine, setViralProcessingEngine] = useState<"server" | "browser" | "">("");
@@ -1430,6 +1439,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             id,
             name: typeof item.name === "string" && item.name.trim() ? item.name : fallback.name,
             previewUrl: typeof item.previewUrl === "string" && item.previewUrl ? item.previewUrl : typeof item.preview_url === "string" && item.preview_url ? item.preview_url : fallback.previewUrl,
+            coverUrl: typeof item.coverUrl === "string" && item.coverUrl ? item.coverUrl : typeof item.cover_url === "string" && item.cover_url ? item.cover_url : fallback.coverUrl,
             accent: typeof config.accent === "string" ? config.accent : typeof item.accent === "string" ? item.accent : fallback.accent,
             titleColor: typeof config.titleColor === "string" ? config.titleColor : typeof item.title_color === "string" ? item.title_color : fallback.titleColor,
             panel: typeof config.panel === "string" ? config.panel : typeof item.panel === "string" ? item.panel : fallback.panel,
@@ -3538,9 +3548,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {viralTemplatesLoading ? <p className="viral-template-state">正在同步管理员模板库…</p> : null}
             {!viralTemplatesLoading && viralTemplatesError ? <p className="viral-template-state is-error">{viralTemplatesError}</p> : null}
             {!viralTemplatesLoading && !viralTemplatesError && !templates.length ? <p className="viral-template-state">管理员暂未上架网感模板。</p> : null}
-            {templates.map((template) => <button type="button" key={template.id} className={`viral-template-card ${viralTemplate === template.id ? "selected" : ""}`} onClick={() => setViralTemplate(template.id)}>
+            {templates.map((template) => <button type="button" key={template.id} className={`viral-template-card ${viralTemplate === template.id ? "selected" : ""}`} aria-pressed={viralTemplate === template.id} aria-label={`选择${template.name}模板`} onClick={() => setViralTemplate(template.id)}>
               <span className={`template-thumb template-${template.id}`}>
-                <video
+                {template.coverUrl ? <img src={template.coverUrl} alt={`${template.name}模板封面`} loading="lazy" /> : <video
                   src={template.previewUrl || viralVideoPreviewUrl}
                   muted
                   loop
@@ -3556,9 +3566,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
                     });
                   }}
                   onMouseLeave={(event) => { if (viralTemplate !== template.id) event.currentTarget.pause(); }}
-                />
+                />}
+                {viralTemplate === template.id ? <i>已选</i> : null}
               </span>
               <strong>{template.name}</strong>
+              <small>{template.description || template.titleEffect}</small>
             </button>)}
           </div>
           {viralAnalysisSummary ? <p className="viral-analysis-summary">{viralAnalysisSummary}</p> : null}

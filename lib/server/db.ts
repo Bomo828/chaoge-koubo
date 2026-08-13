@@ -176,14 +176,16 @@ function initialize(db: DatabaseSync) {
   const now = Math.floor(Date.now() / 1000);
   const insert = db.prepare(`
     INSERT INTO templates
-      (id, slug, category, name, version, status, preview_url, description, config_json, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?)
+      (id, slug, category, name, version, status, preview_url, cover_url, description, config_json, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, 'published', ?, ?, ?, ?, ?, ?)
     ON CONFLICT(id) DO UPDATE SET
       slug = excluded.slug,
       category = excluded.category,
       name = excluded.name,
       version = excluded.version,
+      status = excluded.status,
       preview_url = excluded.preview_url,
+      cover_url = excluded.cover_url,
       description = excluded.description,
       config_json = excluded.config_json,
       updated_at = excluded.updated_at
@@ -197,6 +199,7 @@ function initialize(db: DatabaseSync) {
       template.name,
       template.version,
       template.previewUrl,
+      template.coverUrl,
       template.description,
       JSON.stringify(template.config),
       now,

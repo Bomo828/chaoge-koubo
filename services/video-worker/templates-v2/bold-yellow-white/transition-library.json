@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "template_id": "bold-yellow-white",
+  "transitions": [
+    {"style": "soft-punch", "duration": 0.22, "intensity": 0.72, "purpose": "重点短句冲击"},
+    {"style": "drift-left", "duration": 0.25, "intensity": 0.48, "purpose": "自然段落切换"},
+    {"style": "soft-flash", "duration": 0.18, "intensity": 0.42, "purpose": "方法或结论强调"},
+    {"style": "editorial-cut", "duration": 0.16, "intensity": 0.38, "purpose": "高密度讲解节奏"}
+  ]
+}

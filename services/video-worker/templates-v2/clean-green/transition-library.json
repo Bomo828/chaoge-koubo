@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "template_id": "clean-green",
+  "template_version": 19,
+  "name": "轻奢白·双语独立转场池",
+  "trigger_rule": "只在真实镜头变化、长停顿或语义段落边界触发；任意两个转场至少间隔3.2秒。",
+  "cross_template_fallback": false,
+  "transitions": [
+    {"id": "soft-punch", "label": "轻推近", "duration_seconds": 0.34, "intensity": 0.72, "trigger": ["phrase_start", "cadence_fallback"], "sound_role": "transition"},
+    {"id": "drift-left", "label": "向左缓移", "duration_seconds": 0.28, "intensity": 0.58, "trigger": ["scene_change", "long_pause"], "sound_role": "transition"},
+    {"id": "drift-right", "label": "向右缓移", "duration_seconds": 0.28, "intensity": 0.58, "trigger": ["scene_change", "long_pause"], "sound_role": "transition"},
+    {"id": "soft-flash", "label": "柔光闪切", "duration_seconds": 0.24, "intensity": 0.52, "trigger": ["keyword", "final_phrase"], "sound_role": "accent"}
+  ]
+}

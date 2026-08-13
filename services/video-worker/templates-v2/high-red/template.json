@@ -1,0 +1,221 @@
+{
+  "version": 9,
+  "package_contract_version": 3,
+  "id": "high-red",
+  "name": "高级红",
+  "package_mode": "isolated",
+  "renderer_key": "high-red-editorial-v1",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "/Users/chaoge/Downloads/微信视频2026-08-05_114729_279.mp4",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover"
+  },
+  "opening": {
+    "min_seconds": 1.0,
+    "max_seconds": 2.5,
+    "title_mode": "persistent",
+    "title_lines": 2,
+    "title_animation": "staggered-punch",
+    "title_separator": "｜",
+    "title_font_family": "Songti SC / Noto Serif CJK SC",
+    "title_font_size_px": 104,
+    "title_line_gap_px": -8,
+    "safe_top_px": 168,
+    "persistent_title": true,
+    "sfx": "high-red-opening"
+  },
+  "body": {
+    "caption_min_chars": 2,
+    "caption_max_chars": 10,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 2.8,
+    "pause_split_seconds": 0.28,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": true,
+    "caption_safe_inset": 78,
+    "caption_max_width": 850,
+    "transition_trigger": "scene-change-or-long-pause-or-cadence",
+    "transition_style": "high-red-editorial-cut",
+    "transition_pool": [
+      {"style": "editorial-cut", "duration": 0.22, "intensity": 0.82},
+      {"style": "drift-left", "duration": 0.30, "intensity": 0.68},
+      {"style": "editorial-wipe", "duration": 0.24, "intensity": 0.76},
+      {"style": "drift-right", "duration": 0.30, "intensity": 0.68},
+      {"style": "soft-flash", "duration": 0.20, "intensity": 0.58}
+    ],
+    "rhythm_interval_seconds": 3.2,
+    "minimum_transition_gap_seconds": 2.8,
+    "scene_threshold": 0.34,
+    "digital_punch_in": 0.045,
+    "maximum_effects_per_minute": 20,
+    "kinetic_layouts": ["editorial-left", "editorial-right", "editorial-center"],
+    "kinetic_animations": ["word-reveal", "editorial-punch", "stagger-rise"]
+  },
+  "ending": {
+    "min_seconds": 0.8,
+    "max_seconds": 1.45,
+    "mode": "editorial-arrows"
+  },
+  "style": {
+    "font_name": "Songti SC",
+    "primary": "&H00F8FDFF",
+    "accent": "&H002D1E8B",
+    "outline": "&H00100A29",
+    "shadow": "&H70000000",
+    "title_second_line_color": "&H002D1E8B",
+    "title_size_ratio": 0.096,
+    "subtitle_size_ratio": 0.064,
+    "subtitle_english_size_ratio": 0.026,
+    "subtitle_english_color": "&H00F2F2F2",
+    "title_y_ratio": 0.0875,
+    "subtitle_y_ratio": 0.63,
+    "title_outline": 3.2,
+    "subtitle_outline": 3.0,
+    "title_shadow": 8.0,
+    "subtitle_shadow": 7.0,
+    "title_bold": true,
+    "subtitle_bold": true,
+    "title_spacing": -2.5,
+    "subtitle_spacing": -1.5,
+    "subtitle_animation": "word-reveal",
+    "caption_mode": "kinetic-red-white",
+    "keyword_color": "#8b1e2d"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 0.84,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-tag-matched-verified-music",
+      "pool_id": "high-red-editorial",
+      "track_id": "high-red-editorial-bed-v1",
+      "file": "music/high-red/editorial-bed.ogg",
+      "tracks": [
+        {
+          "id": "high-red-editorial-bed-v1",
+          "file": "music/high-red/editorial-bed.ogg",
+          "weight": 3,
+          "volume": 0.18,
+          "moods": ["持续配乐", "高级", "稳定", "品牌", "专业"],
+          "match_keywords": ["AI", "课程", "职场", "效率", "专业", "知识", "培训", "品牌", "商务", "服务"]
+        },
+        {
+          "id": "high-red-overworld-v1",
+          "file": "music/high-red/cc0-overworld.mp3",
+          "weight": 2,
+          "volume": 0.18,
+          "moods": ["舒缓", "极简", "知识", "专业"],
+          "match_keywords": ["方法", "经验", "分享", "教程", "知识", "课程", "办公", "职场", "介绍"]
+        },
+        {
+          "id": "high-red-heavenly-v1",
+          "file": "music/high-red/cc0-heavenly-loop.ogg",
+          "weight": 2,
+          "volume": 0.16,
+          "moods": ["轻奢", "梦幻", "美学", "品牌"],
+          "match_keywords": ["美学", "轻奢", "品牌", "设计", "美容", "护肤", "纹绣", "空间", "体验"]
+        },
+        {
+          "id": "high-red-relax-v1",
+          "file": "music/high-red/cc0-relax-background.ogg",
+          "weight": 2,
+          "volume": 0.17,
+          "moods": ["舒适", "生活", "门店", "日常"],
+          "match_keywords": ["生活", "日常", "门店", "环境", "探店", "到店", "放松", "体验", "服务"]
+        },
+        {
+          "id": "high-red-other-center-v1",
+          "file": "music/high-red/cc0-other-center.ogg",
+          "weight": 1,
+          "volume": 0.14,
+          "moods": ["轻快", "活动", "推广", "消费"],
+          "match_keywords": ["活动", "优惠", "上新", "团购", "新品", "促销", "预约", "打卡", "推荐"]
+        }
+      ],
+      "volume": 0.18,
+      "fade_in_seconds": 0.55,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true
+    },
+    "sfx_gain": 0.34,
+    "sfx_on": ["video_start", "caption_accent", "scene_change", "video_end"],
+    "sfx": {
+      "mode": "template-owned-adaptive-pool",
+      "minimum_gap_seconds": 2.3,
+      "maximum_hits_per_minute": 14,
+      "level_map": {
+        "sfx/high-red/editorial-open.ogg": 3.16,
+        "sfx/high-red/editorial-bell.ogg": 0.52,
+        "sfx/high-red/editorial-bell-soft.m4a": 0.78,
+        "sfx/high-red/editorial-flare.m4a": 0.88,
+        "sfx/high-red/editorial-click.ogg": 5.08,
+        "sfx/high-red/editorial-pop.ogg": 0.32,
+        "sfx/high-red/editorial-tap.ogg": 0.68,
+        "sfx/high-red/editorial-blip.m4a": 0.29,
+        "sfx/high-red/editorial-hit-short.m4a": 0.54,
+        "sfx/high-red/editorial-pop-echo.m4a": 0.62,
+        "sfx/high-red/editorial-paper-flip.m4a": 0.66,
+        "sfx/high-red/editorial-swish.ogg": 1.24,
+        "sfx/high-red/editorial-whiff.ogg": 0.9,
+        "sfx/high-red/editorial-cut.ogg": 7.87,
+        "sfx/high-red/editorial-fast-swish.m4a": 1.1,
+        "sfx/high-red/editorial-whoosh.m4a": 0.5,
+        "sfx/high-red/editorial-pause-hit.m4a": 0.36,
+        "sfx/high-red/editorial-solid-hit.m4a": 0.45,
+        "sfx/high-red/editorial-success.ogg": 0.43,
+        "sfx/high-red/editorial-end-bell.ogg": 6.84
+      },
+      "opening_pool": [
+        "sfx/high-red/editorial-open.ogg",
+        "sfx/high-red/editorial-bell.ogg",
+        "sfx/high-red/editorial-bell-soft.m4a",
+        "sfx/high-red/editorial-flare.m4a"
+      ],
+      "accent_pool": [
+        "sfx/high-red/editorial-click.ogg",
+        "sfx/high-red/editorial-pop.ogg",
+        "sfx/high-red/editorial-tap.ogg",
+        "sfx/high-red/editorial-blip.m4a",
+        "sfx/high-red/editorial-hit-short.m4a",
+        "sfx/high-red/editorial-pop-echo.m4a",
+        "sfx/high-red/editorial-paper-flip.m4a"
+      ],
+      "transition_pool": [
+        "sfx/high-red/editorial-swish.ogg",
+        "sfx/high-red/editorial-whiff.ogg",
+        "sfx/high-red/editorial-cut.ogg",
+        "sfx/high-red/editorial-fast-swish.m4a",
+        "sfx/high-red/editorial-whoosh.m4a",
+        "sfx/high-red/editorial-pause-hit.m4a",
+        "sfx/high-red/editorial-solid-hit.m4a"
+      ],
+      "ending_pool": [
+        "sfx/high-red/editorial-success.ogg",
+        "sfx/high-red/editorial-end-bell.ogg",
+        "sfx/high-red/editorial-bell-soft.m4a",
+        "sfx/high-red/editorial-flare.m4a"
+      ]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

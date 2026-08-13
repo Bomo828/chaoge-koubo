@@ -1,0 +1,12 @@
+{
+  "schema_version": 1,
+  "template_id": "high-red",
+  "ownership": "template-exclusive",
+  "transitions": [
+    {"id": "high-red-editorial-cut", "style": "editorial-cut", "duration": 0.22, "intensity": 0.82},
+    {"id": "high-red-left", "style": "drift-left", "duration": 0.30, "intensity": 0.68},
+    {"id": "high-red-editorial-wipe", "style": "editorial-wipe", "duration": 0.24, "intensity": 0.76},
+    {"id": "high-red-right", "style": "drift-right", "duration": 0.30, "intensity": 0.68},
+    {"id": "high-red-flash", "style": "soft-flash", "duration": 0.20, "intensity": 0.58}
+  ]
+}

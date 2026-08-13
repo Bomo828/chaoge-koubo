@@ -45,9 +45,21 @@ next-env.d.ts
 /work/
 /.data/
 
-# Local media-processing services and reusable agent skills are deployed
-# independently from the hosted web application.
-/services/
+# Reusable agent skills remain local. The production video/remotion workers
+# are versioned so the same GitHub release can deploy the finalized templates.
+/services/*
+!/services/README.md
+!/services/video-worker/
+!/services/video-worker/**
+!/services/remotion-worker/
+!/services/remotion-worker/**
+**/node_modules/
+/services/video-worker/data/
+/services/video-worker/**/artifacts/
+/services/video-worker/templates-v2/*/reference/
+/services/video-worker/**/*.mp4
+/services/video-worker/**/*.mov
+/services/video-worker/**/*.tar.gz
 /skills/
 **/__pycache__/
 *.tar.gz

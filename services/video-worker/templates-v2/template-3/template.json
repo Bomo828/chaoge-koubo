@@ -1,0 +1,338 @@
+{
+  "version": 22,
+  "package_contract_version": 3,
+  "id": "template-3",
+  "name": "智识卡片",
+  "status": "published",
+  "package_mode": "isolated",
+  "renderer_key": "template-3-note-card-v2",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "A080 两排字幕4、5参数提炼｜本地响应式重建",
+  "material_scope": "template-3-owned-rebuild-2026-08-13",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover",
+    "maximum_upscale": 2
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "actual_first_frame": true,
+    "standalone_export": true,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg"
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 2.7,
+    "title_mode": "opening",
+    "fixed_decorative_text": false,
+    "title_content_policy": "confirmed-title-only",
+    "title_variants": [
+      "primary",
+      "secondary"
+    ],
+    "title_selection_policy": "content-node-and-stable-seed",
+    "title_animation": "paper-note-title",
+    "safe_top_px": 152,
+    "title_font_size_px": 82,
+    "title_line_gap_px": 8,
+    "sfx": "open"
+  },
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 12,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 2.4,
+    "pause_split_seconds": 0.3,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": false,
+    "caption_safe_inset": 84,
+    "caption_max_width": 912,
+    "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_pool": [
+      {
+        "style": "soft-punch",
+        "duration": 0.28,
+        "intensity": 0.22
+      },
+      {
+        "style": "drift-left",
+        "duration": 0.34,
+        "intensity": 0.22
+      },
+      {
+        "style": "soft-flash",
+        "duration": 0.22,
+        "intensity": 0.18
+      }
+    ],
+    "rhythm_interval_seconds": 6.6,
+    "minimum_transition_gap_seconds": 5.2,
+    "scene_threshold": 0.3,
+    "maximum_effects_per_minute": 10,
+    "camera_motion": "semantic-subtle-push"
+  },
+  "content_director": {
+    "mode": "semantic-node-material-router",
+    "caption_selection_policy": "template-3-exclusive-note-card-yellow-blue-v2",
+    "title_selection_policy": "hook=primary, viewpoint/brand=secondary, stable fallback",
+    "fallback_node": "supporting",
+    "nodes": {
+      "hook": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "pain_reversal": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "core_viewpoint": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "number_benefit": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "example_step": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "brand_entity": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "cta": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      },
+      "supporting": {
+        "caption_pool": [
+          "note-card-yellow-blue"
+        ]
+      }
+    }
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1,
+    "mode": "note-slide-out"
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H00FFFFFF",
+    "outline": "&H00000000",
+    "shadow": "&H70000000",
+    "title_size_ratio": 0.076,
+    "subtitle_size_ratio": 0.068,
+    "title_y_ratio": 0.08,
+    "subtitle_y_ratio": 0.64,
+    "title_animation": "paper-note-title",
+    "subtitle_animation": "note-card-yellow-blue",
+    "caption_mode": "kinetic-studio-series",
+    "caption_visual_lock": "note-card-yellow-blue-only",
+    "keyword_color": "#ffd64f"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-rotating-pool",
+      "pool_id": "template-3-speech-safe-v2",
+      "track_id": "minimal-tech",
+      "file": "music/template-3/minimal-tech.mp3",
+      "volume": 0.047,
+      "fade_in_seconds": 0.8,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "minimal-tech",
+          "file": "music/template-3/minimal-tech.mp3",
+          "weight": 3,
+          "volume": 0.047,
+          "moods": [
+            "科技",
+            "知识",
+            "极简"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "AI",
+            "科技",
+            "效率",
+            "工具"
+          ]
+        },
+        {
+          "id": "elegant-science",
+          "file": "music/template-3/elegant-science.mp3",
+          "weight": 3,
+          "volume": 0.046,
+          "moods": [
+            "知识",
+            "科普",
+            "专业"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "知识",
+            "课程",
+            "专业",
+            "分析"
+          ]
+        },
+        {
+          "id": "lofi-study",
+          "file": "music/template-3/lofi-study.mp3",
+          "weight": 2,
+          "volume": 0.044,
+          "moods": [
+            "学习",
+            "专注",
+            "低存在"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "学习",
+            "步骤",
+            "方法",
+            "资料"
+          ]
+        },
+        {
+          "id": "ambient-context",
+          "file": "music/template-3/ambient-context.mp3",
+          "weight": 2,
+          "volume": 0.042,
+          "moods": [
+            "信息",
+            "稳定",
+            "现代"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "背景",
+            "原理",
+            "案例",
+            "分析"
+          ]
+        },
+        {
+          "id": "record-focus",
+          "file": "music/template-3/record-focus.mp3",
+          "weight": 2,
+          "volume": 0.072,
+          "moods": [
+            "纪录",
+            "专注",
+            "思考"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "笔记",
+            "记录",
+            "思考",
+            "总结"
+          ]
+        },
+        {
+          "id": "quiet-moment",
+          "file": "music/template-3/quiet-moment.mp3",
+          "weight": 2,
+          "volume": 0.078,
+          "moods": [
+            "克制",
+            "空间",
+            "深度"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "观点",
+            "逻辑",
+            "原因",
+            "结论"
+          ]
+        }
+      ]
+    },
+    "sfx_gain": 0.16,
+    "sfx": {
+      "mode": "template-owned-semantic-pool",
+      "minimum_gap_seconds": 3.4,
+      "maximum_hits_per_minute": 11,
+      "opening_pool": [
+        "sfx/template-3/open.ogg"
+      ],
+      "accent_pool": [
+        "sfx/template-3/accent.ogg"
+      ],
+      "transition_pool": [
+        "sfx/template-3/transition.ogg"
+      ],
+      "ending_pool": [
+        "sfx/template-3/ending.ogg"
+      ]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

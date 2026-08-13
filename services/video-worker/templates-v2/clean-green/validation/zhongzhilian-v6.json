@@ -1,0 +1,26 @@
+{
+  "passed": true,
+  "checks": {
+    "video_is_9_16": true,
+    "audio_present": true,
+    "decoded_frame_count_matches": true,
+    "caption_text_coverage": true,
+    "speech_time_coverage": true,
+    "corrupt_frames": true
+  },
+  "metrics": {
+    "width": 1080,
+    "height": 1920,
+    "duration": 23.658667,
+    "expected_frames": 708,
+    "analyzed_frames": 708,
+    "caption_count": 11,
+    "transcript_chars": 91,
+    "caption_chars": 91,
+    "caption_text_coverage": 1.0,
+    "speech_time_coverage": null,
+    "speech_time_coverage_available": false,
+    "corrupt_frame_count": 0,
+    "corrupt_frames": []
+  }
+}

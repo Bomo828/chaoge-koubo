@@ -1,0 +1,14 @@
+A080.剪映900款口播字幕动态排版
+
+授权依据：素材由项目用户提供，用户于 2026-08-12 明确确认可直接商用。
+使用范围：爆点节奏模板的字幕动效重建与模板独立音效池。
+发布策略：不分发原始三条合集音频；已将其切分、校准并保存为 71 个模板专用短音效，其中 12 个进入自动节点池，其余保留为人工可选素材。
+
+补充独立背景音乐：
+- Simple menu/background music loop，作者 polosik，来源 OpenGameArt，CC0 1.0。
+- JRPG Piano，作者 Joth，来源 OpenGameArt，CC0 1.0。
+- Heavenly Loop，来源 OpenGameArt，CC0 1.0。
+- relax_background1，来源 OpenGameArt，CC0 1.0。
+- Other Center，来源 OpenGameArt，CC0 1.0。
+
+背景音乐与 A080 短音效分层管理；任何短提示音不得作为背景音乐循环。

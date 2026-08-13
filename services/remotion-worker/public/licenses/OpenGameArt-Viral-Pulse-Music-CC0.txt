@@ -1,0 +1,18 @@
+爆点节奏背景音乐增补记录
+
+以下完整背景音乐均来自 OpenGameArt，并按其页面声明使用 CC0 1.0 Universal：
+
+1. Heavenly Loop
+   来源：https://opengameart.org/content/heavenly-loop
+   模板文件：music/viral-pulse/airy-knowledge.ogg
+
+2. relax_background1
+   来源：https://opengameart.org/content/relaxbackground1
+   模板文件：music/viral-pulse/soft-lifestyle.ogg
+
+3. Other Center
+   来源：https://opengameart.org/content/other-center
+   模板文件：music/viral-pulse/editorial-calm.ogg
+
+许可：https://creativecommons.org/publicdomain/zero/1.0/
+用途：可用于商业项目；背景音乐与短音效分层使用。

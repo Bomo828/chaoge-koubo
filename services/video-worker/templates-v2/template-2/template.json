@@ -1,0 +1,338 @@
+{
+  "version": 22,
+  "package_contract_version": 3,
+  "id": "template-2",
+  "name": "柔光叙说",
+  "status": "published",
+  "package_mode": "isolated",
+  "renderer_key": "template-2-a080-right-v2",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "A080 两排字幕4、5参数提炼｜本地响应式重建",
+  "material_scope": "template-2-owned-rebuild-2026-08-13",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover",
+    "maximum_upscale": 2
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg",
+    "actual_first_frame": true,
+    "standalone_export": true
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 2.7,
+    "title_mode": "opening",
+    "fixed_decorative_text": false,
+    "title_content_policy": "confirmed-title-only",
+    "title_variants": [
+      "primary",
+      "secondary"
+    ],
+    "title_selection_policy": "content-node-and-stable-seed",
+    "title_animation": "right-note-title",
+    "safe_top_px": 160,
+    "title_font_size_px": 82,
+    "title_line_gap_px": 8,
+    "sfx": "open"
+  },
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 12,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 2.4,
+    "pause_split_seconds": 0.3,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": false,
+    "caption_safe_inset": 86,
+    "caption_max_width": 900,
+    "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_pool": [
+      {
+        "style": "soft-punch",
+        "duration": 0.28,
+        "intensity": 0.22
+      },
+      {
+        "style": "drift-right",
+        "duration": 0.34,
+        "intensity": 0.22
+      },
+      {
+        "style": "soft-flash",
+        "duration": 0.22,
+        "intensity": 0.18
+      }
+    ],
+    "rhythm_interval_seconds": 6.6,
+    "minimum_transition_gap_seconds": 5.2,
+    "scene_threshold": 0.3,
+    "maximum_effects_per_minute": 10,
+    "camera_motion": "semantic-subtle-push"
+  },
+  "content_director": {
+    "mode": "semantic-node-material-router",
+    "caption_selection_policy": "template-2-exclusive-a080-blur-right-v2",
+    "title_selection_policy": "hook=primary, viewpoint/brand=secondary, stable fallback",
+    "fallback_node": "supporting",
+    "nodes": {
+      "hook": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "pain_reversal": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "core_viewpoint": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "number_benefit": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "example_step": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "brand_entity": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "cta": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      },
+      "supporting": {
+        "caption_pool": [
+          "a080-blur-right"
+        ]
+      }
+    }
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1,
+    "mode": "soft-blur-out"
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H00FFFFFF",
+    "outline": "&H00000000",
+    "shadow": "&H70000000",
+    "title_size_ratio": 0.076,
+    "subtitle_size_ratio": 0.068,
+    "title_y_ratio": 0.08,
+    "subtitle_y_ratio": 0.64,
+    "title_animation": "right-note-title",
+    "subtitle_animation": "a080-blur-right",
+    "caption_mode": "kinetic-studio-series",
+    "caption_visual_lock": "a080-blur-right-only",
+    "keyword_color": "#904565"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-rotating-pool",
+      "pool_id": "template-2-speech-safe-v2",
+      "track_id": "soft-lofi",
+      "file": "music/template-2/soft-lofi.mp3",
+      "volume": 0.048,
+      "fade_in_seconds": 0.8,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "soft-lofi",
+          "file": "music/template-2/soft-lofi.mp3",
+          "weight": 3,
+          "volume": 0.048,
+          "moods": [
+            "柔和",
+            "女性",
+            "生活"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "生活",
+            "体验",
+            "分享",
+            "服务"
+          ]
+        },
+        {
+          "id": "introvert-calm",
+          "file": "music/template-2/introvert-calm.mp3",
+          "weight": 2,
+          "volume": 0.045,
+          "moods": [
+            "人物",
+            "克制",
+            "叙述"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "人物",
+            "故事",
+            "经历",
+            "老师"
+          ]
+        },
+        {
+          "id": "modern-relax",
+          "file": "music/template-2/modern-relax.mp3",
+          "weight": 2,
+          "volume": 0.047,
+          "moods": [
+            "现代",
+            "轻松",
+            "低节奏"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "职场",
+            "方法",
+            "产品",
+            "品牌"
+          ]
+        },
+        {
+          "id": "forest-lullaby",
+          "file": "music/template-2/forest-lullaby.mp3",
+          "weight": 2,
+          "volume": 0.044,
+          "moods": [
+            "柔和",
+            "陪伴",
+            "生活"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "家庭",
+            "关系",
+            "陪伴",
+            "生活"
+          ]
+        },
+        {
+          "id": "tender-piano",
+          "file": "music/template-2/tender-piano.mp3",
+          "weight": 2,
+          "volume": 0.064,
+          "moods": [
+            "温柔",
+            "希望",
+            "钢琴"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "成长",
+            "希望",
+            "情绪",
+            "故事"
+          ]
+        },
+        {
+          "id": "sweet-soft",
+          "file": "music/template-2/sweet-soft.mp3",
+          "weight": 2,
+          "volume": 0.058,
+          "moods": [
+            "轻甜",
+            "生活",
+            "友好"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "美好",
+            "喜欢",
+            "服务",
+            "体验"
+          ]
+        }
+      ]
+    },
+    "sfx_gain": 0.16,
+    "sfx": {
+      "mode": "template-owned-semantic-pool",
+      "minimum_gap_seconds": 3.4,
+      "maximum_hits_per_minute": 11,
+      "opening_pool": [
+        "sfx/template-2/open.ogg"
+      ],
+      "accent_pool": [
+        "sfx/template-2/accent.ogg"
+      ],
+      "transition_pool": [
+        "sfx/template-2/transition.ogg"
+      ],
+      "ending_pool": [
+        "sfx/template-2/ending.ogg"
+      ]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

@@ -1,0 +1,57 @@
+{
+  "template_id": "warm-gold",
+  "candidate_name": "青绿知识·双语",
+  "status": "local-review-pending",
+  "reference": {
+    "path": "/Users/chaoge/Downloads/3mb.mp4",
+    "sha256": "4a8fdfd1dfbbe8c77e3a9cb59e225611f4aab898fd1d1972f4def33a1b388d70",
+    "decoded_frames": 709,
+    "contact_sheets": 24,
+    "analysis_method": "every-decoded-frame"
+  },
+  "short_regression": {
+    "video": "artifacts/warm-gold-mint-knowledge-v1-local-review/short-23s/output-cover-verified-v2.mp4",
+    "passed": true,
+    "decoded_frames": 710,
+    "expected_frames": 710,
+    "caption_text_coverage": 1.0,
+    "speech_time_coverage": 1.0,
+    "corrupt_frames": 0
+  },
+  "long_regression": {
+    "video": "artifacts/warm-gold-mint-knowledge-v1-local-review/long-32s/output-cover-verified.mp4",
+    "passed": true,
+    "decoded_frames": 984,
+    "expected_frames": 984,
+    "caption_text_coverage": 1.0,
+    "speech_time_coverage": 1.0,
+    "corrupt_frames": 0
+  },
+  "music_matching": {
+    "knowledge_training": "warm-gold-focus-minimal",
+    "store_service": "warm-gold-soft-service",
+    "professional_explainer": "warm-gold-calm-explainer"
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "output_dimensions": "1080x1920",
+    "short_cover": "artifacts/warm-gold-mint-knowledge-v1-local-review/short-23s/cover.jpg",
+    "long_cover": "artifacts/warm-gold-mint-knowledge-v1-local-review/long-32s/cover.jpg",
+    "short_mp4_first_frame": "artifacts/warm-gold-mint-knowledge-v1-local-review/short-23s/first-frame.jpg",
+    "long_mp4_first_frame": "artifacts/warm-gold-mint-knowledge-v1-local-review/long-32s/first-frame.jpg",
+    "mp4_first_frame_contentful": true
+  },
+  "quality_gates": {
+    "renderer_typecheck": true,
+    "isolated_package": true,
+    "cross_template_fallback": false,
+    "minimum_test_videos": 2
+  },
+  "publication": {
+    "registry_updated": false,
+    "cloud_synced": false,
+    "requires_user_approval": true
+  }
+}

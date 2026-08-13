@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "template_id": "bold-yellow-white",
+  "ownership": "template-exclusive",
+  "music": [
+    {"id": "bright-training", "file": "music/bold-yellow-white/bright-training.ogg", "sha256": "31ffea50162fdcb11d11fb413a23a558b500bbef3e0cf4414e34231e6dc52550", "license": "CC0"},
+    {"id": "airy-knowledge", "file": "music/bold-yellow-white/airy-knowledge.ogg", "sha256": "db918ad78d6d484b50634881d521266ad977a12e791403482df49b50c1f09ac2", "license": "CC0"},
+    {"id": "soft-explainer", "file": "music/bold-yellow-white/soft-explainer.ogg", "sha256": "b362bd2298cd872163505e85562a3019edcc480c51ae05212f9890fd17bbf751", "license": "CC0"},
+    {"id": "calm-service", "file": "music/bold-yellow-white/calm-service.ogg", "sha256": "030170056143273050089688630a563b075bb7f03dab69a80686d69d344d1c6b", "license": "CC0"},
+    {"id": "energetic-action", "file": "music/bold-yellow-white/energetic-action.mp3", "sha256": "d329492d5a673d3432593eda97938b8bef17cd9b7063744d174646ed6e05beb5", "license": "CC0"}
+  ],
+  "sfx": [
+    {"id": "open-impact", "file": "sfx/bold-yellow-white/open-impact.ogg", "sha256": "24ff22844047144f4857f2ea90ed08528af1c1077e3cd18fec467505a3af2bee", "license": "CC0"},
+    {"id": "keyword-tick", "file": "sfx/bold-yellow-white/keyword-tick.ogg", "sha256": "9d057b5b8165bc8675e81464cfcfa3a85bb73e8913b2827ca0ebcc92fe254230", "license": "CC0"},
+    {"id": "caption-pop", "file": "sfx/bold-yellow-white/caption-pop.ogg", "sha256": "aec0c37672bb493737716a38d476709699ab6d6849f53b9130c90f0b1f947b7a", "license": "CC0"},
+    {"id": "punch-rise", "file": "sfx/bold-yellow-white/punch-rise.ogg", "sha256": "df16f20ff4f73c08939f9cb04219286c9c6f24cc9a340228dd77af9cb8e0e2be", "license": "CC0"},
+    {"id": "transition-whiff", "file": "sfx/bold-yellow-white/transition-whiff.ogg", "sha256": "f73b3e2d68fdb5034dbd4b1442683028228215e75626878f52bda5a27989a7f0", "license": "CC0"},
+    {"id": "transition-swish", "file": "sfx/bold-yellow-white/transition-swish.ogg", "sha256": "60fcc72f00fcde06af9ba58803e24fc83779811bb98dc85d07b43146a7715f88", "license": "CC0"},
+    {"id": "end-confirm", "file": "sfx/bold-yellow-white/end-confirm.ogg", "sha256": "063564703b6094d60718fa5c77c789c1fc278bdc2ca7fb17694530bbfbf18c3a", "license": "CC0"}
+  ],
+  "rule": "Only assets under music/bold-yellow-white/ and sfx/bold-yellow-white/ may be selected by this template."
+}

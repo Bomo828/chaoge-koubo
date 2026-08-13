@@ -1,0 +1,16 @@
+{
+  "template_id": "clean-green",
+  "template_version": 19,
+  "status": "local-approved-cloud-sync-pending",
+  "ready_to_publish": true,
+  "required_test_videos": 2,
+  "provided_test_videos": 2,
+  "failed_reports": [],
+  "missing_speech_coverage_reports": [],
+  "reports": [
+    "/Users/chaoge/Documents/Codex/2026-07-14/new-chat/merchant-studio-web/artifacts/light-luxury-white-v19-skill-review/short-23s/validation-report.json",
+    "/Users/chaoge/Documents/Codex/2026-07-14/new-chat/merchant-studio-web/artifacts/light-luxury-white-v19-skill-review/long-32s/validation-report.json"
+  ],
+  "user_approved_at": "2026-08-06",
+  "cloud_synced": false
+}

@@ -1,0 +1,92 @@
+{
+  "schema_version": 3,
+  "template_id": "template-6",
+  "display_name": "深度引言",
+  "ownership": "template-exclusive",
+  "reference_evidence": [
+    "A080/10个高级感字幕预设/两排字幕4：思源粗宋+玫红手写，右下擦开+逐字放大",
+    "A080/10个高级感字幕预设/两排字幕5：右侧错位双排，打字机II+日出+模糊退出"
+  ],
+  "title_materials": [
+    {
+      "id": "quote-editorial-title-primary",
+      "variant": "primary",
+      "selection": "hook/强开场"
+    },
+    {
+      "id": "quote-editorial-title-secondary",
+      "variant": "secondary",
+      "selection": "观点/品牌/稳定讲解"
+    }
+  ],
+  "caption_materials": [
+    {
+      "id": "quote-editorial-gold",
+      "palette": [
+        "#fffaf0",
+        "#d8b36a",
+        "#f6ead1"
+      ],
+      "motion": "quote-editorial-title",
+      "implementation": "responsive-code-reconstruction"
+    }
+  ],
+  "music": [
+    {
+      "file": "music/template-6/piano-atmosphere.mp3",
+      "sha256": "2efd107e972ca94a87aa6c0cb77027b5bdb63700efab82a88391ed2f63ab0bad",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/钢琴氛nn围放松.mp3",
+      "role": "专业、人物、沉稳",
+      "speech_safe_volume": 0.042
+    },
+    {
+      "file": "music/template-6/simple-piano.mp3",
+      "sha256": "81c4349ab8aa9544074660ebbd4bbb3384ed8aa40981707cce5f4b216e332e1e",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/简单的钢琴旋律11.mp3",
+      "role": "观点、柔和、编辑感",
+      "speech_safe_volume": 0.043
+    },
+    {
+      "file": "music/template-6/introvert-calm.mp3",
+      "sha256": "c8058fa16170fe74f3f8c8f5f029f46d499e6ee899f9bc3d410221d8a5e0f0c0",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/内向的人11——迈克尔·科布林.mp3",
+      "role": "克制、深度、叙述",
+      "speech_safe_volume": 0.042
+    },
+    {
+      "file": "music/template-6/moonlight-piano.mp3",
+      "sha256": "7907d918dafd4b9d1b2f848a09293e6632b9a0c22232abed1b6f5e842782c1ab",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/月光kk（精通）.mp3",
+      "role": "编辑、深度、钢琴",
+      "speech_safe_volume": 0.05
+    },
+    {
+      "file": "music/template-6/lasting-piano.mp3",
+      "sha256": "5267892b687a5803c8a1508277f1001505a83c6558a59fa466a508f4cb06cc35",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/永远和我在一起jj（钢琴长）.mp3",
+      "role": "人物、叙事、情感",
+      "speech_safe_volume": 0.06
+    },
+    {
+      "file": "music/template-6/soul-lullaby.mp3",
+      "sha256": "3e87ad275678c41a4b4ca9c933e1e3f5e391b76ae5459c47fe3b2d621479c7c4",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/4.无分类纯音乐商用100/你灵魂的11摇篮.mp3",
+      "role": "安静、内省、温度",
+      "speech_safe_volume": 0.056
+    }
+  ],
+  "sfx": [
+    "sfx/template-6/open.ogg",
+    "sfx/template-6/accent.ogg",
+    "sfx/template-6/transition.ogg",
+    "sfx/template-6/ending.ogg"
+  ],
+  "license_record": "licenses/bgm-commercial-pack-user-statement.txt",
+  "rule": "Only template-6 owned namespaces may be selected."
+}

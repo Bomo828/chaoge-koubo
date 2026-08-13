@@ -1,0 +1,338 @@
+{
+  "version": 22,
+  "package_contract_version": 3,
+  "id": "template-6",
+  "name": "深度引言",
+  "status": "published",
+  "package_mode": "isolated",
+  "renderer_key": "template-6-quote-editorial-v2",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "A080 两排字幕4、5参数提炼｜本地响应式重建",
+  "material_scope": "template-6-owned-rebuild-2026-08-13",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover",
+    "maximum_upscale": 2
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "actual_first_frame": true,
+    "standalone_export": true,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg"
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 2.7,
+    "title_mode": "opening",
+    "fixed_decorative_text": false,
+    "title_content_policy": "confirmed-title-only",
+    "title_variants": [
+      "primary",
+      "secondary"
+    ],
+    "title_selection_policy": "content-node-and-stable-seed",
+    "title_animation": "quote-editorial-title",
+    "safe_top_px": 154,
+    "title_font_size_px": 76,
+    "title_line_gap_px": 8,
+    "sfx": "open"
+  },
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 12,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 2.4,
+    "pause_split_seconds": 0.3,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": false,
+    "caption_safe_inset": 88,
+    "caption_max_width": 900,
+    "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_pool": [
+      {
+        "style": "soft-punch",
+        "duration": 0.28,
+        "intensity": 0.22
+      },
+      {
+        "style": "drift-right",
+        "duration": 0.34,
+        "intensity": 0.22
+      },
+      {
+        "style": "soft-flash",
+        "duration": 0.22,
+        "intensity": 0.18
+      }
+    ],
+    "rhythm_interval_seconds": 6.6,
+    "minimum_transition_gap_seconds": 5.2,
+    "scene_threshold": 0.3,
+    "maximum_effects_per_minute": 10,
+    "camera_motion": "semantic-subtle-push"
+  },
+  "content_director": {
+    "mode": "semantic-node-material-router",
+    "caption_selection_policy": "template-6-exclusive-quote-editorial-gold-v2",
+    "title_selection_policy": "hook=primary, viewpoint/brand=secondary, stable fallback",
+    "fallback_node": "supporting",
+    "nodes": {
+      "hook": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "pain_reversal": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "core_viewpoint": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "number_benefit": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "example_step": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "brand_entity": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "cta": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      },
+      "supporting": {
+        "caption_pool": [
+          "quote-editorial-gold"
+        ]
+      }
+    }
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1,
+    "mode": "quote-fade"
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H00FFFFFF",
+    "outline": "&H00000000",
+    "shadow": "&H70000000",
+    "title_size_ratio": 0.076,
+    "subtitle_size_ratio": 0.068,
+    "title_y_ratio": 0.08,
+    "subtitle_y_ratio": 0.64,
+    "title_animation": "quote-editorial-title",
+    "subtitle_animation": "quote-editorial-gold",
+    "caption_mode": "kinetic-studio-series",
+    "caption_visual_lock": "quote-editorial-gold-only",
+    "keyword_color": "#d8b36a"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-rotating-pool",
+      "pool_id": "template-6-speech-safe-v2",
+      "track_id": "piano-atmosphere",
+      "file": "music/template-6/piano-atmosphere.mp3",
+      "volume": 0.042,
+      "fade_in_seconds": 0.8,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "piano-atmosphere",
+          "file": "music/template-6/piano-atmosphere.mp3",
+          "weight": 3,
+          "volume": 0.042,
+          "moods": [
+            "专业",
+            "人物",
+            "沉稳"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "老师",
+            "品牌",
+            "人物",
+            "经验"
+          ]
+        },
+        {
+          "id": "simple-piano",
+          "file": "music/template-6/simple-piano.mp3",
+          "weight": 2,
+          "volume": 0.043,
+          "moods": [
+            "观点",
+            "柔和",
+            "编辑感"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "观点",
+            "价值",
+            "行业",
+            "核心"
+          ]
+        },
+        {
+          "id": "introvert-calm",
+          "file": "music/template-6/introvert-calm.mp3",
+          "weight": 2,
+          "volume": 0.042,
+          "moods": [
+            "克制",
+            "深度",
+            "叙述"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "故事",
+            "经历",
+            "思考",
+            "问题"
+          ]
+        },
+        {
+          "id": "moonlight-piano",
+          "file": "music/template-6/moonlight-piano.mp3",
+          "weight": 2,
+          "volume": 0.05,
+          "moods": [
+            "编辑",
+            "深度",
+            "钢琴"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "深度",
+            "观点",
+            "洞察",
+            "认知"
+          ]
+        },
+        {
+          "id": "lasting-piano",
+          "file": "music/template-6/lasting-piano.mp3",
+          "weight": 2,
+          "volume": 0.06,
+          "moods": [
+            "人物",
+            "叙事",
+            "情感"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "人物",
+            "故事",
+            "陪伴",
+            "品牌"
+          ]
+        },
+        {
+          "id": "soul-lullaby",
+          "file": "music/template-6/soul-lullaby.mp3",
+          "weight": 2,
+          "volume": 0.056,
+          "moods": [
+            "安静",
+            "内省",
+            "温度"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "思考",
+            "内心",
+            "选择",
+            "成长"
+          ]
+        }
+      ]
+    },
+    "sfx_gain": 0.16,
+    "sfx": {
+      "mode": "template-owned-semantic-pool",
+      "minimum_gap_seconds": 3.4,
+      "maximum_hits_per_minute": 11,
+      "opening_pool": [
+        "sfx/template-6/open.ogg"
+      ],
+      "accent_pool": [
+        "sfx/template-6/accent.ogg"
+      ],
+      "transition_pool": [
+        "sfx/template-6/transition.ogg"
+      ],
+      "ending_pool": [
+        "sfx/template-6/ending.ogg"
+      ]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

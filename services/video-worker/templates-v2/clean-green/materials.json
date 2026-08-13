@@ -1,0 +1,55 @@
+{
+  "schema_version": 2,
+  "template_id": "clean-green",
+  "template_version": 19,
+  "ownership": "template-exclusive",
+  "reference": {
+    "name": "轻奢白·双语示例视频",
+    "local_file": "/Users/chaoge/Downloads/微信视频2026-08-06_020915_394.mp4",
+    "sha256": "dfaf331cd0740b36969cc18ccc89ffab99705b270d3bb1b4a648ec2be9871e62",
+    "duration_seconds": 23.63,
+    "fps": 30,
+    "width": 1080,
+    "height": 1920,
+    "decoded_frames": 709,
+    "contact_sheets": 24,
+    "analysis_path": "artifacts/template-distillation/soft-white-v10-skill-rebuild/frame-analysis.json",
+    "analysis_method": "every-decoded-frame"
+  },
+  "fonts": [
+    {
+      "file": "fonts/MaShanZheng-Regular.ttf",
+      "source": "Google Fonts / Ma Shan Zheng",
+      "license": "SIL Open Font License 1.1",
+      "role": "opening-and-chinese-captions"
+    },
+    {
+      "file": "fonts/NotoSansSC-Variable.ttf",
+      "source": "Google Fonts / Noto Sans SC",
+      "license": "SIL Open Font License 1.1",
+      "role": "interface-fallback"
+    }
+  ],
+  "music": [
+    {"file": "music/clean-green/light-minimal-loop.ogg", "sha256": "31ffea0b986eaba7f3f5c3ddf50dc2f68f51085a7a232cc346af6af722b72550", "license": "CC0 1.0", "source": "OpenGameArt / Simple menu-background music loop"},
+    {"file": "music/clean-green/airy-light-loop.ogg", "sha256": "db918a3501a71f60024a571889ac0fb6e130a88f83071ea2f3c992c658fd9ac2", "license": "CC0 1.0", "source": "OpenGameArt / Heavenly Loop"},
+    {"file": "music/clean-green/soft-lifestyle-loop.ogg", "sha256": "b362bd0017400836b6dc4b4c581e7516c8e1e4bff1b97e1107e14ae00d02f751", "license": "CC0 1.0", "source": "OpenGameArt / relax_background1"},
+    {"file": "music/clean-green/editorial-calm-loop.ogg", "sha256": "0301701eca84af4580d23007100254a87747c0fcef819ea97101ec8fd79b1c6b", "license": "CC0 1.0", "source": "OpenGameArt / Other Center"},
+    {"file": "music/clean-green/energetic-professional.mp3", "sha256": "d32949f8467ac463a52ca88ed250e505545bc98a46e4e472c1f994bf447a1beb", "license": "CC0 1.0", "source": "OpenGameArt / Overworld BGM"}
+  ],
+  "sfx": [
+    {"file": "sfx/clean-green/open-soft.ogg", "sha256": "24ff224fe2c09c6aed1b41249825382dc74cf324b887ff279d8494912ce2beee", "license": "CC0 1.0", "source": "Kenney Interface Sounds", "role": "opening"},
+    {"file": "sfx/clean-green/accent-soft.ogg", "sha256": "df16f25d45189f5d44d6a482ab20d5067350ca8525a9affa1f8ce599e31a20a5", "license": "CC0 1.0", "source": "Kenney Interface Sounds", "role": "caption-accent"},
+    {"file": "sfx/clean-green/transition-select.ogg", "sha256": "aec0c31ea934a35936ae0d2ab8fac8123c93aa5647f935853a58dbaf90278b7a", "license": "CC0 1.0", "source": "Kenney Interface Sounds", "role": "transition"},
+    {"file": "sfx/clean-green/keyword-tick.ogg", "sha256": "9d057b918024c787bbe6c00beed13a7ef72a3fa0c259add3cef36582792f4230", "license": "CC0 1.0", "source": "Kenney Interface Sounds", "role": "keyword"},
+    {"file": "sfx/clean-green/end-confirmation.ogg", "sha256": "063564703b6094d70718a3e787a55cc9141611e4ecd6b6637f8828f79b4a8c3a", "license": "CC0 1.0", "source": "Kenney Interface Sounds", "role": "ending"}
+  ],
+  "motion_evidence": {
+    "opening": "双色两行标题逐行轻推入场，约2.45秒退出",
+    "captions": "中文主行与英文副行紧贴，短句成组，语义关键词标黄",
+    "section_emphasis": "每个语义章节允许一次顶部淡入大词，不与开场标题叠加",
+    "camera": "字幕组边界使用轻微数字推近与左右焦点漂移",
+    "transition": "仅在场景变化、长停顿和受控节拍边界触发"
+  },
+  "rule": "Only assets under music/clean-green/ and sfx/clean-green/ may be selected by this template. Shared OFL fonts are the only allowed shared visual assets."
+}

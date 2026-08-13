@@ -28,9 +28,19 @@ from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
+from caption_router import select_caption_material
+from music_router import select_content_music
+from sfx_router import build_semantic_sfx_cues
 
 ROOT = Path(__file__).resolve().parent
-REMOTION_WORKER_DIR = (ROOT.parent / "remotion-worker").resolve()
+REMOTION_WORKER_DIR = next(
+    (
+        candidate.resolve()
+        for candidate in (ROOT / "remotion-worker", ROOT.parent / "remotion-worker")
+        if candidate.exists()
+    ),
+    (ROOT.parent / "remotion-worker").resolve(),
+)
 DATA_DIR = Path(os.getenv("VIDEO_WORKER_DATA_DIR", ROOT / "data")).resolve()
 MAX_UPLOAD_BYTES = int(os.getenv("VIDEO_WORKER_MAX_UPLOAD_MB", "500")) * 1024 * 1024
 AI_API_BASE_URL = os.getenv("LK888_API_BASE_URL", "https://api.lk888.ai").rstrip("/")
@@ -137,7 +147,8 @@ def valid_template_package(value: Any, expected_id: str = "") -> bool:
         if not checklist_file or Path(checklist_file).name != checklist_file:
             return False
         renderer_key = str(value.get("renderer_key") or "").strip()
-        if not renderer_key or not renderer_key.startswith(f"{template_id}-"):
+        renderer_prefix = "template-1-" if template_id == "viral-pulse" else f"{template_id}-"
+        if not renderer_key or not renderer_key.startswith(renderer_prefix):
             return False
         audio = value.get("audio") if isinstance(value.get("audio"), dict) else {}
         music = audio.get("music") if isinstance(audio.get("music"), dict) else {}
@@ -167,6 +178,8 @@ def load_template_packages() -> dict[str, dict[str, Any]]:
         try:
             value = json.loads(path.read_text("utf-8"))
         except (OSError, json.JSONDecodeError):
+            continue
+        if str(value.get("status") or "published").strip().lower() in {"designing", "draft"}:
             continue
         # Template packages are forward-compatible. Newer versions may extend
         # the schema with captions, music pools and cloud catalog metadata.
@@ -378,7 +391,7 @@ def remotion_theme(template_id: str) -> dict[str, Any]:
     foreground = css_color(profile.get("primary"), default_foreground)
     accent = css_color(profile.get("accent"), default_accent)
     caption_mode = str(profile.get("caption_mode") or "")
-    if caption_mode not in {"classic", "kinetic-red-white", "kinetic-yellow-white", "kinetic-mint-white", "kinetic-bold-yellow-white"}:
+    if caption_mode not in {"classic", "kinetic-red-white", "kinetic-yellow-white", "kinetic-mint-white", "kinetic-bold-yellow-white", "kinetic-viral-pulse", "kinetic-soft-rose", "kinetic-studio-series"}:
         caption_mode = "kinetic-yellow-white" if template_id == "clean-green" else "kinetic-red-white" if template_id == "high-red" else "classic"
     title_y_ratio = float(profile.get("title_margin_ratio") or .075)
     subtitle_y_ratio = float(profile.get("subtitle_margin_ratio") or .68)
@@ -452,7 +465,113 @@ def remotion_theme(template_id: str) -> dict[str, Any]:
             "captionMaxWidth": 872,
             "captionLineMaxChars": 8,
         })
+    elif template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8"}:
+        package = profile.get("package") if isinstance(profile.get("package"), dict) else {}
+        opening = package.get("opening") if isinstance(package.get("opening"), dict) else {}
+        theme.update({
+            "rendererKey": str(profile.get("renderer_key") or f"{template_id}-studio-v1"),
+            "captionMode": "kinetic-studio-series",
+            "keywordColor": str(profile.get("keyword_color") or accent),
+            "headlineDuration": float(opening.get("max_seconds") or 2.6),
+            "headlineTop": int(opening.get("safe_top_px") or 154),
+            "headlinePersistent": False,
+            "headlineAnimation": "staggered-punch" if template_id == "viral-pulse" else "fade-scale",
+            "headlineFontSize": int(opening.get("title_font_size_px") or 82),
+            "headlineLineGap": int(opening.get("title_line_gap_px") or 8),
+            "captionSafeInset": int(profile.get("caption_safe_inset") or 84),
+            "captionMaxWidth": int(profile.get("caption_max_width") or 912),
+            "captionLineMaxChars": int(profile.get("caption_line_max_chars") or 8),
+        })
     return theme
+
+
+def semantic_caption_plan(
+    captions: list[dict[str, Any]],
+    title: str = "",
+    content_director: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Route captions, camera, transitions and audio through content nodes."""
+    planned = [dict(item) for item in captions]
+    route_by_node = {
+        "hook": {"animation": "hook-slam", "caption": "hook-impact", "camera": "hook-push", "sfx": "hook", "transition": "soft-punch"},
+        "pain_reversal": {"animation": "reversal-swap", "caption": "contrast-swap", "camera": "contrast-shift", "sfx": "reversal", "transition": "drift-left"},
+        "core_viewpoint": {"animation": "conclusion-stamp", "caption": "viewpoint-stamp", "camera": "viewpoint-hold", "sfx": "conclusion", "transition": "soft-punch"},
+        "number_benefit": {"animation": "number-count", "caption": "number-benefit", "camera": "benefit-push", "sfx": "number", "transition": "soft-flash"},
+        "example_step": {"animation": "step-card", "caption": "step-card", "camera": "step-drift", "sfx": "step", "transition": "drift-right"},
+        "brand_entity": {"animation": "brand-tag", "caption": "brand-nameplate", "camera": "brand-hold", "sfx": "brand", "transition": "none"},
+        "cta": {"animation": "cta-push", "caption": "cta-action", "camera": "cta-push", "sfx": "cta", "transition": "soft-flash"},
+        "supporting": {"animation": "steady", "caption": "supporting-clean", "camera": "supporting-breathe", "sfx": "none", "transition": "none"},
+    }
+    hard_node_count = 0
+    maximum_hard_nodes = max(2, math.ceil(len(planned) * 0.52))
+    for index, caption in enumerate(planned):
+        text = re.sub(r"\s+", "", str(caption.get("text") or ""))
+        is_final = index == len(planned) - 1
+        if is_final and any(marker in text for marker in ("欢迎", "咨询", "预约", "点击", "联系", "了解", "开始", "留言", "关注")):
+            node = "cta"
+        elif index == 0 or any(marker in text for marker in ("你知道", "为什么", "千万", "别再", "很多人", "最重要", "想不想", "是不是")):
+            node = "hook"
+        elif any(marker in text for marker in ("但是", "不过", "其实", "相反", "没想到", "结果却", "真正", "而是", "不是", "痛点", "难", "不会", "不知道", "担心", "问题")):
+            node = "pain_reversal"
+        elif re.search(r"\d|\d+(?:\.\d+)?[%折元万+]|[一二三四五六七八九十百千万]+个|第[一二三四五六七八九十]", text) or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "实用", "帮你", "打扎实", "练熟", "竞争力")):
+            node = "number_benefit"
+        elif any(marker in text for marker in ("比如", "例如", "举个例子", "第一", "第二", "第三", "首先", "其次", "最后一步", "步骤", "怎么做", "如何")):
+            node = "example_step"
+        elif any(marker in text for marker in ("老师", "品牌", "公司", "门店", "产品", "钟智联", "我们是", "我是", "叫做", "型号", "AI课程")):
+            node = "brand_entity"
+        elif any(marker in text for marker in ("所以", "记住", "核心", "结论", "关键是", "这就是", "本质", "观点", "方法", "价值", "重点", "专业", "围绕", "会从")):
+            node = "core_viewpoint"
+        elif any(marker in text for marker in ("马上", "现在就", "欢迎", "点击", "咨询", "预约", "行动", "联系", "了解", "留言", "关注")):
+            node = "cta"
+        else:
+            node = "supporting"
+        effect_level = "normal"
+        if node not in {"supporting", "brand_entity", "hook", "cta"}:
+            previous_node = str(planned[index - 1].get("contentNode") or "") if index > 0 else ""
+            if hard_node_count >= maximum_hard_nodes or previous_node not in {"", "supporting", "brand_entity"}:
+                effect_level = "subtle"
+            else:
+                hard_node_count += 1
+        route = dict(route_by_node[node])
+        caption_style = select_caption_material(content_director, node, title, text, index, str(route["caption"]))
+        route["caption"] = caption_style
+        caption["contentNode"] = node
+        caption["semanticRole"] = {
+            "pain_reversal": "reversal", "core_viewpoint": "conclusion", "number_benefit": "number",
+            "example_step": "step", "brand_entity": "brand", "supporting": "steady",
+        }.get(node, node)
+        caption["animation"] = route["animation"]
+        caption["captionStyle"] = caption_style
+        if effect_level == "subtle":
+            route["sfx"] = "none"
+            route["transition"] = "none"
+        caption["effectLevel"] = effect_level
+        caption["materialRoute"] = route
+        caption["role"] = "focus" if node not in {"supporting", "brand_entity"} else "anchor"
+        caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
+    step_number = 0
+    for caption in planned:
+        if caption.get("contentNode") == "example_step" and caption.get("animation") == "step-card":
+            step_number += 1
+            caption["stepNumber"] = step_number
+        else:
+            caption.pop("stepNumber", None)
+    return planned
+
+
+def attach_word_timing(captions: list[dict[str, Any]], words: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    if not words:
+        return captions
+    output: list[dict[str, Any]] = []
+    for caption in captions:
+        current = dict(caption)
+        start = float(caption.get("start") or 0)
+        end = float(caption.get("end") or start)
+        matched = [dict(word) for word in words if float(word.get("end") or 0) > start and float(word.get("start") or 0) < end]
+        if matched:
+            current["words"] = matched
+        output.append(current)
+    return output
 
 
 def kinetic_keyword(text: str) -> str:
@@ -622,6 +741,13 @@ def build_remotion_timeline(
             caption["layout"] = "impact"
             caption["animation"] = "impact"
             caption["sectionEmphasis"] = bool(index == 0 or index % 5 == 0)
+    elif template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8"}:
+        if not all(str(item.get("contentNode") or "").strip() for item in usable_captions):
+            usable_captions = semantic_caption_plan(
+                usable_captions,
+                title,
+                current_template.get("content_director"),
+            )
     chapter_count = max(1, min(5, math.ceil(duration / 7))) if bool(current_template.get("enable_chapters")) else 0
     chapters: list[dict[str, Any]] = []
     for index in range(chapter_count):
@@ -652,7 +778,22 @@ def build_remotion_timeline(
         })
     camera_cues = []
     camera_motion = str(current_template.get("camera_motion") or "none")
-    if template_id == "clean-green" or camera_motion in {"subtle-punch", "rhythmic-punch"}:
+    if template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8"}:
+        rhythm_scales = [1.018, 1.028, 1.022, 1.032]
+        for cue_index, caption in enumerate(usable_captions):
+            node = str(caption.get("contentNode") or "supporting")
+            scale = {
+                "hook": 1.035, "pain_reversal": 1.04, "core_viewpoint": 1.042,
+                "number_benefit": 1.048, "example_step": 1.038,
+                "brand_entity": 1.025, "cta": 1.055,
+            }.get(node, rhythm_scales[cue_index % len(rhythm_scales)])
+            camera_cues.append({
+                "start": round(max(0.0, float(caption.get("start") or 0.0)), 3),
+                "end": round(min(duration, float(caption.get("end") or duration)), 3),
+                "scale": scale,
+                "origin": "50% 43%",
+            })
+    elif template_id == "clean-green" or camera_motion in {"subtle-punch", "rhythmic-punch"}:
         origins = ["50% 44%", "46% 42%", "54% 43%"]
         scales = [1.0, 1.055, 1.025, 1.07] if template_id == "clean-green" or camera_motion == "rhythmic-punch" else [1.0, 1.028, 1.012, 1.036]
         for pair_index, caption in enumerate(usable_captions[::2]):
@@ -679,7 +820,15 @@ def build_remotion_timeline(
     transition_rng = random.Random(f"{folder.name}:{title}:{duration:.3f}:transition-v14")
     transition_offset = transition_rng.randrange(len(configured_transitions))
     for index, point in enumerate(transition_points or []):
-        configured = configured_transitions[(transition_offset + index) % len(configured_transitions)]
+        nearby_caption = next((caption for caption in usable_captions if abs(float(caption.get("start") or 0) - float(point)) < .55), None)
+        semantic_role = str((nearby_caption or {}).get("semanticRole") or "")
+        content_node = str((nearby_caption or {}).get("contentNode") or "")
+        role_matches = [
+            item for item in configured_transitions
+            if isinstance(item, dict)
+            and (semantic_role in (item.get("roles") or []) or content_node in (item.get("nodes") or []))
+        ]
+        configured = role_matches[0] if role_matches else configured_transitions[(transition_offset + index) % len(configured_transitions)]
         configured = configured if isinstance(configured, dict) else {}
         style = str(configured.get("style") or "soft-punch")
         if style not in allowed_transition_styles:
@@ -693,31 +842,9 @@ def build_remotion_timeline(
     bgm_tracks = current_template.get("bgm_tracks")
     if not isinstance(bgm_tracks, list):
         bgm_tracks = []
-    usable_bgm_tracks = [
-        item for item in bgm_tracks
-        if isinstance(item, dict) and str(item.get("file") or "").strip()
-    ]
     selected_bgm = None
-    if include_bgm and usable_bgm_tracks:
-        # Select once per job. Re-rendering the same job is stable, while a new
-        # generation receives a fresh track from the template-owned pool.
-        bgm_rng = random.Random(f"{folder.name}:{title}:{duration:.3f}:bgm-v2")
-        semantic_text = " ".join([
-            str(title or ""),
-            *[str(item.get("text") or "") for item in usable_captions],
-        ]).lower()
-        scored_tracks: list[tuple[int, dict[str, Any]]] = []
-        for item in usable_bgm_tracks:
-            keywords = item.get("match_keywords") if isinstance(item.get("match_keywords"), list) else []
-            score = sum(6 for keyword in keywords if str(keyword).strip().lower() in semantic_text)
-            scored_tracks.append((score, item))
-        best_score = max((score for score, _ in scored_tracks), default=0)
-        candidates = [item for score, item in scored_tracks if score == best_score] if best_score > 0 else usable_bgm_tracks
-        weighted_tracks: list[dict[str, Any]] = []
-        for item in candidates:
-            weight = max(1, min(8, int(item.get("weight") or 1)))
-            weighted_tracks.extend([item] * weight)
-        selected_bgm = bgm_rng.choice(weighted_tracks)
+    if include_bgm:
+        selected_bgm = select_content_music(bgm_tracks, title, usable_captions, f"{folder.name}:{duration:.3f}")
     timeline = {
         "version": 2,
         "sourceFile": source.name,
@@ -1157,6 +1284,7 @@ def template_profile(template_id: str) -> dict[str, Any]:
         "enable_chapters": body.get("enable_chapters", False),
         "enable_cards": body.get("enable_cards", False),
         "camera_motion": body.get("camera_motion", "none"),
+        "content_director": package.get("content_director", {}) if isinstance(package.get("content_director"), dict) else {},
         "ending_mode": ending.get("mode", "none"),
         "ending_seconds": ending.get("max_seconds", 0.0),
         "cover_mode": cover.get("mode", "first-usable-content-frame"),
@@ -1174,6 +1302,7 @@ def template_profile(template_id: str) -> dict[str, Any]:
                 "weight": max(1, int(item.get("weight") or 1)),
                 "volume": max(0.02, min(1.0, float(item.get("volume") or music.get("volume") or 0.05))),
                 "moods": item.get("moods") if isinstance(item.get("moods"), list) else [],
+                "dominant_nodes": item.get("dominant_nodes") if isinstance(item.get("dominant_nodes"), list) else [],
                 "match_keywords": item.get("match_keywords") if isinstance(item.get("match_keywords"), list) else [],
             }
             for item in music_tracks
@@ -2415,12 +2544,19 @@ def build_adaptive_sfx_cues(
     transition_points: list[float],
     title: str,
 ) -> list[dict[str, Any]]:
-    """Build a restrained, content-aware effect track from a template pool.
+    """Build a restrained, content-aware effect track from a template pool."""
+    if isinstance(template.get("content_director"), dict):
+        return build_semantic_sfx_cues(
+            folder,
+            template,
+            duration,
+            captions,
+            transition_points,
+            title,
+            keyword_selector=kinetic_keyword,
+        )
 
-    A template defines the sound language, while each job gets a different but
-    deterministic selection. This avoids the old behaviour where the exact
-    same synthetic sound was repeated at every cut.
-    """
+    # Preserve the original four templates' established sound routing.
     configured = template.get("sfx_profile") if isinstance(template.get("sfx_profile"), dict) else {}
     pools = {
         "opening": configured.get("opening_pool") or [
@@ -2914,6 +3050,7 @@ def process_job(job_id: str) -> None:
             raise RuntimeError(
                 "字幕完整性检查未通过，已停止生成，避免输出漏句成片。"
             )
+        caption_segments = attach_word_timing(caption_segments, words)
         # Confirmed caption beats are the user's source of truth. Keeping their
         # boundaries in the title prompt makes the model understand the whole
         # argument instead of copying or truncating the opening sentence.
@@ -2939,6 +3076,13 @@ def process_job(job_id: str) -> None:
             highlight_template_name = "高级红" if str(job.get("template_id") or "") == "high-red" else "轻奢白"
             write_job(job_id, stage="highlight", progress=48, message=f"AI 正在逐段规划{highlight_template_name}字幕的语义重点词…")
             caption_segments, highlight_source = ai_select_caption_highlights(caption_segments)
+        template_id = str(job.get("template_id") or "clean-green")
+        if template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8"}:
+            caption_segments = semantic_caption_plan(
+                caption_segments,
+                title,
+                current_template.get("content_director"),
+            )
         output_size = render_dimensions(metadata, current_template)
         scene_changes = detect_scene_changes(
             source,
@@ -2962,7 +3106,22 @@ def process_job(job_id: str) -> None:
             if rhythm_interval > 0
             else []
         )
-        transition_candidates = sorted(scene_changes + pause_candidates + rhythm_candidates)
+        node_transition_candidates = (
+            [
+                float(caption.get("start") or 0.0)
+                for caption in caption_segments
+                if str(caption.get("contentNode") or "")
+                in {"pain_reversal", "core_viewpoint", "number_benefit", "example_step", "cta"}
+            ]
+            if template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8"}
+            else []
+        )
+        transition_candidates = sorted(
+            scene_changes
+            + pause_candidates
+            + node_transition_candidates
+            + ([] if node_transition_candidates else rhythm_candidates)
+        )
         transition_points: list[float] = []
         minimum_transition_gap = float(current_template.get("minimum_transition_gap_seconds") or 3.0)
         for point in transition_candidates:
@@ -2986,7 +3145,7 @@ def process_job(job_id: str) -> None:
             metadata["duration"],
             title,
             caption_segments,
-            str(job.get("template_id") or "clean-green"),
+            template_id,
         )
         include_sfx = bool(job.get("include_sfx", True))
         include_bgm = bool(job.get("include_bgm", False))
@@ -3012,7 +3171,7 @@ def process_job(job_id: str) -> None:
             metadata["duration"],
             title,
             caption_segments,
-            str(job.get("template_id") or "clean-green"),
+            template_id,
             job.get("merchant") if isinstance(job.get("merchant"), dict) else {},
             include_sfx=include_sfx,
             include_bgm=include_bgm,

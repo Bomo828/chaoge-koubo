@@ -1,0 +1,338 @@
+{
+  "version": 22,
+  "package_contract_version": 3,
+  "id": "template-7",
+  "name": "橙意画报",
+  "status": "published",
+  "package_mode": "isolated",
+  "renderer_key": "template-7-split-poster-v2",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "A080 两排字幕4、5参数提炼｜本地响应式重建",
+  "material_scope": "template-7-owned-rebuild-2026-08-13",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover",
+    "maximum_upscale": 2
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "actual_first_frame": true,
+    "standalone_export": true,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg"
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 2.7,
+    "title_mode": "opening",
+    "fixed_decorative_text": false,
+    "title_content_policy": "confirmed-title-only",
+    "title_variants": [
+      "primary",
+      "secondary"
+    ],
+    "title_selection_policy": "content-node-and-stable-seed",
+    "title_animation": "split-poster-title",
+    "safe_top_px": 150,
+    "title_font_size_px": 82,
+    "title_line_gap_px": 8,
+    "sfx": "open"
+  },
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 12,
+    "caption_line_max_chars": 8,
+    "caption_max_seconds": 2.4,
+    "pause_split_seconds": 0.3,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": false,
+    "caption_safe_inset": 84,
+    "caption_max_width": 912,
+    "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_pool": [
+      {
+        "style": "soft-punch",
+        "duration": 0.28,
+        "intensity": 0.22
+      },
+      {
+        "style": "drift-left",
+        "duration": 0.34,
+        "intensity": 0.22
+      },
+      {
+        "style": "soft-flash",
+        "duration": 0.22,
+        "intensity": 0.18
+      }
+    ],
+    "rhythm_interval_seconds": 6.6,
+    "minimum_transition_gap_seconds": 5.2,
+    "scene_threshold": 0.3,
+    "maximum_effects_per_minute": 10,
+    "camera_motion": "semantic-subtle-push"
+  },
+  "content_director": {
+    "mode": "semantic-node-material-router",
+    "caption_selection_policy": "template-7-exclusive-split-poster-red-v2",
+    "title_selection_policy": "hook=primary, viewpoint/brand=secondary, stable fallback",
+    "fallback_node": "supporting",
+    "nodes": {
+      "hook": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "pain_reversal": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "core_viewpoint": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "number_benefit": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "example_step": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "brand_entity": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "cta": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      },
+      "supporting": {
+        "caption_pool": [
+          "split-poster-red"
+        ]
+      }
+    }
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1,
+    "mode": "poster-cut"
+  },
+  "style": {
+    "font_name": "Noto Sans CJK SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H00FFFFFF",
+    "outline": "&H00000000",
+    "shadow": "&H70000000",
+    "title_size_ratio": 0.076,
+    "subtitle_size_ratio": 0.068,
+    "title_y_ratio": 0.08,
+    "subtitle_y_ratio": 0.64,
+    "title_animation": "split-poster-title",
+    "subtitle_animation": "split-poster-red",
+    "caption_mode": "kinetic-studio-series",
+    "caption_visual_lock": "split-poster-red-only",
+    "keyword_color": "#ff5a36"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-rotating-pool",
+      "pool_id": "template-7-speech-safe-v2",
+      "track_id": "elegant-science",
+      "file": "music/template-7/elegant-science.mp3",
+      "volume": 0.047,
+      "fade_in_seconds": 0.8,
+      "fade_out_seconds": 0.8,
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "elegant-science",
+          "file": "music/template-7/elegant-science.mp3",
+          "weight": 3,
+          "volume": 0.047,
+          "moods": [
+            "编辑",
+            "知识",
+            "专业"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "分析",
+            "行业",
+            "知识",
+            "观点"
+          ]
+        },
+        {
+          "id": "minimal-tech",
+          "file": "music/template-7/minimal-tech.mp3",
+          "weight": 2,
+          "volume": 0.044,
+          "moods": [
+            "现代",
+            "信息",
+            "干净"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "AI",
+            "数据",
+            "效率",
+            "趋势"
+          ]
+        },
+        {
+          "id": "calm-down",
+          "file": "music/template-7/calm-down.mp3",
+          "weight": 2,
+          "volume": 0.045,
+          "moods": [
+            "评论",
+            "反差",
+            "沉稳"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "反差",
+            "问题",
+            "真正",
+            "核心"
+          ]
+        },
+        {
+          "id": "dawn-editorial",
+          "file": "music/template-7/dawn-editorial.mp3",
+          "weight": 2,
+          "volume": 0.09,
+          "moods": [
+            "大气",
+            "编辑",
+            "留白"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "行业",
+            "趋势",
+            "未来",
+            "升级"
+          ]
+        },
+        {
+          "id": "cinema-atmosphere",
+          "file": "music/template-7/cinema-atmosphere.mp3",
+          "weight": 2,
+          "volume": 0.058,
+          "moods": [
+            "观点",
+            "杂志",
+            "影片感"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "评论",
+            "现象",
+            "争议",
+            "观点"
+          ]
+        },
+        {
+          "id": "inspired-editorial",
+          "file": "music/template-7/inspired-editorial.mp3",
+          "weight": 2,
+          "volume": 0.036,
+          "moods": [
+            "灵感",
+            "品牌",
+            "杂志"
+          ],
+          "dominant_nodes": [
+            "core_viewpoint",
+            "example_step",
+            "supporting"
+          ],
+          "match_keywords": [
+            "创意",
+            "品牌",
+            "设计",
+            "灵感"
+          ]
+        }
+      ]
+    },
+    "sfx_gain": 0.16,
+    "sfx": {
+      "mode": "template-owned-semantic-pool",
+      "minimum_gap_seconds": 3.4,
+      "maximum_hits_per_minute": 11,
+      "opening_pool": [
+        "sfx/template-7/open.ogg"
+      ],
+      "accent_pool": [
+        "sfx/template-7/accent.ogg"
+      ],
+      "transition_pool": [
+        "sfx/template-7/transition.ogg"
+      ],
+      "ending_pool": [
+        "sfx/template-7/ending.ogg"
+      ]
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 20,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

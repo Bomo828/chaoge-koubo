@@ -1,0 +1,6 @@
+Simple menu/background music loop
+Author: polosik
+Source: https://opengameart.org/content/simple-menubackground-music-loop
+
+The author published this music under CC0 1.0 Universal.
+License: https://creativecommons.org/publicdomain/zero/1.0/

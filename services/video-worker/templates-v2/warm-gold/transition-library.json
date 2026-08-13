@@ -1,0 +1,14 @@
+{
+  "schema_version": 2,
+  "template_id": "warm-gold",
+  "template_version": 2,
+  "name": "青绿知识·双语独立转场池",
+  "trigger_rule": "只在真实镜头变化、长停顿或语义段落边界触发；任意两个转场至少间隔3.8秒。",
+  "cross_template_fallback": false,
+  "transitions": [
+    {"id": "soft-punch", "label": "轻推近", "duration_seconds": 0.28, "intensity": 0.46, "trigger": ["semantic_boundary", "cadence_fallback"], "sound_role": "transition"},
+    {"id": "drift-left", "label": "向左轻移", "duration_seconds": 0.26, "intensity": 0.34, "trigger": ["scene_change", "long_pause"], "sound_role": "transition"},
+    {"id": "drift-right", "label": "向右轻移", "duration_seconds": 0.26, "intensity": 0.34, "trigger": ["scene_change", "long_pause"], "sound_role": "transition"},
+    {"id": "soft-flash", "label": "青绿柔光闪切", "duration_seconds": 0.20, "intensity": 0.28, "trigger": ["keyword", "final_phrase"], "sound_role": "accent"}
+  ]
+}

@@ -17,7 +17,7 @@ jobs:
   deploy:
     name: Build and deploy to Tencent Cloud
     runs-on: ubuntu-24.04
-    timeout-minutes: 30
+    timeout-minutes: 60
     environment: production
 
     steps:
@@ -42,6 +42,13 @@ jobs:
           set -euo pipefail
           pnpm run typecheck
           pnpm run lint
+          pnpm --dir services/remotion-worker install --frozen-lockfile
+          pnpm --dir services/remotion-worker typecheck
+          PYTHONPYCACHEPREFIX="$RUNNER_TEMP/video-worker-pycache" python3 -m py_compile \
+            services/video-worker/main.py \
+            services/video-worker/caption_router.py \
+            services/video-worker/music_router.py \
+            services/video-worker/sfx_router.py
 
       - name: Build production bundle
         run: |
@@ -101,7 +108,7 @@ jobs:
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] && git diff --quiet HEAD^ HEAD -- services/video-worker; then
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] && git diff --quiet HEAD^ HEAD -- services/video-worker services/remotion-worker; then
             echo "No video worker changes in this release."
             exit 0
           fi
@@ -117,6 +124,15 @@ jobs:
           remote_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
           mkdir -p "$package_dir"
           cp -R services/video-worker/. "$package_dir/"
+          # The installed server deploy command activates one atomic worker
+          # directory. Bundle Remotion beside main.py and let main.py prefer
+          # this nested, release-matched renderer over a legacy sibling copy.
+          mkdir -p "$package_dir/remotion-worker"
+          rsync --archive --exclude node_modules services/remotion-worker/ "$package_dir/remotion-worker/"
+          (
+            cd "$package_dir/remotion-worker"
+            pnpm install --prod --frozen-lockfile --config.node-linker=hoisted
+          )
           printf '%s\n' "$RELEASE_SHA" > "$package_dir/RELEASE_SHA"
           tar -czf "$archive" -C "$package_dir" .
           scp -i "$HOME/.ssh/tencent_deploy" -P "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \

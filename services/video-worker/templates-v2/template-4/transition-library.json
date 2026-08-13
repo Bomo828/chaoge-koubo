@@ -1,0 +1,22 @@
+{
+  "schema_version": 2,
+  "template_id": "template-4",
+  "items": [
+    {
+      "style": "soft-punch",
+      "duration": 0.28,
+      "intensity": 0.22
+    },
+    {
+      "style": "drift-right",
+      "duration": 0.34,
+      "intensity": 0.22
+    },
+    {
+      "style": "soft-flash",
+      "duration": 0.22,
+      "intensity": 0.18
+    }
+  ],
+  "rule": "只在语义停顿或真实场景变化触发。"
+}
