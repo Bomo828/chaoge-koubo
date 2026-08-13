@@ -28,7 +28,7 @@ type FinalViralTemplate = {
   packagePath: string;
 };
 
-const FINAL_VERSION = 22;
+const FINAL_VERSION = 23;
 
 function finalizedTemplate(template: FinalViralTemplate): TemplateSeed {
   return {
@@ -66,7 +66,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_pulse_final",
     slug: "viral-pulse",
     name: "爆点笔记",
-    coverUrl: "/template-covers/viral-pulse.jpg",
+    coverUrl: "/template-covers/viral-pulse-cover-v23.jpg",
     description: "玫红手写错位与重点词强调，适合钩子、反差、方法和行动号召。",
     accent: "#ff287f",
     titleColor: "#fffdf8",
@@ -83,7 +83,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_2_final",
     slug: "template-2",
     name: "柔光叙说",
-    coverUrl: "/template-covers/template-2.jpg",
+    coverUrl: "/template-covers/template-2-cover-v23.jpg",
     description: "柔粉双排与人物叙述质感，适合生活分享、服务体验和情绪口播。",
     accent: "#904565",
     titleColor: "#fffdfb",
@@ -100,7 +100,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_3_final",
     slug: "template-3",
     name: "智识卡片",
-    coverUrl: "/template-covers/template-3.jpg",
+    coverUrl: "/template-covers/template-3-cover-v23.jpg",
     description: "黄蓝知识卡与清晰信息层级，适合AI、课程、工具和专业分析。",
     accent: "#ffd64f",
     titleColor: "#102d3d",
@@ -117,7 +117,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_4_final",
     slug: "template-4",
     name: "步骤主场",
-    coverUrl: "/template-covers/template-4.jpg",
+    coverUrl: "/template-covers/template-4-cover-v23.jpg",
     description: "橙色章节与数字拆解，适合步骤、流程、实操和数字利益点。",
     accent: "#ff7849",
     titleColor: "#fffdf7",
@@ -134,7 +134,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_5_final",
     slug: "template-5",
     name: "薄荷清言",
-    coverUrl: "/template-covers/template-5.jpg",
+    coverUrl: "/template-covers/template-5-cover-v23.jpg",
     description: "薄荷留白与下划线逐字字幕，适合心得、健康、日常和温和知识口播。",
     accent: "#77e6bd",
     titleColor: "#ffffff",
@@ -151,7 +151,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_6_final",
     slug: "template-6",
     name: "深度引言",
-    coverUrl: "/template-covers/template-6.jpg",
+    coverUrl: "/template-covers/template-6-cover-v23.jpg",
     description: "酒红引言与编辑式观点字幕，适合行业洞察、人物故事和品牌表达。",
     accent: "#d8b36a",
     titleColor: "#fffaf0",
@@ -168,7 +168,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_7_final",
     slug: "template-7",
     name: "橙意画报",
-    coverUrl: "/template-covers/template-7.jpg",
+    coverUrl: "/template-covers/template-7-cover-v23.jpg",
     description: "橙色分栏与杂志海报结构，适合行业趋势、品牌、设计和观点评论。",
     accent: "#ff5a36",
     titleColor: "#251b16",
@@ -185,7 +185,7 @@ const finalizedTemplateSeeds: TemplateSeed[] = [
     id: "tpl_viral_template_8_final",
     slug: "template-8",
     name: "黑白观点",
-    coverUrl: "/template-covers/template-8.jpg",
+    coverUrl: "/template-covers/template-8-cover-v23.jpg",
     description: "黑白打字机与克制重点词，适合职场、复盘、认知和逻辑型口播。",
     accent: "#d8dadd",
     titleColor: "#ffffff",
