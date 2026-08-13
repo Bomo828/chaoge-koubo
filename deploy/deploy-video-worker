@@ -4,11 +4,10 @@ set -euo pipefail
 ARCHIVE="${1:-}"
 RELEASE_SHA="${2:-}"
 APP_ROOT="/opt/merchant-studio"
-WORKER_DIR="${APP_ROOT}/video-worker"
+APP_DIR="${APP_ROOT}/video-worker"
 NEW_DIR="${APP_ROOT}/video-worker-new"
 BACKUP_DIR="${APP_ROOT}/video-worker-backup"
 FAILED_DIR="${APP_ROOT}/video-worker-failed"
-DATA_DIR="/var/lib/merchant-studio/video"
 SERVICE="merchant-video-worker.service"
 
 fail() {
@@ -35,19 +34,31 @@ done < <(tar -tzf "${resolved_archive}")
 rm -rf -- "${NEW_DIR}" "${FAILED_DIR}"
 mkdir -p "${NEW_DIR}"
 tar -xzf "${resolved_archive}" -C "${NEW_DIR}"
+
 [[ -f "${NEW_DIR}/main.py" ]] || fail "main.py is missing from the release"
-[[ -f "${NEW_DIR}/RELEASE_SHA" ]] || fail "release marker is missing"
+[[ -f "${NEW_DIR}/requirements.txt" ]] || fail "requirements.txt is missing from the release"
+[[ -f "${NEW_DIR}/template-registry.json" ]] || fail "template registry is missing from the release"
+[[ -f "${NEW_DIR}/remotion-worker/package.json" ]] || fail "Remotion worker is missing from the release"
+[[ -d "${NEW_DIR}/remotion-worker/node_modules" ]] || fail "Remotion production dependencies are missing"
 [[ "$(cat "${NEW_DIR}/RELEASE_SHA")" == "${RELEASE_SHA}" ]] || fail "release SHA does not match"
+
+# Runtime credentials and the Python environment are server-owned. Preserve
+# them across immutable source releases instead of putting secrets in GitHub.
+[[ -f "${APP_DIR}/.env" ]] || fail "existing worker environment is missing"
+[[ -d "${APP_DIR}/.venv" ]] || fail "existing worker Python environment is missing"
+cp -a "${APP_DIR}/.env" "${NEW_DIR}/.env"
+cp -a "${APP_DIR}/.venv" "${NEW_DIR}/.venv"
 
 rollback() {
   local exit_code=$?
   trap - ERR
+  echo "Video worker deployment failed; rolling back to the previous release." >&2
   systemctl stop "${SERVICE}" 2>/dev/null || true
-  if [[ -d "${WORKER_DIR}" ]]; then
-    mv "${WORKER_DIR}" "${FAILED_DIR}" 2>/dev/null || true
+  if [[ -d "${APP_DIR}" ]]; then
+    mv "${APP_DIR}" "${FAILED_DIR}" 2>/dev/null || true
   fi
   if [[ -d "${BACKUP_DIR}" ]]; then
-    mv "${BACKUP_DIR}" "${WORKER_DIR}"
+    mv "${BACKUP_DIR}" "${APP_DIR}"
     systemctl start "${SERVICE}" 2>/dev/null || true
   fi
   rm -f -- "${resolved_archive}"
@@ -55,34 +66,23 @@ rollback() {
 }
 trap rollback ERR
 
-if [[ -d "${WORKER_DIR}/.venv" ]]; then
-  mv "${WORKER_DIR}/.venv" "${NEW_DIR}/.venv"
-fi
-if [[ -f "${WORKER_DIR}/.env" ]]; then
-  cp -f "${WORKER_DIR}/.env" "${NEW_DIR}/.env"
-  sed -i 's/^TENCENT_ASR_ENGINE_TYPE=.*/TENCENT_ASR_ENGINE_TYPE=16k_zh_en/' "${NEW_DIR}/.env"
-fi
-for preserved in templates-v2 templates.json template-registry.json authoring-skill; do
-  if [[ -e "${WORKER_DIR}/${preserved}" && ! -e "${NEW_DIR}/${preserved}" ]]; then
-    cp -a "${WORKER_DIR}/${preserved}" "${NEW_DIR}/${preserved}"
-  fi
-done
-
-systemctl stop "${SERVICE}" 2>/dev/null || true
+systemctl stop "${SERVICE}"
 rm -rf -- "${BACKUP_DIR}"
-if [[ -d "${WORKER_DIR}" ]]; then
-  mv "${WORKER_DIR}" "${BACKUP_DIR}"
-fi
-mv "${NEW_DIR}" "${WORKER_DIR}"
+mv "${APP_DIR}" "${BACKUP_DIR}"
+mv "${NEW_DIR}" "${APP_DIR}"
 
-mkdir -p "${DATA_DIR}"
-chown -R merchant-studio:merchant-studio "${WORKER_DIR}" "${DATA_DIR}"
-chmod -R a+rX "${WORKER_DIR}"
-[[ ! -f "${WORKER_DIR}/.env" ]] || chmod 600 "${WORKER_DIR}/.env"
+chown -R root:root "${APP_DIR}"
+chmod -R a+rX "${APP_DIR}"
+mkdir -p "${APP_DIR}/remotion-worker/node_modules/.cache" "${APP_DIR}/remotion-worker/node_modules/.remotion"
+chown -R merchant-studio:merchant-studio \
+  "${APP_DIR}/remotion-worker/node_modules/.cache" \
+  "${APP_DIR}/remotion-worker/node_modules/.remotion"
+chmod 600 "${APP_DIR}/.env"
+
 systemctl start "${SERVICE}"
 
 healthy=false
-for _ in $(seq 1 30); do
+for _ in $(seq 1 40); do
   if curl -fsS http://127.0.0.1:8790/health >/dev/null && systemctl is-active --quiet "${SERVICE}"; then
     healthy=true
     break
