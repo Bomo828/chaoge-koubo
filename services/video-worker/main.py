@@ -30,6 +30,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 
 from caption_router import select_caption_material
+from douyin_resolver import first_media_url, resolve_public_douyin_video
 from music_router import select_content_music
 from sfx_router import build_semantic_sfx_cues
 
@@ -3424,6 +3425,67 @@ def normalize_douyin_share_url(value: Any) -> str:
     return url
 
 
+def douyin_post_from_public_detail(share_url: str, social_post_class: Any) -> Any:
+    resolved = resolve_public_douyin_video(share_url)
+    item = resolved["detail"]
+    video_id = str(resolved["video_id"])
+    video = item.get("video") if isinstance(item.get("video"), dict) else {}
+    video_url = first_media_url(
+        video.get("play_addr_h264"),
+        video.get("play_addr"),
+        video.get("play_addr_265"),
+    )
+    if not video_url:
+        raise ValueError("抖音公开视频未返回可读取的视频地址。")
+
+    author = item.get("author") if isinstance(item.get("author"), dict) else {}
+    statistics = item.get("statistics") if isinstance(item.get("statistics"), dict) else {}
+    cover_url = first_media_url(video.get("cover"), video.get("origin_cover")) or None
+    duration_ms = item.get("duration") or video.get("duration")
+    duration_sec = None
+    if isinstance(duration_ms, (int, float)) and duration_ms > 0:
+        duration_sec = max(1, int(round(float(duration_ms) / 1000))) if duration_ms > 1000 else int(duration_ms)
+    title = str(item.get("desc") or "").strip() or f"douyin_{video_id}"
+    title = re.sub(r'[\\/:*?"<>|]', "_", title)
+    sec_uid = str(author.get("sec_uid") or "").strip()
+    author_name = str(author.get("nickname") or author.get("unique_id") or "").strip()
+    author_profile = {
+        "id": author.get("uid") or sec_uid or None,
+        "name": author_name or None,
+        "nickname": author_name or None,
+        "handle": author.get("unique_id") or None,
+        "sec_uid": sec_uid or None,
+        "profile_url": f"https://www.douyin.com/user/{sec_uid}" if sec_uid else None,
+        "extra": author,
+    }
+    return social_post_class(
+        platform="douyin",
+        content_type="video",
+        source_url=share_url,
+        resolved_url=str(resolved["resolved_url"]),
+        post_id=video_id,
+        title=title,
+        body=str(item.get("desc") or "").strip(),
+        author_name=author_name or None,
+        author_id=author.get("uid") or sec_uid or None,
+        publish_time=item.get("create_time"),
+        cover_url=cover_url,
+        duration_sec=duration_sec,
+        video_url=video_url,
+        page_url=str(resolved["page_url"]),
+        author_profile=author_profile,
+        public_metrics={
+            "views": statistics.get("play_count"),
+            "likes": statistics.get("digg_count"),
+            "comments": statistics.get("comment_count"),
+            "shares": statistics.get("share_count"),
+            "collects": statistics.get("collect_count"),
+        },
+        media={"cover_url": cover_url, "image_urls": [], "video_url": video_url},
+        extra={"aweme_type": item.get("aweme_type"), "statistics": statistics, "resolver": "public-preview-detail"},
+    )
+
+
 def process_douyin_transcription_job(job_id: str) -> None:
     folder = job_dir(job_id)
     job = read_job(job_id)
@@ -3431,11 +3493,19 @@ def process_douyin_transcription_job(job_id: str) -> None:
         write_job(job_id, state="running", stage="resolve", progress=3, message="正在读取抖音公开视频信息…")
         try:
             from social_media_toolkit.downloader import MediaDownloader
-            from social_media_toolkit.platforms.core import DouyinPlatformAdapter
+            from social_media_toolkit.platforms.core import DouyinPlatformAdapter, SocialPost
         except ImportError as error:
             raise RuntimeError("抖音链接解析组件尚未安装，请联系管理员更新视频服务。") from error
 
-        post = DouyinPlatformAdapter().fetch_post(str(job.get("benchmark_source_url") or ""))
+        share_url = str(job.get("benchmark_source_url") or "")
+        try:
+            post = DouyinPlatformAdapter().fetch_post(share_url)
+        except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+            # Since August 2026 the mobile share page may omit videoInfoRes
+            # from its initial router payload.  Fall back to Douyin's public
+            # desktop preview detail response, which still exposes public
+            # video metadata without account cookies.
+            post = douyin_post_from_public_detail(share_url, SocialPost)
         if str(post.platform or "").lower() != "douyin" or str(post.content_type or "").lower() != "video":
             raise RuntimeError("该链接不是可读取的抖音公开视频。")
 
