@@ -3491,16 +3491,32 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   if (workspace === "viral-edit") {
     const templates = viralTemplates;
     const selectedViralTemplate = viralTemplateById(viralTemplate, viralTemplates);
-    return <section className="video-workspace">
-      <header className="video-workspace-head">
+    const viralCurrentStep = viralResultUrl || viralProcessStarted ? 4 : viralCaptionsConfirmed ? 3 : viralFiles.length ? 2 : 1;
+    return <section className="video-workspace viral-edit-workspace">
+      <header className="video-workspace-head viral-edit-workspace-head">
         <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
         <div><h1>一键网感剪辑</h1></div>
-        <span>{viralAnalyzed ? "原片已就绪" : "等待导入"}</span>
+        <span>{viralResultUrl ? "成片已完成" : `正在制作 · 第 ${viralCurrentStep} 步`}</span>
       </header>
+      <nav className="viral-edit-progress" aria-label="一键网感剪辑制作进度">
+        {[
+          { label: "原片", detail: viralFiles.length ? "视频已导入" : "导入口播视频" },
+          { label: "文案", detail: viralCaptionsConfirmed ? "标题口播已确认" : "核对标题口播" },
+          { label: "模板", detail: viralCaptionsConfirmed ? selectedViralTemplate.name : "选择包装风格" },
+          { label: "成片", detail: viralResultUrl ? "制作完成" : viralProcessBusy ? `${viralProgress}%` : "生成网感视频" },
+        ].map((item, index) => {
+          const step = index + 1;
+          const isComplete = step < viralCurrentStep || Boolean(viralResultUrl);
+          const isActive = step === viralCurrentStep && !viralResultUrl;
+          return <span className={isComplete ? "complete" : isActive ? "active" : ""} aria-current={isActive ? "step" : undefined} key={item.label}>
+            <i>{step}</i><b>{item.label}</b><small>{item.detail}</small>
+          </span>;
+        })}
+      </nav>
       <div className="viral-quick-shell">
-        <section className="viral-source-pane">
+        <section className={`viral-source-pane viral-edit-step-card ${viralFiles.length ? "is-complete" : "is-active"}`}>
           <div className="viral-pane-heading">
-            <span><b>快速导入原片</b></span>
+            <i>01</i><span><b>导入口播原片</b></span>
             <label><input type="file" accept="video/*" onChange={addViralFiles} />{viralFiles.length ? "更换原片" : "导入原片"}</label>
           </div>
           <div className={`viral-main-preview template-${viralTemplate}`}>
@@ -3509,8 +3525,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </div>
           <section className="viral-source-transcript">
             <header>
-              <span><b>标题与口播文案</b></span>
-              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `正在核对 · ${viralTranscriptProgress}%` : "✦ 核对标题与口播"}</button>
+              <i>02</i><span><b>核对标题与口播</b></span>
+              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `正在核对 · ${viralTranscriptProgress}%` : "✦ 开始核对文案"}</button>
             </header>
             {viralCaptions.length ? <>
               <label className="viral-confirm-title">
@@ -3539,9 +3555,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {viralTranscriptError ? <div className="video-agent-error viral-transcript-error" role="alert">{viralTranscriptError}</div> : null}
           </section>
         </section>
-        <section className="viral-template-pane">
+        <section className={`viral-template-pane viral-edit-step-card ${viralCaptionsConfirmed ? "is-active" : "is-pending"}`}>
           <div className="viral-pane-heading">
-            <span><b>选择网感模板</b></span>
+            <i>03</i><span><b>选择网感模板</b></span>
             <em>{templates.find((template) => template.id === viralTemplate)?.name}</em>
           </div>
           <div className="viral-template-grid is-quick">
