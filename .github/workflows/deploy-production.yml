@@ -31,6 +31,11 @@ jobs:
         with:
           node-version: 22.14.0
 
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
       - name: Install dependencies
         run: |
           set -euo pipefail
@@ -119,6 +124,18 @@ jobs:
           remote_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
           mkdir -p "$package_dir"
           cp -R services/video-worker/. "$package_dir/"
+          # The server keeps its virtualenv between releases. Bundle the small,
+          # read-only Douyin adapter and its HTTP dependency with this release
+          # so the feature is available immediately after an atomic deploy.
+          python3 -m pip install --disable-pip-version-check --no-deps \
+            --target "$package_dir/vendor" \
+            'https://github.com/JNHFlow21/social-media-toolkit/archive/139525c35ae55f090003fdb243e78ca22c1f402a.tar.gz'
+          python3 -m pip install --disable-pip-version-check \
+            --target "$package_dir/vendor" 'requests>=2.33.0,<3'
+          printf '%s\n' '"""Bundled public Douyin adapter (Apache-2.0)."""' \
+            > "$package_dir/vendor/social_media_toolkit/__init__.py"
+          printf '%s\n' '"""Bundled platform adapters."""' \
+            > "$package_dir/vendor/social_media_toolkit/platforms/__init__.py"
           # The installed server deploy command activates one atomic worker
           # directory. Bundle Remotion beside main.py and let main.py prefer
           # this nested, release-matched renderer over a legacy sibling copy.

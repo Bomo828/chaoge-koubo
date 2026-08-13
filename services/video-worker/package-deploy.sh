@@ -20,6 +20,15 @@ cp "$SOURCE_DIR"/*.sh "$PACKAGE_DIR/video-worker/"
 cp "$SOURCE_DIR"/*.command "$PACKAGE_DIR/video-worker/"
 cp "$SOURCE_DIR"/*.example "$PACKAGE_DIR/video-worker/"
 cp -R "$SOURCE_DIR/templates-v2" "$PACKAGE_DIR/video-worker/templates-v2"
+python3 -m pip install --disable-pip-version-check --no-deps \
+  --target "$PACKAGE_DIR/video-worker/vendor" \
+  'https://github.com/JNHFlow21/social-media-toolkit/archive/139525c35ae55f090003fdb243e78ca22c1f402a.tar.gz'
+python3 -m pip install --disable-pip-version-check \
+  --target "$PACKAGE_DIR/video-worker/vendor" 'requests>=2.33.0,<3'
+printf '%s\n' '"""Bundled public Douyin adapter (Apache-2.0)."""' \
+  > "$PACKAGE_DIR/video-worker/vendor/social_media_toolkit/__init__.py"
+printf '%s\n' '"""Bundled platform adapters."""' \
+  > "$PACKAGE_DIR/video-worker/vendor/social_media_toolkit/platforms/__init__.py"
 cp -R "$PROJECT_ROOT/skills/distill-viral-video-template"/. "$PACKAGE_DIR/video-worker/authoring-skill/"
 find "$PACKAGE_DIR/video-worker/authoring-skill" -type d -name __pycache__ -prune -exec rm -rf {} +
 find "$PACKAGE_DIR/video-worker/authoring-skill" -type f \( -name '*.pyc' -o -name '.DS_Store' \) -delete

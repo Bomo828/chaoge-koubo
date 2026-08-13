@@ -12,6 +12,7 @@ import re
 import shutil
 import struct
 import subprocess
+import sys
 import threading
 import time
 import uuid
@@ -33,6 +34,9 @@ from music_router import select_content_music
 from sfx_router import build_semantic_sfx_cues
 
 ROOT = Path(__file__).resolve().parent
+VENDOR_DIR = ROOT / "vendor"
+if VENDOR_DIR.is_dir():
+    sys.path.insert(0, str(VENDOR_DIR))
 REMOTION_WORKER_DIR = next(
     (
         candidate.resolve()
@@ -43,6 +47,14 @@ REMOTION_WORKER_DIR = next(
 )
 DATA_DIR = Path(os.getenv("VIDEO_WORKER_DATA_DIR", ROOT / "data")).resolve()
 MAX_UPLOAD_BYTES = int(os.getenv("VIDEO_WORKER_MAX_UPLOAD_MB", "500")) * 1024 * 1024
+BENCHMARK_MAX_BYTES = min(
+    MAX_UPLOAD_BYTES,
+    int(os.getenv("VIDEO_WORKER_BENCHMARK_MAX_MB", "250")) * 1024 * 1024,
+)
+BENCHMARK_MAX_DURATION_SECONDS = max(
+    30,
+    int(os.getenv("VIDEO_WORKER_BENCHMARK_MAX_DURATION_SECONDS", "600")),
+)
 AI_API_BASE_URL = os.getenv("LK888_API_BASE_URL", "https://api.lk888.ai").rstrip("/")
 AI_API_KEY = os.getenv("LK888_API_KEY", "").strip()
 AI_TITLE_MODEL = os.getenv("VIDEO_WORKER_TITLE_MODEL", "gpt-5.5")
@@ -3306,6 +3318,8 @@ def process_transcription_job(job_id: str) -> None:
         metadata = probe_video(source)
         if metadata["duration"] <= 0 or not metadata["has_audio"]:
             raise RuntimeError("原片没有可识别的人声音轨。")
+        if job.get("kind") == "douyin_transcription" and metadata["duration"] > BENCHMARK_MAX_DURATION_SECONDS:
+            raise RuntimeError(f"对标视频最长支持 {BENCHMARK_MAX_DURATION_SECONDS // 60} 分钟，请选择更短的公开视频。")
         profile = template_profile(str(job.get("template_id") or "clean-green"))
         merchant = job.get("merchant") if isinstance(job.get("merchant"), dict) else {}
         ffmpeg = check_binary("ffmpeg")
@@ -3393,6 +3407,85 @@ def process_transcription_job(job_id: str) -> None:
             progress=max(1, int(job.get("progress") or 1)),
             message=str(error).strip() or "口播文案提取失败。",
             error=str(error).strip() or "口播文案提取失败。",
+        )
+
+
+def normalize_douyin_share_url(value: Any) -> str:
+    raw = str(value or "").strip()
+    match = re.search(r"https?://[^\s<>]+", raw, flags=re.IGNORECASE)
+    if not match:
+        raise ValueError("请粘贴完整的抖音公开视频链接。")
+    url = match.group(0).rstrip(".,;:!?，。；：！？、)]}〉》」』\"'")
+    parsed = urllib.parse.urlparse(url)
+    host = (parsed.hostname or "").lower().rstrip(".")
+    allowed = host == "douyin.com" or host.endswith(".douyin.com") or host == "iesdouyin.com" or host.endswith(".iesdouyin.com")
+    if parsed.scheme not in {"http", "https"} or not allowed:
+        raise ValueError("目前只支持 douyin.com 的公开视频链接。")
+    return url
+
+
+def process_douyin_transcription_job(job_id: str) -> None:
+    folder = job_dir(job_id)
+    job = read_job(job_id)
+    try:
+        write_job(job_id, state="running", stage="resolve", progress=3, message="正在读取抖音公开视频信息…")
+        try:
+            from social_media_toolkit.downloader import MediaDownloader
+            from social_media_toolkit.platforms.core import DouyinPlatformAdapter
+        except ImportError as error:
+            raise RuntimeError("抖音链接解析组件尚未安装，请联系管理员更新视频服务。") from error
+
+        post = DouyinPlatformAdapter().fetch_post(str(job.get("benchmark_source_url") or ""))
+        if str(post.platform or "").lower() != "douyin" or str(post.content_type or "").lower() != "video":
+            raise RuntimeError("该链接不是可读取的抖音公开视频。")
+
+        write_job(job_id, stage="download", progress=7, message="链接读取成功，正在安全下载公开视频…")
+        download = MediaDownloader(max_bytes=BENCHMARK_MAX_BYTES).download_post(post, output_dir=str(folder), include=("video",))
+        items = download.get("items") if isinstance(download, dict) else []
+        video_item = next(
+            (item for item in items if isinstance(item, dict) and item.get("kind") == "video" and item.get("local_path")),
+            None,
+        )
+        if not video_item:
+            errors = download.get("errors") if isinstance(download, dict) else []
+            detail = str(errors[0].get("error") or "") if errors and isinstance(errors[0], dict) else ""
+            raise RuntimeError(detail or "暂时无法下载这个抖音视频，请确认链接公开且仍然有效。")
+
+        downloaded = Path(str(video_item["local_path"])).resolve()
+        if downloaded.parent != folder.resolve() or not downloaded.is_file():
+            raise RuntimeError("公开视频下载结果无效。")
+        suffix = downloaded.suffix.lower() if downloaded.suffix.lower() in {".mp4", ".mov", ".m4v", ".webm", ".mkv"} else ".mp4"
+        source_name = f"source{suffix}"
+        source = folder / source_name
+        if downloaded != source:
+            downloaded.replace(source)
+        source_size = source.stat().st_size
+        if source_size <= 0 or source_size > BENCHMARK_MAX_BYTES:
+            raise RuntimeError("公开视频文件为空或超过当前大小限制。")
+
+        author = post.author_profile if isinstance(post.author_profile, dict) else {}
+        request_base_url = str(job.get("request_base_url") or "").rstrip("/")
+        public_base_url = PUBLIC_BASE_URL or request_base_url
+        write_job(
+            job_id,
+            source_name=source_name,
+            source_url=f"{public_base_url}/media/{job_id}/{source_name}" if public_base_url else "",
+            source_size=source_size,
+            benchmark_title=str(post.title or "").strip()[:200],
+            benchmark_author=str(author.get("nickname") or author.get("name") or author.get("display_name") or "").strip()[:100],
+            benchmark_post_id=str(post.post_id or "").strip()[:100],
+            benchmark_resolved_url=str(post.page_url or post.resolved_url or "").strip()[:1000],
+            message="公开视频已就绪，正在提取口播文案…",
+        )
+        process_transcription_job(job_id)
+    except Exception as error:
+        write_job(
+            job_id,
+            state="failed",
+            stage="failed",
+            progress=max(1, int(job.get("progress") or 1)),
+            message=str(error).strip() or "抖音对标文案读取失败。",
+            error=str(error).strip() or "抖音对标文案读取失败。",
         )
 
 
@@ -3605,6 +3698,46 @@ async def create_transcription_job(
         **job,
         "status_url": request_base_url + f"/v1/jobs/{job_id}",
     }
+
+
+@app.post("/v1/douyin/transcriptions")
+async def create_douyin_transcription_job(request: Request) -> dict[str, Any]:
+    require_template_admin(request)
+    try:
+        body = await request.json()
+    except Exception as error:
+        raise HTTPException(status_code=400, detail="请求内容格式无效。") from error
+    try:
+        share_url = normalize_douyin_share_url(body.get("share_url") if isinstance(body, dict) else "")
+    except ValueError as error:
+        raise HTTPException(status_code=400, detail=str(error)) from error
+
+    job_id = uuid.uuid4().hex
+    folder = job_dir(job_id)
+    folder.mkdir(parents=True, exist_ok=False)
+    now = int(time.time() * 1000)
+    request_base_url = str(request.base_url).rstrip("/")
+    job = {
+        "id": job_id,
+        "kind": "douyin_transcription",
+        "state": "queued",
+        "stage": "queued",
+        "progress": 1,
+        "message": "链接已接收，等待读取公开视频…",
+        "template_id": "clean-green",
+        "merchant": {},
+        "benchmark_source_url": share_url,
+        "request_base_url": request_base_url,
+        "source_name": "",
+        "source_url": "",
+        "source_size": 0,
+        "created_at": now,
+        "updated_at": now,
+        "error": "",
+    }
+    job_file(job_id).write_text(json.dumps(job, ensure_ascii=False, indent=2), "utf-8")
+    TRANSCRIPTION_EXECUTOR.submit(process_douyin_transcription_job, job_id)
+    return {**job, "status_url": request_base_url + f"/v1/jobs/{job_id}"}
 
 
 @app.post("/v1/jobs")

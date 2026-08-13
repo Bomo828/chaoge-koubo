@@ -102,6 +102,9 @@ type ViralWorkerJob = {
   result_url?: string;
   cover_url?: string;
   error?: string;
+  benchmark_title?: string;
+  benchmark_author?: string;
+  benchmark_source_url?: string;
   word_count?: number;
   scene_changes?: number[];
   transition_points?: number[];
@@ -1320,7 +1323,7 @@ type VideoQuote = {
 };
 
 function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string } | null }) {
-  const [workspace, setWorkspace] = useState<"chooser" | "material" | "lip-sync" | "viral-edit">("chooser");
+  const [workspace, setWorkspace] = useState<"chooser" | "material" | "lip-sync" | "ai-benchmark" | "viral-edit">("chooser");
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
   const [videoPlatforms, setVideoPlatforms] = useState<string[]>(["视频号"]);
@@ -1370,6 +1373,16 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [speechError, setSpeechError] = useState("");
   const [script, setScript] = useState("大家好，今天带大家看看我们的门店环境和特色服务。");
   const [speechSpeed, setSpeechSpeed] = useState(1);
+  const [benchmarkUrl, setBenchmarkUrl] = useState("");
+  const [benchmarkTranscript, setBenchmarkTranscript] = useState("");
+  const [benchmarkTitle, setBenchmarkTitle] = useState("");
+  const [benchmarkAuthor, setBenchmarkAuthor] = useState("");
+  const [benchmarkProfile, setBenchmarkProfile] = useState("");
+  const [benchmarkDraft, setBenchmarkDraft] = useState("");
+  const [benchmarkBusy, setBenchmarkBusy] = useState<"extract" | "rewrite" | "">("");
+  const [benchmarkProgress, setBenchmarkProgress] = useState(0);
+  const [benchmarkMessage, setBenchmarkMessage] = useState("");
+  const [benchmarkError, setBenchmarkError] = useState("");
   const [lipVideoFile, setLipVideoFile] = useState<File | null>(null);
   const [lipVideoName, setLipVideoName] = useState("");
   const [lipVideoPreviewUrl, setLipVideoPreviewUrl] = useState("");
@@ -1412,6 +1425,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralResultBlob, setViralResultBlob] = useState<Blob | null>(null);
   const [viralDownloadUrl, setViralDownloadUrl] = useState("");
   const [viralSaved, setViralSaved] = useState(false);
+
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "auto" });
+  }, [workspace]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1896,6 +1913,101 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     } finally {
       setScriptRewriteBusy(false);
     }
+  }
+
+  async function extractBenchmarkTranscript() {
+    if (!benchmarkUrl.trim() || benchmarkBusy) {
+      if (!benchmarkUrl.trim()) setBenchmarkError("请先粘贴抖音公开视频链接。");
+      return;
+    }
+    setBenchmarkBusy("extract");
+    setBenchmarkProgress(1);
+    setBenchmarkMessage("正在提交公开链接…");
+    setBenchmarkError("");
+    setBenchmarkTranscript("");
+    setBenchmarkTitle("");
+    setBenchmarkAuthor("");
+    setBenchmarkDraft("");
+    try {
+      const createResponse = await fetch("/api/ai/douyin-transcript", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ shareUrl: benchmarkUrl.trim() }),
+      });
+      const createData = await createResponse.json().catch(() => null) as (ViralWorkerJob & { error?: string }) | null;
+      if (!createResponse.ok || !createData?.id) throw new Error(createData?.error || "对标链接读取失败，请检查链接后重试。");
+
+      let job = createData;
+      const deadline = Date.now() + 10 * 60 * 1000;
+      while (job.state !== "success" && job.state !== "failed") {
+        if (Date.now() > deadline) throw new Error("对标文案提取超过10分钟，任务仍可能在后台继续，请稍后重试。");
+        await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+        const statusResponse = await fetch(`/api/ai/douyin-transcript?jobId=${encodeURIComponent(job.id)}`, { cache: "no-store" });
+        const statusData = await statusResponse.json().catch(() => null) as (ViralWorkerJob & { error?: string }) | null;
+        if (!statusResponse.ok || !statusData?.id) throw new Error(statusData?.error || "读取对标文案进度失败。");
+        job = statusData;
+        setBenchmarkProgress(Math.max(1, Math.min(100, Number(job.progress) || 1)));
+        setBenchmarkMessage(job.message || "正在提取口播文案…");
+      }
+      if (job.state === "failed") throw new Error(job.error || job.message || "对标文案提取失败。");
+      const transcript = (job.transcript || "").trim() || (job.captions || []).map((item) => item.text.trim()).filter(Boolean).join("，");
+      if (transcript.length < 10) throw new Error("没有从该视频中读取到可用口播，请更换清晰、有人声的公开视频。");
+      setBenchmarkTranscript(transcript);
+      setBenchmarkTitle((job.benchmark_title || job.title || "对标视频").trim());
+      setBenchmarkAuthor((job.benchmark_author || "").trim());
+      setBenchmarkProgress(100);
+      setBenchmarkMessage("对标口播已提取，可以开始改写。");
+    } catch (error) {
+      setBenchmarkError(error instanceof Error ? error.message : "对标文案提取失败，请稍后重试。");
+      setBenchmarkProgress(0);
+      setBenchmarkMessage("");
+    } finally {
+      setBenchmarkBusy("");
+    }
+  }
+
+  async function rewriteBenchmarkScript() {
+    if (benchmarkTranscript.trim().length < 10 || benchmarkProfile.trim().length < 5 || benchmarkBusy) {
+      if (benchmarkProfile.trim().length < 5) setBenchmarkError("请先填写你自己的业务、产品或个人资料。");
+      return;
+    }
+    setBenchmarkBusy("rewrite");
+    setBenchmarkError("");
+    try {
+      const response = await fetch("/api/ai/speech-script", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "benchmark",
+          sourceScript: benchmarkTranscript,
+          businessProfile: benchmarkProfile,
+          requestId: `benchmark_script_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+        }),
+      });
+      const data = await response.json() as { error?: string; script?: string; wallet?: { points?: number } };
+      if (!response.ok || !data.script?.trim()) throw new Error(data.error || "AI 对标改写失败，请稍后重试。");
+      setBenchmarkDraft(data.script.trim());
+      if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+    } catch (error) {
+      setBenchmarkError(error instanceof Error ? error.message : "AI 对标改写失败，请稍后重试。");
+    } finally {
+      setBenchmarkBusy("");
+    }
+  }
+
+  function confirmBenchmarkScript() {
+    const confirmed = benchmarkDraft.trim();
+    if (!confirmed) {
+      setBenchmarkError("请先生成或填写一版可用的改写文案。");
+      return;
+    }
+    setScript(confirmed);
+    setSpeechAudioReady(false);
+    setSpeechAudioUrl("");
+    setSpeechError("");
+    setLipSyncResultUrl("");
+    setLipSyncError("");
+    setWorkspace("lip-sync");
   }
 
   async function generateSpeechAudio() {
@@ -3395,6 +3507,59 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     </section>;
   }
 
+  if (workspace === "ai-benchmark") {
+    const benchmarkStep = benchmarkDraft.trim() ? 3 : benchmarkTranscript.trim() ? 2 : 1;
+    return <section className="video-workspace lip-sync-workspace ai-benchmark-workspace">
+      <header className="video-workspace-head lip-sync-workspace-head">
+        <button type="button" onClick={() => setWorkspace("lip-sync")}>← 返回对口型视频</button>
+        <div><h1>AI 对标改写</h1></div>
+        <span>{benchmarkBusy === "extract" ? `读取中 · ${benchmarkProgress}%` : benchmarkBusy === "rewrite" ? "正在改写" : `第 ${benchmarkStep} 步`}</span>
+      </header>
+      <nav className="lip-sync-progress ai-benchmark-progress" aria-label="AI 对标改写进度">
+        {[
+          { label: "读取", detail: benchmarkTranscript ? "口播已提取" : "粘贴公开链接" },
+          { label: "改写", detail: benchmarkDraft ? "新文案已生成" : "填写自己的资料" },
+          { label: "确认", detail: "回填口播文本框" },
+        ].map((item, index) => {
+          const step = index + 1;
+          const isComplete = step < benchmarkStep;
+          const isActive = step === benchmarkStep;
+          return <span className={isComplete ? "complete" : isActive ? "active" : ""} aria-current={isActive ? "step" : undefined} key={item.label}>
+            <i>{step}</i><b>{item.label}</b><small>{item.detail}</small>
+          </span>;
+        })}
+      </nav>
+      <div className="ai-benchmark-flow">
+        <section className={`video-builder-card lip-sync-step-card ${benchmarkTranscript ? "is-complete" : "is-active"}`}>
+          <div className="video-card-title lip-sync-card-title"><span>01</span><div><b>读取对标口播</b><small>支持 douyin.com 的公开短视频链接</small></div>{benchmarkTranscript ? <em>已完成</em> : <em>当前步骤</em>}</div>
+          <div className="benchmark-link-row">
+            <input value={benchmarkUrl} disabled={benchmarkBusy === "extract"} onChange={(event) => { setBenchmarkUrl(event.target.value); setBenchmarkError(""); }} placeholder="粘贴抖音分享链接，例如 https://v.douyin.com/…" aria-label="抖音公开视频链接" />
+            <button type="button" disabled={!benchmarkUrl.trim() || Boolean(benchmarkBusy)} onClick={() => void extractBenchmarkTranscript()}>{benchmarkBusy === "extract" ? `${benchmarkProgress}% · 正在读取` : benchmarkTranscript ? "重新读取" : "读取视频文案"}</button>
+          </div>
+          {benchmarkBusy === "extract" || benchmarkMessage ? <div className="benchmark-status"><span style={{ width: `${benchmarkProgress}%` }} /><b>{benchmarkMessage || "正在读取公开视频…"}</b></div> : null}
+          <p className="benchmark-rights-note">仅分析公开视频的表达结构与节奏。请确认你有权使用该链接，生成结果不会照搬原文。</p>
+        </section>
+
+        {benchmarkTranscript ? <section className={`video-builder-card lip-sync-step-card ${benchmarkDraft ? "is-complete" : "is-active"}`}>
+          <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>用你的资料重新创作</b><small>事实以你的资料为准，只借鉴对标视频的结构</small></div>{benchmarkDraft ? <em>已完成</em> : <em>当前步骤</em>}</div>
+          <div className="benchmark-source-meta"><small>已读取</small><b>{benchmarkTitle || "对标视频"}</b>{benchmarkAuthor ? <span>作者：{benchmarkAuthor}</span> : null}</div>
+          <div className="benchmark-copy-grid">
+            <label><span>对标口播原文</span><textarea value={benchmarkTranscript} readOnly aria-label="对标口播原文" /></label>
+            <label><span>你的真实资料</span><textarea value={benchmarkProfile} disabled={benchmarkBusy === "rewrite"} onChange={(event) => { setBenchmarkProfile(event.target.value); setBenchmarkDraft(""); setBenchmarkError(""); }} placeholder="例如：我是杭州一家社区烘焙店，主打当天现烤低糖面包；目标顾客是附近上班族和家庭；优势是原料透明、早上7点出炉；希望用户到店试吃。" aria-label="用户自己的业务资料" /></label>
+          </div>
+          <button type="button" className="benchmark-rewrite-button" disabled={benchmarkProfile.trim().length < 5 || Boolean(benchmarkBusy)} onClick={() => void rewriteBenchmarkScript()}>{benchmarkBusy === "rewrite" ? "AI 正在分析结构并重新创作…" : "✦ 按我的资料 AI 改写"}</button>
+        </section> : null}
+
+        {benchmarkTranscript ? <section className={`video-builder-card lip-sync-step-card benchmark-result-card ${benchmarkDraft ? "is-active" : "is-pending"}`}>
+          <div className="video-card-title lip-sync-card-title"><span>03</span><div><b>确认新的口播文案</b><small>可以手动微调，确认后回填到口播音频文本框</small></div>{benchmarkDraft ? <em>可以确认</em> : <em>等待改写</em>}</div>
+          <textarea value={benchmarkDraft} disabled={!benchmarkDraft || benchmarkBusy === "rewrite"} onChange={(event) => { setBenchmarkDraft(event.target.value); setBenchmarkError(""); }} placeholder="AI 改写后的文案将在这里显示" aria-label="AI 对标改写结果" />
+          <div className="benchmark-confirm-row"><button type="button" disabled={!benchmarkDraft.trim() || Boolean(benchmarkBusy)} onClick={confirmBenchmarkScript}>确认并用于生成口播</button></div>
+        </section> : null}
+        {benchmarkError ? <div className="video-agent-error" role="alert">{benchmarkError}</div> : null}
+      </div>
+    </section>;
+  }
+
   if (workspace === "lip-sync") {
     const voiceReady = Boolean(selectedVoice) && (voiceSource === "saved" || uploadedVoiceReady);
     const canGenerateSpeechAudio = voiceReady && Boolean(script.trim());
@@ -3451,6 +3616,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>生成口播音频</b><small>{speechAudioReady ? "音频已生成，可以试听" : "输入文案并调整说话速度"}</small></div>{speechAudioReady ? <em>已完成</em> : voiceReady ? <em>当前步骤</em> : <em>等待声音</em>}</div>
             <textarea value={script} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
+              <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy} onClick={() => { setBenchmarkError(""); setWorkspace("ai-benchmark"); }}>AI 对标</button>
               <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
               <label className="speech-speed-field">
                 <span>语速</span>
