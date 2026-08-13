@@ -3509,7 +3509,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </div>
           <section className="viral-source-transcript">
             <header>
-              <span><b>标题与口播文案</b><small>统一核对，确认后直接提交给模板</small></span>
+              <span><b>标题与口播文案</b></span>
               <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `正在核对 · ${viralTranscriptProgress}%` : "✦ 核对标题与口播"}</button>
             </header>
             {viralCaptions.length ? <>
@@ -3535,7 +3535,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
                   setViralTranscriptError("");
                 }}>{viralCaptionsConfirmed ? "✓ 已确认标题与口播" : "确认标题与口播"}</button>
               </div>
-            </> : <p>{viralFiles.length ? "点击“核对标题与口播”，多模态大模型将生成标题，并按时间整理成可修改的口播短句。" : "导入原片后可统一核对标题与口播文案。"}</p>}
+            </> : null}
             {viralTranscriptError ? <div className="video-agent-error viral-transcript-error" role="alert">{viralTranscriptError}</div> : null}
           </section>
         </section>
