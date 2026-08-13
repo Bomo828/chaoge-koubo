@@ -114,11 +114,6 @@ jobs:
           fi
           port="${DEPLOY_PORT:-22}"
           ssh_options=(-i "$HOME/.ssh/tencent_deploy" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
-          if ! ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "sudo -n -l /usr/local/sbin/deploy-video-worker >/dev/null 2>&1"; then
-            echo "Video worker deploy permission has not been bootstrapped; web deployment remains valid."
-            exit 0
-          fi
           package_dir="$RUNNER_TEMP/video-worker-release"
           archive="$RUNNER_TEMP/merchant-video-worker-${RELEASE_SHA}.tar.gz"
           remote_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
@@ -137,6 +132,12 @@ jobs:
           tar -czf "$archive" -C "$package_dir" .
           scp -i "$HOME/.ssh/tencent_deploy" -P "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
             "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          if ! ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "sudo -n -l /usr/local/sbin/deploy-video-worker >/dev/null 2>&1"; then
+            echo "Video worker archive is staged at ${remote_archive}."
+            echo "Run deploy/bootstrap-video-worker-deploy.sh once on the server, then activate the staged archive."
+            exit 0
+          fi
           ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "sudo /usr/local/sbin/deploy-video-worker '${remote_archive}' '${RELEASE_SHA}'"
 
