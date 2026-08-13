@@ -81,6 +81,10 @@ http://127.0.0.1:8790/health
 
 ## 腾讯云部署
 
+当前正式目录包含原有 4 套网感模板与新增 8 套模板，共 12 套。生产发布由
+`.github/workflows/deploy-production.yml` 将 Python 服务、模板配置、Remotion 渲染器、
+字体、背景音乐和音效合并为一个原子运行包，避免网页目录与实际成片服务版本不一致。
+
 推荐 Ubuntu 22.04/24.04，安装 `ffmpeg`、`python3-venv` 和字体后创建虚拟环境。
 生产环境把服务绑定在 `127.0.0.1:8790`，通过 Nginx 的 `/video-worker/` 路径转发，不直接暴露端口。
 
