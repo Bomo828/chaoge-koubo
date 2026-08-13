@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } from "@phosphor-icons/react";
+import { FolderOpen, House, ImageSquare, Lightbulb, ShieldCheck, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
@@ -482,6 +482,8 @@ const studioLabels: Record<string, string> = {
 };
 
 export function StudioClient({ member, initialFeatures }: { member: MemberSession; initialFeatures: PlatformFeature[] }) {
+  const isAdminAccount = member.role === "admin" || member.role === "super_admin";
+  const accountTypeLabel = isAdminAccount ? "管理员账号" : "会员账号";
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
   const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string } | null>(null);
@@ -565,6 +567,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
 
       <section className="studio-main">
         <header className="studio-topbar">
+          {isAdminAccount ? <a className="admin-console-link" href="/admin"><ShieldCheck size={17} weight="fill" /><span>后台管理</span></a> : null}
           <div className="member-menu" ref={memberMenuRef}>
             <button
               type="button"
@@ -573,18 +576,18 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
               aria-expanded={memberMenuOpen}
               onClick={() => setMemberMenuOpen((open) => !open)}
             >
-              <span className="member-menu-copy"><b>{member.displayName}</b></span>
+              <span className="member-menu-copy"><b>{accountTypeLabel}</b><small>{member.displayName}</small></span>
               <i className={`member-chevron ${memberMenuOpen ? "is-open" : ""}`}>菜单</i>
             </button>
             {memberMenuOpen ? (
               <div className="member-dropdown" role="menu" aria-label="会员菜单">
                 <div className="member-dropdown-head">
-                  <small>当前会员</small>
+                  <small>{accountTypeLabel}</small>
                   <b>{member.displayName}</b>
                   <span>{walletPoints.toLocaleString()} 积分可用</span>
                 </div>
                 <div className="member-dropdown-actions">
-                  {member.role === "admin" || member.role === "super_admin" ? <a role="menuitem" href="/admin"><span><b>管理后台</b></span><i>›</i></a> : null}
+                  {isAdminAccount ? <a role="menuitem" href="/admin"><span><b>后台管理</b></span><i>›</i></a> : null}
                   <button type="button" role="menuitem" onClick={() => { setAccountDialog("password"); setDialogMessage(""); setMemberMenuOpen(false); }}><span><b>修改密码</b></span><i>›</i></button>
                 </div>
                 <a className="member-logout" role="menuitem" href="/api/auth/logout"><span>退出登录</span><i>↗</i></a>
