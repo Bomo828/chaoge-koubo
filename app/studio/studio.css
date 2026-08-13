@@ -2582,22 +2582,6 @@
 .studio-shell:not(.is-image-lab) .member-menu-trigger[aria-expanded="true"] { background: var(--ui-raised); }
 .studio-shell:not(.is-image-lab) .member-menu-copy small { color: var(--ui-muted); }
 .studio-shell:not(.is-image-lab) .member-chevron { background: var(--ui-raised); color: var(--ui-muted); }
-.studio-shell:not(.is-image-lab) .admin-console-link {
-  height: 40px;
-  margin-right: 10px;
-  padding: 0 14px;
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  border: 1px solid var(--ui-line);
-  border-radius: 10px;
-  background: var(--ui-raised);
-  color: var(--ui-text);
-  font-size: 12px;
-  font-weight: 800;
-}
-.studio-shell:not(.is-image-lab) .admin-console-link:hover { border-color: var(--ui-cyan); background: #26346f; }
-.studio-shell:not(.is-image-lab) .admin-console-link svg { color: var(--ui-yellow); }
 .studio-shell:not(.is-image-lab) .member-dropdown {
   border: 1px solid var(--ui-line);
   border-radius: 14px;
@@ -3578,6 +3562,4 @@
   .viral-edit-workspace .viral-process-bar > div { width: 100%; }
   .viral-edit-workspace .viral-process-bar button { width: 100%; }
   .viral-edit-workspace :is(input, textarea) { font-size: 16px; }
-  .studio-shell:not(.is-image-lab) .admin-console-link { width: 40px; padding: 0; justify-content: center; }
-  .studio-shell:not(.is-image-lab) .admin-console-link span { display: none; }
 }

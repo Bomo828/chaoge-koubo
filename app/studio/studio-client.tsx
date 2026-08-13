@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { FolderOpen, House, ImageSquare, Lightbulb, ShieldCheck, UserCircle, VideoCamera } from "@phosphor-icons/react";
+import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
@@ -567,7 +567,6 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
 
       <section className="studio-main">
         <header className="studio-topbar">
-          {isAdminAccount ? <a className="admin-console-link" href="/admin"><ShieldCheck size={17} weight="fill" /><span>后台管理</span></a> : null}
           <div className="member-menu" ref={memberMenuRef}>
             <button
               type="button"
