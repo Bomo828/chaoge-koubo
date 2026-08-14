@@ -502,8 +502,11 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   const [walletPoints, setWalletPoints] = useState(member.points);
   const memberMenuRef = useRef<HTMLDivElement>(null);
   const visibleMenu = initialFeatures.length
-    ? [...initialFeatures].filter((item) => item.enabled).sort((left, right) => left.sortOrder - right.sortOrder).map((item) => ({ id: item.entry, icon: item.icon, label: studioLabels[item.entry] || item.name }))
+    ? [...initialFeatures].filter((item) => item.enabled).sort((left, right) => left.sortOrder - right.sortOrder).map((item) => ({ id: item.entry, icon: item.icon, label: item.name || studioLabels[item.entry] }))
     : menu;
+  const configuredLabels = Object.fromEntries(
+    initialFeatures.map((item) => [item.entry, item.name || studioLabels[item.entry]]),
+  ) as Partial<Record<PlatformFeature["entry"], string>>;
 
   useEffect(() => {
     const requestedTool = new URLSearchParams(window.location.search).get("tool");
@@ -606,7 +609,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           {active === "overview" && <Overview onOpen={setActive} />}
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
           {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
-          {active === "cases" && <Cases onUse={() => setActive("design")} />}
+          {active === "cases" && <Cases title={configuredLabels.cases || studioLabels.cases} onUse={() => setActive("design")} />}
           {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
             setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType });
             setActive("video");
@@ -3827,8 +3830,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
 }
 
-function Cases({ onUse }: { onUse: () => void }) {
-  return <><ToolHeading title="行业案例" /><div className="industry-tabs"><button className="active">餐饮美食</button><button>零售百货</button><button>丽人美业</button><button>休闲娱乐</button><button>生活服务</button><button>教育培训</button></div><div className="case-library">{["招牌必吃榜","节气新品上新","家庭聚餐推荐","午市限时优惠","30秒门店探访","团购套餐展示"].map((item,index) => <article className={`library-${index%3}`} key={item}><b>{item}</b><span>{index>3?"00:30":"营销海报"}</span><button onClick={onUse}>参考创作 ↗</button></article>)}</div></>;
+function Cases({ title, onUse }: { title: string; onUse: () => void }) {
+  return <><ToolHeading title={title} /><div className="industry-tabs"><button className="active">餐饮美食</button><button>零售百货</button><button>丽人美业</button><button>休闲娱乐</button><button>生活服务</button><button>教育培训</button></div><div className="case-library">{["招牌必吃榜","节气新品上新","家庭聚餐推荐","午市限时优惠","30秒门店探访","团购套餐展示"].map((item,index) => <article className={`library-${index%3}`} key={item}><b>{item}</b><span>{index>3?"00:30":"营销海报"}</span><button onClick={onUse}>参考创作 ↗</button></article>)}</div></>;
 }
 
 function formatAssetTime(value: number) {
