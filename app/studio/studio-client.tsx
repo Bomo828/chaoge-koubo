@@ -173,8 +173,13 @@ function videoWorkerBaseUrl() {
   return `${window.location.origin}/video-worker`;
 }
 
+const DEFAULT_VIDEO_WORKER_PUBLIC_URL = "https://api.chaogeai.top/video-worker";
+
 function resolveVideoWorkerUrl(path: string) {
-  const baseUrl = videoWorkerBaseUrl().replace(/\/+$/, "");
+  if (/^https?:\/\//i.test(path)) return path;
+  const configured = process.env.NEXT_PUBLIC_VIDEO_WORKER_URL?.trim().replace(/\/+$/, "");
+  const localPreview = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  const baseUrl = configured || (localPreview ? videoWorkerBaseUrl() : DEFAULT_VIDEO_WORKER_PUBLIC_URL);
   return path.startsWith("/") ? `${baseUrl}${path}` : new URL(path, `${baseUrl}/`).toString();
 }
 
@@ -2695,6 +2700,28 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return typeof data.item?.mediaUrl === "string" ? data.item.mediaUrl : "";
   }
 
+  async function archiveViralWorkerResult(sourceUrl: string, requestId: string, coverUrl = "") {
+    const resultName = viralTitle.trim() || "一键网感成片";
+    const response = await fetch("/api/member/assets", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: stableAssetId(`${requestId}|${resultName}`),
+        projectName: "一键网感",
+        kind: "video",
+        name: resultName,
+        sourceUrl,
+        coverUrl,
+        sourceTaskId: requestId,
+        createdAt: Date.now(),
+      }),
+    });
+    const data = await response.json() as { error?: string; item?: { mediaUrl?: string } };
+    if (!response.ok) throw new Error(data.error || "成片已生成，但保存到会员资产失败。");
+    window.dispatchEvent(new CustomEvent("member-assets-updated"));
+    return typeof data.item?.mediaUrl === "string" ? data.item.mediaUrl : "";
+  }
+
   async function videoWorkerAvailable() {
     const controller = new AbortController();
     // The cloud worker may need several seconds to wake up. A short timeout
@@ -2859,12 +2886,15 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
       const resultUrl = resolveVideoWorkerUrl(job.result_url);
       const coverUrl = job.cover_url ? resolveVideoWorkerUrl(job.cover_url) : "";
-      const resultResponse = await fetch(resultUrl, { cache: "no-store" });
-      if (!resultResponse.ok) throw new Error("成片已经生成，但暂时无法读取结果文件。");
-      const resultBlob = await resultResponse.blob();
+      // Show the range-enabled MP4 immediately. Previously the browser waited
+      // for the whole file, then uploaded it again before revealing the player.
+      // On a typical cloud connection that made a completed 30 MB result feel
+      // blocked for one to three minutes.
       setViralResultUrl(resultUrl);
-      setViralResultBlob(resultBlob);
-      if (coverUrl) setViralCoverUrl(coverUrl);
+      setViralResultBlob(null);
+      setViralCoverUrl(coverUrl);
+      setViralProgress(96);
+      setViralStage("成片已生成，可立即预览；正在保存到会员资产…");
       if (job.title) setViralTitle(job.title);
       setViralRenderer(job.renderer || "ffmpeg-fallback");
       if (Array.isArray(job.captions)) {
@@ -2883,10 +2913,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       // 成片完成后只展示由真实口播和处理任务返回的数据生成的摘要。
       setViralAnalysisSummary(`已通过 Faster-Whisper 读取真实口播时间轴，${titleMethod}；Template V${templateVersion} ${transitionSummary}，并按确认内容生成逐字字幕与提示音。`);
 
-      setViralStage("成片已生成，正在保存到会员资产…");
+      setViralStage("成片可立即预览，正在保存到会员资产…");
       let saved = true;
       try {
-        setViralDownloadUrl(await uploadViralResult(resultBlob, requestId, coverUrl));
+        setViralDownloadUrl(await archiveViralWorkerResult(resultUrl, requestId, coverUrl));
       } catch (error) {
         saved = false;
         setViralError(error instanceof Error ? error.message : "成片已生成，但保存到会员资产失败。");

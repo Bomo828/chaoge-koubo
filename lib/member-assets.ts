@@ -247,6 +247,7 @@ export async function saveMemberAsset(member: MemberSession, input: {
   kind: MemberAssetRow["kind"];
   name: string;
   sourceUrl: string;
+  coverUrl?: string;
   sourceTaskId?: string | null;
   createdAt?: number;
 }) {
@@ -260,7 +261,26 @@ export async function saveMemberAsset(member: MemberSession, input: {
   mkdirSync(path.dirname(filename), { recursive: true });
   await pipeline(Readable.fromWeb(source.body as never), createWriteStream(filename));
   const sizeBytes = statSync(filename).size;
-  return insertAsset(member, { ...input, objectKey, contentType, sizeBytes });
+  let coverObjectKey: string | null = null;
+  let coverContentType: string | null = null;
+  if (input.kind === "video" && input.coverUrl) {
+    const coverSource = await fetch(input.coverUrl);
+    if (coverSource.ok && coverSource.body) {
+      coverContentType = coverSource.headers.get("content-type") || "image/jpeg";
+      coverObjectKey = path.join(member.id, input.kind, `${input.id}-cover.${extensionFor(coverContentType, "image")}`);
+      const coverFilename = absoluteObjectPath(coverObjectKey);
+      mkdirSync(path.dirname(coverFilename), { recursive: true });
+      await pipeline(Readable.fromWeb(coverSource.body as never), createWriteStream(coverFilename));
+    }
+  }
+  return insertAsset(member, {
+    ...input,
+    objectKey,
+    contentType,
+    sizeBytes,
+    coverObjectKey,
+    coverContentType,
+  });
 }
 
 export async function saveUploadedMemberAsset(member: MemberSession, input: {

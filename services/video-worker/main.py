@@ -3910,4 +3910,11 @@ def get_media(job_id: str, name: str) -> FileResponse:
         ".mov": "video/quicktime",
         ".m4v": "video/x-m4v",
     }.get(suffix, "video/mp4")
-    return FileResponse(target, media_type=media_type)
+    return FileResponse(
+        target,
+        media_type=media_type,
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "X-Content-Type-Options": "nosniff",
+        },
+    )

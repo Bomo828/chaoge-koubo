@@ -66,6 +66,7 @@ export async function POST(request: Request) {
     const body = await request.json() as Record<string, unknown>;
     const id = clean(body.id, "", 100);
     const sourceUrl = clean(body.sourceUrl, "", 2_000_000);
+    const coverUrl = clean(body.coverUrl, "", 2_000_000);
     const kind = ["image", "video", "audio", "voice"].includes(String(body.kind)) ? String(body.kind) as "image" | "video" | "audio" | "voice" : "image";
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id)) return Response.json({ error: "资产编号无效。" }, { status: 400 });
     if (!/^https?:\/\//i.test(sourceUrl) && !/^data:/i.test(sourceUrl)) return Response.json({ error: "资产来源无效。" }, { status: 400 });
@@ -75,6 +76,7 @@ export async function POST(request: Request) {
       kind,
       name: clean(body.name, kind === "video" ? "生成短视频" : "生成图片", 120),
       sourceUrl,
+      coverUrl: /^https?:\/\//i.test(coverUrl) ? coverUrl : undefined,
       sourceTaskId: clean(body.sourceTaskId, "", 120) || null,
       createdAt: Number(body.createdAt || Date.now()),
     });

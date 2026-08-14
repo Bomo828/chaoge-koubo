@@ -72,7 +72,10 @@ await renderMedia({
   // for deterministic frame-by-frame output; operators may raise it after a
   // clean validation render.
   concurrency: Math.max(1, Number(process.env.REMOTION_CONCURRENCY || 1)),
-  crf: 20,
+  // Talking-head footage with burned-in captions stays crisp at CRF 22 while
+  // producing substantially smaller files than the previous CRF 20 export.
+  crf: Math.min(30, Math.max(16, Number(process.env.REMOTION_CRF || 22))),
+  audioBitrate: process.env.REMOTION_AUDIO_BITRATE || "160k",
   pixelFormat: "yuv420p",
   chromiumOptions: {enableMultiProcessOnLinux: true},
 });
