@@ -151,6 +151,61 @@ function initialize(db: DatabaseSync) {
       updated_by TEXT,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS monitored_accounts (
+      id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      platform TEXT NOT NULL DEFAULT 'douyin',
+      source_url TEXT NOT NULL,
+      sec_uid TEXT NOT NULL DEFAULT '',
+      nickname TEXT NOT NULL DEFAULT '',
+      handle TEXT NOT NULL DEFAULT '',
+      avatar_url TEXT NOT NULL DEFAULT '',
+      signature TEXT NOT NULL DEFAULT '',
+      status TEXT NOT NULL DEFAULT 'pending',
+      status_message TEXT NOT NULL DEFAULT '',
+      follower_count INTEGER NOT NULL DEFAULT 0,
+      following_count INTEGER NOT NULL DEFAULT 0,
+      total_likes INTEGER NOT NULL DEFAULT 0,
+      video_count INTEGER NOT NULL DEFAULT 0,
+      last_sync_at INTEGER,
+      next_sync_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(owner_id, source_url)
+    );
+    CREATE INDEX IF NOT EXISTS monitored_accounts_owner_idx
+      ON monitored_accounts(owner_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS monitored_videos (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL REFERENCES monitored_accounts(id) ON DELETE CASCADE,
+      aweme_id TEXT NOT NULL,
+      source_url TEXT NOT NULL DEFAULT '',
+      title TEXT NOT NULL DEFAULT '',
+      cover_url TEXT NOT NULL DEFAULT '',
+      duration_seconds REAL,
+      published_at INTEGER,
+      first_seen_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL,
+      UNIQUE(account_id, aweme_id)
+    );
+    CREATE INDEX IF NOT EXISTS monitored_videos_account_idx
+      ON monitored_videos(account_id, published_at DESC);
+
+    CREATE TABLE IF NOT EXISTS video_metric_snapshots (
+      id TEXT PRIMARY KEY,
+      video_id TEXT NOT NULL REFERENCES monitored_videos(id) ON DELETE CASCADE,
+      collected_at INTEGER NOT NULL,
+      play_count INTEGER,
+      like_count INTEGER,
+      comment_count INTEGER,
+      share_count INTEGER,
+      collect_count INTEGER,
+      raw_json TEXT NOT NULL DEFAULT '{}'
+    );
+    CREATE INDEX IF NOT EXISTS video_metric_snapshots_video_idx
+      ON video_metric_snapshots(video_id, collected_at DESC);
   `);
 
   const clonedVoiceColumns = db.prepare("PRAGMA table_info(cloned_voices)").all() as Array<{ name: string }>;

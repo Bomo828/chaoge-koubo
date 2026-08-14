@@ -64,7 +64,28 @@ try {
   ]);
   assert.equal(wallet.status, 200);
   assert.equal(tasks.status, 200);
-  console.log("本地冒烟测试通过：首页、登录、工作台、积分与任务接口均正常。");
+
+  const marketList = await fetch(`${baseUrl}/api/member/market/accounts`, { headers: { cookie } });
+  assert.equal(marketList.status, 200);
+  assert.deepEqual((await marketList.json()).items, []);
+
+  const marketAdd = await fetch(`${baseUrl}/api/member/market/accounts`, {
+    method: "POST",
+    headers: { cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ sourceUrl: "https://www.douyin.com/user/MS4wLjABAAAA_smoke_test" }),
+  });
+  assert.equal(marketAdd.status, 201);
+  const marketAccount = (await marketAdd.json()).item;
+  assert.equal(marketAccount.status, "pending");
+  assert.ok(marketAccount.id);
+
+  const marketSync = await fetch(`${baseUrl}/api/member/market/accounts/${encodeURIComponent(marketAccount.id)}`, {
+    method: "PATCH",
+    headers: { cookie },
+  });
+  assert.equal(marketSync.status, 200);
+  assert.equal((await marketSync.json()).item.status, "syncing");
+  console.log("本地冒烟测试通过：首页、登录、工作台、积分、任务与市场动态接口均正常。");
 } finally {
   child.kill("SIGTERM");
   rmSync(dataDir, { recursive: true, force: true });

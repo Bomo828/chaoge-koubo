@@ -3,12 +3,13 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { FolderOpen, House, ImageSquare, Lightbulb, UserCircle, VideoCamera } from "@phosphor-icons/react";
+import { ChartLineUp, FolderOpen, House, ImageSquare, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
 import { segmentViralCaptions, viralSpeechLanguage } from "../../lib/viral-caption-segmentation";
 import { IndustryImageLab } from "./image-lab";
+import { MarketDynamics } from "./market-dynamics";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -466,7 +467,7 @@ const menu = [
   { id: "overview", icon: "⌂", label: "创作首页" },
   { id: "design", icon: "图", label: "图片创作" },
   { id: "video", icon: "视", label: "视频创作" },
-  { id: "cases", icon: "感", label: "灵感案例" },
+  { id: "cases", icon: "动", label: "市场动态" },
   { id: "assets", icon: "资", label: "创作资产" },
   { id: "member", icon: "会", label: "账号中心" },
 ];
@@ -475,7 +476,7 @@ const menuIcons = {
   overview: House,
   design: ImageSquare,
   video: VideoCamera,
-  cases: Lightbulb,
+  cases: ChartLineUp,
   assets: FolderOpen,
   member: UserCircle,
 };
@@ -484,7 +485,7 @@ const studioLabels: Record<string, string> = {
   overview: "创作首页",
   design: "图片创作",
   video: "视频创作",
-  cases: "灵感案例",
+  cases: "市场动态",
   assets: "创作资产",
   member: "账号中心",
 };
@@ -609,7 +610,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           {active === "overview" && <Overview onOpen={setActive} />}
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
           {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
-          {active === "cases" && <Cases title={configuredLabels.cases || studioLabels.cases} onUse={() => setActive("design")} />}
+          {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
           {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
             setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType });
             setActive("video");
@@ -3828,10 +3829,6 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   }
 
   return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
-}
-
-function Cases({ title, onUse }: { title: string; onUse: () => void }) {
-  return <><ToolHeading title={title} /><div className="industry-tabs"><button className="active">餐饮美食</button><button>零售百货</button><button>丽人美业</button><button>休闲娱乐</button><button>生活服务</button><button>教育培训</button></div><div className="case-library">{["招牌必吃榜","节气新品上新","家庭聚餐推荐","午市限时优惠","30秒门店探访","团购套餐展示"].map((item,index) => <article className={`library-${index%3}`} key={item}><b>{item}</b><span>{index>3?"00:30":"营销海报"}</span><button onClick={onUse}>参考创作 ↗</button></article>)}</div></>;
 }
 
 function formatAssetTime(value: number) {

@@ -48,7 +48,7 @@ export const defaultPlatformSettings: PlatformSettings = {
     { id: "overview", name: "创作首页", icon: "⌂", description: "创作入口与最近作品", entry: "overview", enabled: true, sortOrder: 10 },
     { id: "design", name: "图片设计", icon: "图", description: "营销海报、朋友圈与门店物料", entry: "design", enabled: true, sortOrder: 30 },
     { id: "video", name: "短视频", icon: "视", description: "商家成片、对口型与一键网感", entry: "video", enabled: true, sortOrder: 40 },
-    { id: "cases", name: "行业案例", icon: "案", description: "图片与短视频案例库", entry: "cases", enabled: true, sortOrder: 50 },
+    { id: "cases", name: "市场动态", icon: "动", description: "对标账号与短视频数据动态", entry: "cases", enabled: true, sortOrder: 50 },
     { id: "assets", name: "会员资产", icon: "资", description: "图片、视频和声音资产", entry: "assets", enabled: true, sortOrder: 60 },
     { id: "member", name: "会员中心", icon: "会", description: "积分、充值和商家资产", entry: "member", enabled: true, sortOrder: 70 },
   ],
