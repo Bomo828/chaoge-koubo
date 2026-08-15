@@ -85,9 +85,14 @@ export async function lk888Fetch<T>(path: string, init?: RequestInit): Promise<T
 export function aiErrorResponse(error: unknown) {
   if (error instanceof AiProviderError) {
     const capacity = /selected model is at capacity|model.*capacity|overloaded/i.test(error.message);
+    const insufficientBalance = /insufficient balance|top up and try again|余额不足/i.test(error.message);
     return Response.json({
-      error: capacity ? "当前 AI 模型使用人数较多，系统正在切换备用模型，请稍后重试。" : error.message,
-    }, { status: capacity ? 503 : error.status });
+      error: capacity
+        ? "当前 AI 模型使用人数较多，系统正在切换备用模型，请稍后重试。"
+        : insufficientBalance
+          ? "第三方 AI 视频账户余额不足，请联系管理员充值或更换可用密钥后重试。"
+          : error.message,
+    }, { status: capacity ? 503 : insufficientBalance ? 503 : error.status });
   }
   console.error("AI provider request failed", error);
   return Response.json({ error: "AI 服务暂时不可用，请稍后再试。" }, { status: 500 });

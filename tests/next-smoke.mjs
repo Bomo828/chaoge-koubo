@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createServer } from "node:http";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -7,6 +8,46 @@ import path from "node:path";
 const port = 3197;
 const baseUrl = `http://127.0.0.1:${port}`;
 const dataDir = mkdtempSync(path.join(tmpdir(), "merchant-studio-smoke-"));
+const collectorPort = 3198;
+const collectorBaseUrl = `http://127.0.0.1:${collectorPort}`;
+const collector = createServer((request, response) => {
+  response.setHeader("Content-Type", "application/json; charset=utf-8");
+  if (request.url?.startsWith("/web/api/v2/user/info/")) {
+    response.end(JSON.stringify({
+      status_code: 0,
+      user_info: {
+        nickname: "冒烟测试账号",
+        unique_id: "smoke_test",
+        signature: "用于验证市场动态同步",
+        follower_count: 128,
+        following_count: 16,
+        total_favorited: 256,
+        aweme_count: 1,
+        avatar_thumb: { url_list: ["https://example.com/avatar.jpg"] },
+      },
+    }));
+    return;
+  }
+  if (request.url?.startsWith("/api/douyin/web/fetch_user_post_videos")) {
+    response.end(JSON.stringify({
+      data: {
+        aweme_list: [{
+          aweme_id: "smoke_aweme_1",
+          desc: "市场动态冒烟测试作品",
+          duration: 12_000,
+          create_time: 1_725_000_000,
+          video: { cover: { url_list: ["https://example.com/cover.jpg"] } },
+          share_info: { share_url: "https://www.douyin.com/video/smoke_aweme_1" },
+          statistics: { digg_count: 88, comment_count: 6, share_count: 3, collect_count: 9 },
+        }],
+      },
+    }));
+    return;
+  }
+  response.statusCode = 404;
+  response.end(JSON.stringify({ error: "not found" }));
+});
+await new Promise((resolve) => collector.listen(collectorPort, "127.0.0.1", resolve));
 const child = spawn(process.execPath, [".next/standalone/server.js"], {
   cwd: process.cwd(),
   env: {
@@ -19,6 +60,8 @@ const child = spawn(process.execPath, [".next/standalone/server.js"], {
     DEMO_PASSWORD: "123456",
     BOOTSTRAP_ADMIN_USERNAME: "admin",
     BOOTSTRAP_ADMIN_PASSWORD: "Admin123456!",
+    DOUYIN_PROFILE_API_BASE_URL: collectorBaseUrl,
+    DOUYIN_COLLECTOR_BASE_URL: collectorBaseUrl,
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -76,7 +119,9 @@ try {
   });
   assert.equal(marketAdd.status, 201);
   const marketAccount = (await marketAdd.json()).item;
-  assert.equal(marketAccount.status, "pending");
+  assert.equal(marketAccount.status, "ready");
+  assert.equal(marketAccount.nickname, "冒烟测试账号");
+  assert.equal(marketAccount.videos.length, 1);
   assert.ok(marketAccount.id);
 
   const marketSync = await fetch(`${baseUrl}/api/member/market/accounts/${encodeURIComponent(marketAccount.id)}`, {
@@ -84,9 +129,12 @@ try {
     headers: { cookie },
   });
   assert.equal(marketSync.status, 200);
-  assert.equal((await marketSync.json()).item.status, "syncing");
+  const syncedAccount = (await marketSync.json()).item;
+  assert.equal(syncedAccount.status, "ready");
+  assert.equal(syncedAccount.videos[0].likeCount, 88);
   console.log("本地冒烟测试通过：首页、登录、工作台、积分、任务与市场动态接口均正常。");
 } finally {
   child.kill("SIGTERM");
+  collector.close();
   rmSync(dataDir, { recursive: true, force: true });
 }

@@ -49,6 +49,21 @@ type MarketAccount = {
   lastSyncAt: number | null;
   nextSyncAt: number | null;
   createdAt: number;
+  videos?: Array<{
+    id: string;
+    awemeId: string;
+    sourceUrl: string;
+    title: string;
+    coverUrl: string;
+    durationSeconds: number | null;
+    publishedAt: number | null;
+    playCount: number | null;
+    likeCount: number;
+    commentCount: number;
+    shareCount: number;
+    collectCount: number;
+    growth: number;
+  }>;
   demo?: boolean;
 };
 
@@ -88,6 +103,8 @@ const DEMO_ACCOUNT: MarketAccount = {
   demo: true,
 };
 
+const PAGE_LOADED_AT = Date.now();
+
 const DEMO_VIDEOS: MarketVideo[] = [
   { id: "v1", title: "门店短视频开场，前三秒一定要说清这件事", cover: "/template-covers/viral-pulse-cover-v23.jpg", published: "今天 11:26", duration: "00:38", plays: 286_000, likes: 18_600, comments: 1_238, shares: 3_409, collects: 7_611, growth: 42, recent: true },
   { id: "v2", title: "同样的产品，为什么别人的画面更有成交感", cover: "/template-covers/template-2-cover-v23.jpg", published: "昨天 19:42", duration: "00:52", plays: 168_000, likes: 9_842, comments: 684, shares: 1_932, collects: 5_107, growth: 31, recent: true },
@@ -114,6 +131,19 @@ function relativeTime(value: number | null) {
   if (minutes < 1) return "刚刚同步";
   if (minutes < 60) return `${minutes}分钟前同步`;
   return `${Math.round(minutes / 60)}小时前同步`;
+}
+
+function videoDuration(value: number | null) {
+  const seconds = Math.max(0, Math.round(value || 0));
+  return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+}
+
+function publishedLabel(value: number | null) {
+  if (!value) return "发布时间未知";
+  const date = new Date(value);
+  const today = new Date();
+  if (date.toDateString() === today.toDateString()) return `今天 ${new Intl.DateTimeFormat("zh-CN", { hour: "2-digit", minute: "2-digit", hour12: false }).format(date)}`;
+  return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit" }).format(date);
 }
 
 export function MarketDynamics({ title }: { title: string }) {
@@ -156,14 +186,28 @@ export function MarketDynamics({ title }: { title: string }) {
   const selectedAccount = visibleAccounts.find((item) => item.id === selectedId) || visibleAccounts[0];
   const isDemo = Boolean(selectedAccount.demo);
   const videos = useMemo(() => {
-    if (!isDemo) return [];
+    const source = isDemo ? DEMO_VIDEOS : (selectedAccount.videos || []).map((video) => ({
+      id: video.id,
+      title: video.title,
+      cover: video.coverUrl,
+      published: publishedLabel(video.publishedAt),
+      duration: videoDuration(video.durationSeconds),
+      plays: video.playCount,
+      likes: video.likeCount,
+      comments: video.commentCount,
+      shares: video.shareCount,
+      collects: video.collectCount,
+      growth: video.growth,
+      recent: Boolean(video.publishedAt && PAGE_LOADED_AT - video.publishedAt < 48 * 60 * 60 * 1000),
+    }));
     const query = search.trim().toLowerCase();
-    return DEMO_VIDEOS
+    return source
       .filter((video) => !query || video.title.toLowerCase().includes(query))
       .filter((video) => videoFilter === "all" || videoFilter === "recent" ? videoFilter === "all" || video.recent : video.growth >= 20)
       .sort((left, right) => videoFilter === "rising" ? right.growth - left.growth : 0);
-  }, [isDemo, search, videoFilter]);
-  const selectedVideo = DEMO_VIDEOS.find((item) => item.id === selectedVideoId) || DEMO_VIDEOS[0];
+  }, [isDemo, search, selectedAccount.videos, videoFilter]);
+  const selectedVideo = videos.find((item) => item.id === selectedVideoId) || videos[0] || null;
+  const activeVideoId = selectedVideo?.id || "";
 
   async function addAccount() {
     if (!sourceUrl.trim() || adding) return;
@@ -181,7 +225,7 @@ export function MarketDynamics({ title }: { title: string }) {
       setSelectedId(data.item.id);
       setSourceUrl("");
       setAddOpen(false);
-      setActionMessage("账号已加入监控，首次同步任务已经排队。");
+      setActionMessage(data.item.status === "ready" ? data.item.statusMessage : data.item.statusMessage || "账号已添加，但首次同步没有完成。");
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "账号添加失败。");
     } finally {
@@ -198,7 +242,7 @@ export function MarketDynamics({ title }: { title: string }) {
       const data = await response.json() as { item?: Partial<MarketAccount>; error?: string };
       if (!response.ok || !data.item) throw new Error(data.error || "同步任务提交失败。");
       setAccounts((current) => current.map((item) => item.id === selectedAccount.id ? { ...item, ...data.item } : item));
-      setActionMessage("同步任务已经排队，接入采集服务后会自动更新主页与作品数据。");
+      setActionMessage(data.item.status === "ready" ? data.item.statusMessage || "账号同步完成。" : data.item.statusMessage || "账号同步失败，请稍后重试。");
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "同步任务提交失败。");
     } finally {
@@ -224,7 +268,7 @@ export function MarketDynamics({ title }: { title: string }) {
           <p>持续跟踪对标账号的内容更新与数据变化，找到值得复用的选题和表达。</p>
           <div className="market-heading-meta" aria-label="监控摘要">
             <span><UserFocus size={15} />监控账号 <b>{accounts.length}</b></span>
-            <span><VideoCamera size={15} />今日新作品 <b>{isDemo ? 2 : 0}</b></span>
+            <span><VideoCamera size={15} />今日新作品 <b>{videos.filter((video) => video.recent).length}</b></span>
             <span><BellRinging size={15} />下次同步 <b>{selectedAccount.nextSyncAt ? "约22分钟" : "未排期"}</b></span>
           </div>
         </div>
@@ -264,37 +308,37 @@ export function MarketDynamics({ title }: { title: string }) {
             </div>
             <div className="market-profile-actions">
               {!isDemo ? <a href={selectedAccount.sourceUrl} target="_blank" rel="noreferrer"><LinkSimple size={16} />打开主页</a> : null}
-              <button type="button" disabled={isDemo || syncing} onClick={() => void syncAccount()}><ArrowClockwise size={16} className={syncing ? "is-spinning" : ""} />{syncing ? "正在排队" : "同步账号"}</button>
+              <button type="button" disabled={isDemo || syncing} onClick={() => void syncAccount()}><ArrowClockwise size={16} className={syncing ? "is-spinning" : ""} />{syncing ? "正在同步" : "同步账号"}</button>
               {!isDemo ? <button className="is-danger" type="button" onClick={() => void removeAccount()} aria-label="停止监控"><Trash size={16} /></button> : null}
             </div>
           </section>
 
           <section className="market-profile-metrics">
-            <div><small>粉丝</small><b>{compactNumber(selectedAccount.followerCount)}</b><span>{isDemo ? "近7天 +3,826" : "等待首次快照"}</span></div>
-            <div><small>获赞</small><b>{compactNumber(selectedAccount.totalLikes)}</b><span>{isDemo ? "近7天 +8.4万" : "等待首次快照"}</span></div>
-            <div><small>作品</small><b>{compactNumber(selectedAccount.videoCount)}</b><span>{isDemo ? "本周发布 6 条" : "等待首次快照"}</span></div>
+            <div><small>粉丝</small><b>{compactNumber(selectedAccount.followerCount)}</b><span>{isDemo ? "近7天 +3,826" : "公开账号数据"}</span></div>
+            <div><small>获赞</small><b>{compactNumber(selectedAccount.totalLikes)}</b><span>{isDemo ? "近7天 +8.4万" : "公开账号数据"}</span></div>
+            <div><small>作品</small><b>{compactNumber(selectedAccount.videoCount)}</b><span>{isDemo ? "本周发布 6 条" : `已读取 ${selectedAccount.videos?.length || 0} 条`}</span></div>
             <div className="market-trend-cell"><div><small>近12次互动趋势</small><b>{isDemo ? "+27.6%" : "暂无趋势"}</b></div><span className="market-mini-chart" aria-hidden="true">{TREND.map((height, index) => <i style={{ height: `${isDemo ? height : 8}%` }} key={index} />)}</span></div>
           </section>
 
-          {!isDemo ? <div className="market-pending-state">
+          {!isDemo && (selectedAccount.status !== "ready" || !videos.length) ? <div className="market-pending-state">
             <span><ArrowClockwise size={27} className={selectedAccount.status === "syncing" ? "is-spinning" : ""} /></span>
-            <div><h3>{selectedAccount.status === "error" ? "账号同步遇到问题" : "正在准备首次账号同步"}</h3><p>{selectedAccount.statusMessage || "接入采集服务后，这里会自动呈现账号主页、视频宫格和每条作品的数据变化。"}</p></div>
+            <div><h3>{selectedAccount.status === "error" ? "账号同步遇到问题" : selectedAccount.status === "ready" ? "暂未读取到公开作品" : "正在同步公开账号内容"}</h3><p>{selectedAccount.statusMessage || "正在读取账号主页、视频宫格和每条作品的公开数据。"}</p></div>
           </div> : <>
             <div className="market-video-toolbar">
-              <div className="market-video-tabs"><button className={videoFilter === "all" ? "active" : ""} onClick={() => setVideoFilter("all")}>全部作品</button><button className={videoFilter === "recent" ? "active" : ""} onClick={() => setVideoFilter("recent")}>最新发布 <i>2</i></button><button className={videoFilter === "rising" ? "active" : ""} onClick={() => setVideoFilter("rising")}>增长最快</button></div>
+              <div className="market-video-tabs"><button className={videoFilter === "all" ? "active" : ""} onClick={() => setVideoFilter("all")}>全部作品</button><button className={videoFilter === "recent" ? "active" : ""} onClick={() => setVideoFilter("recent")}>最新发布 <i>{videos.filter((video) => video.recent).length}</i></button><button className={videoFilter === "rising" ? "active" : ""} onClick={() => setVideoFilter("rising")}>增长最快</button></div>
               <label className="market-search"><MagnifyingGlass size={17} /><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="搜索标题或关键词" /></label>
             </div>
 
             <div className="market-video-area">
               <div className="market-video-grid">
-                {videos.map((video) => <button type="button" className={`market-video-card ${selectedVideoId === video.id ? "is-selected" : ""}`} key={video.id} onClick={() => setSelectedVideoId(video.id)}>
-                  <span className="market-cover"><img src={video.cover} alt="" loading="lazy" /><i className="market-duration">{video.duration}</i>{video.recent ? <i className="market-new">新发布</i> : null}<em><Play size={15} weight="fill" />{compactNumber(video.plays)}</em></span>
+                {videos.map((video) => <button type="button" className={`market-video-card ${activeVideoId === video.id ? "is-selected" : ""}`} key={video.id} onClick={() => setSelectedVideoId(video.id)}>
+                  <span className="market-cover">{video.cover ? <img src={video.cover} alt="" loading="lazy" /> : <span className="market-cover-fallback"><VideoCamera size={28} /></span>}<i className="market-duration">{video.duration}</i>{video.recent ? <i className="market-new">新发布</i> : null}<em><Play size={15} weight="fill" />{compactNumber(video.plays)}</em></span>
                   <span className="market-video-copy"><b>{video.title}</b><small>{video.published}</small><span><i><Heart size={14} />{compactNumber(video.likes)}</i><i><ChatCircleDots size={14} />{compactNumber(video.comments)}</i><i className="is-growth"><TrendUp size={14} />{video.growth}%</i></span></span>
                 </button>)}
               </div>
 
-              <aside className="market-insight-panel">
-                <div className="market-insight-heading"><h3>数据速览</h3><span>示例</span></div>
+              {selectedVideo ? <aside className="market-insight-panel">
+                <div className="market-insight-heading"><h3>数据速览</h3><span>{isDemo ? "示例" : "公开数据"}</span></div>
                 <p>{selectedVideo.title}</p>
                 <dl>
                   <div><dt><Eye size={15} />播放</dt><dd>{compactNumber(selectedVideo.plays)}</dd></div>
@@ -303,10 +347,10 @@ export function MarketDynamics({ title }: { title: string }) {
                   <div><dt><ShareNetwork size={15} />分享</dt><dd>{compactNumber(selectedVideo.shares)}</dd></div>
                   <div><dt><BookmarkSimple size={15} />收藏</dt><dd>{compactNumber(selectedVideo.collects)}</dd></div>
                 </dl>
-                <div className="market-growth-callout"><TrendUp size={20} weight="bold" /><p><b>发布后持续增长</b><span>近24小时互动增速高于账号均值 {selectedVideo.growth}%</span></p></div>
+                <div className="market-growth-callout"><TrendUp size={20} weight="bold" /><p><b>{selectedVideo.growth ? "互动数据发生变化" : "等待下一次快照"}</b><span>{selectedVideo.growth ? `与上次同步相比增长 ${selectedVideo.growth}%` : "完成第二次同步后计算互动增长"}</span></p></div>
                 <button type="button" disabled>进入内容拆解</button>
                 <small>下一阶段接入口播文案、标题结构与镜头节点分析。</small>
-              </aside>
+              </aside> : null}
             </div>
           </>}
         </div>

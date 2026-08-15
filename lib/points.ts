@@ -24,6 +24,20 @@ export type WalletSummary = {
   }>;
 };
 
+export type WalletHistoryEntry = {
+  id: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  taskId: string | null;
+  createdAt: number;
+};
+
+export type WalletHistory = {
+  consumption: WalletHistoryEntry[];
+  recharge: WalletHistoryEntry[];
+};
+
 type Reservation = {
   requestId: string;
   memberId: string;
@@ -92,6 +106,38 @@ export async function getWallet(member: MemberSession): Promise<WalletSummary> {
       taskId: item.task_id,
       createdAt: Number(item.created_at),
     })),
+  };
+}
+
+export async function getWalletHistory(member: MemberSession): Promise<WalletHistory> {
+  const rows = getDatabase().prepare(`
+    SELECT id, delta, balance_after, reason, task_id, created_at
+    FROM point_ledger
+    WHERE user_id = ?
+      AND (delta < 0 OR (delta > 0 AND reason LIKE '%充值%'))
+    ORDER BY created_at DESC, id DESC
+    LIMIT 2000
+  `).all(member.id) as Array<{
+    id: string;
+    delta: number;
+    balance_after: number;
+    reason: string;
+    task_id: string | null;
+    created_at: number;
+  }>;
+
+  const history = rows.map((item): WalletHistoryEntry => ({
+    id: item.id,
+    delta: Number(item.delta),
+    balanceAfter: Number(item.balance_after),
+    reason: item.reason,
+    taskId: item.task_id,
+    createdAt: Number(item.created_at),
+  }));
+
+  return {
+    consumption: history.filter((item) => item.delta < 0),
+    recharge: history.filter((item) => item.delta > 0),
   };
 }
 

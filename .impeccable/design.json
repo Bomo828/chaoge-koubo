@@ -1,44 +1,50 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-09T08:06:46Z",
-  "title": "Design System: 爆点实验室图片创作",
+  "generatedAt": "2026-08-15T17:25:24Z",
+  "title": "Design System: 爆点实验室创作工作台",
   "extensions": {
     "colorMeta": {
-      "graphite-stock": {
+      "midnight-bench": {
         "role": "neutral",
-        "displayName": "Graphite Stock",
-        "canonical": "#101114",
-        "tonalRamp": ["oklch(15% 0.006 275)", "oklch(25% 0.006 275)", "oklch(35% 0.006 275)", "oklch(47% 0.006 275)", "oklch(59% 0.006 275)", "oklch(71% 0.006 275)", "oklch(83% 0.006 275)", "oklch(95% 0.006 275)"]
+        "displayName": "Midnight Bench",
+        "canonical": "#0c1334",
+        "tonalRamp": ["oklch(15% 0.045 270)", "oklch(25% 0.045 270)", "oklch(35% 0.045 270)", "oklch(47% 0.045 270)", "oklch(59% 0.045 270)", "oklch(71% 0.04 270)", "oklch(83% 0.025 270)", "oklch(95% 0.01 270)"]
       },
-      "proof-surface": {
+      "deep-navy-rail": {
         "role": "neutral",
-        "displayName": "Proof Surface",
-        "canonical": "#17191e",
-        "tonalRamp": ["oklch(15% 0.009 265)", "oklch(25% 0.009 265)", "oklch(35% 0.009 265)", "oklch(47% 0.009 265)", "oklch(59% 0.009 265)", "oklch(71% 0.009 265)", "oklch(83% 0.009 265)", "oklch(95% 0.009 265)"]
+        "displayName": "Deep Navy Rail",
+        "canonical": "#111943",
+        "tonalRamp": ["oklch(15% 0.055 272)", "oklch(25% 0.055 272)", "oklch(35% 0.055 272)", "oklch(47% 0.055 272)", "oklch(59% 0.05 272)", "oklch(71% 0.04 272)", "oklch(83% 0.025 272)", "oklch(95% 0.01 272)"]
       },
-      "raised-stock": {
+      "electric-surface": {
         "role": "neutral",
-        "displayName": "Raised Stock",
-        "canonical": "#20232a",
-        "tonalRamp": ["oklch(15% 0.012 264)", "oklch(25% 0.012 264)", "oklch(35% 0.012 264)", "oklch(47% 0.012 264)", "oklch(59% 0.012 264)", "oklch(71% 0.012 264)", "oklch(83% 0.012 264)", "oklch(95% 0.012 264)"]
+        "displayName": "Electric Surface",
+        "canonical": "#151d49",
+        "tonalRamp": ["oklch(15% 0.06 272)", "oklch(25% 0.06 272)", "oklch(35% 0.06 272)", "oklch(47% 0.06 272)", "oklch(59% 0.05 272)", "oklch(71% 0.04 272)", "oklch(83% 0.025 272)", "oklch(95% 0.01 272)"]
       },
-      "field-stock": {
+      "raised-blue": {
         "role": "neutral",
-        "displayName": "Inset Field Stock",
-        "canonical": "#121419",
-        "tonalRamp": ["oklch(15% 0.009 266)", "oklch(25% 0.009 266)", "oklch(35% 0.009 266)", "oklch(47% 0.009 266)", "oklch(59% 0.009 266)", "oklch(71% 0.009 266)", "oklch(83% 0.009 266)", "oklch(95% 0.009 266)"]
+        "displayName": "Raised Blue",
+        "canonical": "#1d285e",
+        "tonalRamp": ["oklch(15% 0.07 271)", "oklch(25% 0.07 271)", "oklch(35% 0.07 271)", "oklch(47% 0.07 271)", "oklch(59% 0.06 271)", "oklch(71% 0.045 271)", "oklch(83% 0.025 271)", "oklch(95% 0.01 271)"]
       },
-      "proof-border": {
+      "inset-navy": {
         "role": "neutral",
-        "displayName": "Proof Border",
-        "canonical": "#30343d",
-        "tonalRamp": ["oklch(15% 0.013 265)", "oklch(25% 0.013 265)", "oklch(35% 0.013 265)", "oklch(47% 0.013 265)", "oklch(59% 0.013 265)", "oklch(71% 0.013 265)", "oklch(83% 0.013 265)", "oklch(95% 0.013 265)"]
+        "displayName": "Inset Navy",
+        "canonical": "#101738",
+        "tonalRamp": ["oklch(15% 0.05 271)", "oklch(25% 0.05 271)", "oklch(35% 0.05 271)", "oklch(47% 0.05 271)", "oklch(59% 0.045 271)", "oklch(71% 0.035 271)", "oklch(83% 0.02 271)", "oklch(95% 0.008 271)"]
       },
-      "proof-border-strong": {
+      "proof-line": {
         "role": "neutral",
-        "displayName": "Strong Proof Border",
-        "canonical": "#434752",
-        "tonalRamp": ["oklch(15% 0.015 267)", "oklch(25% 0.015 267)", "oklch(35% 0.015 267)", "oklch(47% 0.015 267)", "oklch(59% 0.015 267)", "oklch(71% 0.015 267)", "oklch(83% 0.015 267)", "oklch(95% 0.015 267)"]
+        "displayName": "Proof Line",
+        "canonical": "#34468c",
+        "tonalRamp": ["oklch(15% 0.09 269)", "oklch(25% 0.09 269)", "oklch(35% 0.09 269)", "oklch(47% 0.09 269)", "oklch(59% 0.075 269)", "oklch(71% 0.055 269)", "oklch(83% 0.03 269)", "oklch(95% 0.012 269)"]
+      },
+      "proof-line-strong": {
+        "role": "neutral",
+        "displayName": "Strong Proof Line",
+        "canonical": "#536bd0",
+        "tonalRamp": ["oklch(15% 0.13 270)", "oklch(25% 0.13 270)", "oklch(35% 0.13 270)", "oklch(47% 0.13 270)", "oklch(59% 0.11 270)", "oklch(71% 0.08 270)", "oklch(83% 0.045 270)", "oklch(95% 0.018 270)"]
       },
       "proof-text": {
         "role": "neutral",
@@ -48,167 +54,184 @@
       },
       "proof-muted": {
         "role": "neutral",
-        "displayName": "Muted Copy Gray",
-        "canonical": "#9a9eaa",
-        "tonalRamp": ["oklch(15% 0.015 266)", "oklch(25% 0.015 266)", "oklch(35% 0.015 266)", "oklch(47% 0.015 266)", "oklch(59% 0.015 266)", "oklch(71% 0.015 266)", "oklch(83% 0.015 266)", "oklch(95% 0.015 266)"]
-      },
-      "proof-dim": {
-        "role": "neutral",
-        "displayName": "Dim Metadata Gray",
-        "canonical": "#90959f",
-        "tonalRamp": ["oklch(15% 0.012 260)", "oklch(25% 0.012 260)", "oklch(35% 0.012 260)", "oklch(47% 0.012 260)", "oklch(59% 0.012 260)", "oklch(71% 0.012 260)", "oklch(83% 0.012 260)", "oklch(95% 0.012 260)"]
+        "displayName": "Blue Proof Muted",
+        "canonical": "#b2bce8",
+        "tonalRamp": ["oklch(15% 0.045 270)", "oklch(25% 0.045 270)", "oklch(35% 0.045 270)", "oklch(47% 0.045 270)", "oklch(59% 0.04 270)", "oklch(71% 0.035 270)", "oklch(83% 0.025 270)", "oklch(95% 0.01 270)"]
       },
       "proof-magenta": {
         "role": "primary",
         "displayName": "Proof Magenta",
         "canonical": "#ff4d8d",
-        "tonalRamp": ["oklch(15% 0.18 356)", "oklch(25% 0.18 356)", "oklch(35% 0.18 356)", "oklch(47% 0.18 356)", "oklch(59% 0.18 356)", "oklch(71% 0.18 356)", "oklch(83% 0.18 356)", "oklch(95% 0.08 356)"]
+        "tonalRamp": ["oklch(15% 0.18 356)", "oklch(25% 0.18 356)", "oklch(35% 0.18 356)", "oklch(47% 0.18 356)", "oklch(59% 0.18 356)", "oklch(71% 0.16 356)", "oklch(83% 0.12 356)", "oklch(95% 0.05 356)"]
       },
       "proof-magenta-hover": {
         "role": "primary",
         "displayName": "Proof Magenta Hover",
         "canonical": "#ff659e",
-        "tonalRamp": ["oklch(15% 0.16 356)", "oklch(25% 0.16 356)", "oklch(35% 0.16 356)", "oklch(47% 0.16 356)", "oklch(59% 0.16 356)", "oklch(71% 0.16 356)", "oklch(83% 0.16 356)", "oklch(95% 0.07 356)"]
+        "tonalRamp": ["oklch(15% 0.16 356)", "oklch(25% 0.16 356)", "oklch(35% 0.16 356)", "oklch(47% 0.16 356)", "oklch(59% 0.16 356)", "oklch(71% 0.14 356)", "oklch(83% 0.1 356)", "oklch(95% 0.04 356)"]
       },
       "registration-cyan": {
         "role": "secondary",
         "displayName": "Registration Cyan",
         "canonical": "#59d9e8",
-        "tonalRamp": ["oklch(15% 0.11 205)", "oklch(25% 0.11 205)", "oklch(35% 0.11 205)", "oklch(47% 0.11 205)", "oklch(59% 0.11 205)", "oklch(71% 0.11 205)", "oklch(83% 0.11 205)", "oklch(95% 0.05 205)"]
+        "tonalRamp": ["oklch(15% 0.11 205)", "oklch(25% 0.11 205)", "oklch(35% 0.11 205)", "oklch(47% 0.11 205)", "oklch(59% 0.11 205)", "oklch(71% 0.1 205)", "oklch(83% 0.07 205)", "oklch(95% 0.03 205)"]
       },
       "signal-yellow": {
         "role": "tertiary",
         "displayName": "Signal Yellow",
         "canonical": "#f4c95d",
-        "tonalRamp": ["oklch(15% 0.13 85)", "oklch(25% 0.13 85)", "oklch(35% 0.13 85)", "oklch(47% 0.13 85)", "oklch(59% 0.13 85)", "oklch(71% 0.13 85)", "oklch(83% 0.13 85)", "oklch(95% 0.05 85)"]
+        "tonalRamp": ["oklch(15% 0.13 85)", "oklch(25% 0.13 85)", "oklch(35% 0.13 85)", "oklch(47% 0.13 85)", "oklch(59% 0.13 85)", "oklch(71% 0.12 85)", "oklch(83% 0.08 85)", "oklch(95% 0.03 85)"]
+      },
+      "graphite-proof": {
+        "role": "neutral",
+        "displayName": "Graphite Proof",
+        "canonical": "#17191e",
+        "tonalRamp": ["oklch(15% 0.009 265)", "oklch(25% 0.009 265)", "oklch(35% 0.009 265)", "oklch(47% 0.009 265)", "oklch(59% 0.009 265)", "oklch(71% 0.008 265)", "oklch(83% 0.006 265)", "oklch(95% 0.003 265)"]
+      },
+      "graphite-field": {
+        "role": "neutral",
+        "displayName": "Graphite Field",
+        "canonical": "#121419",
+        "tonalRamp": ["oklch(15% 0.009 266)", "oklch(25% 0.009 266)", "oklch(35% 0.009 266)", "oklch(47% 0.009 266)", "oklch(59% 0.008 266)", "oklch(71% 0.007 266)", "oklch(83% 0.005 266)", "oklch(95% 0.002 266)"]
       },
       "ink-on-accent": {
         "role": "neutral",
         "displayName": "Ink on Accent",
         "canonical": "#190b11",
-        "tonalRamp": ["oklch(15% 0.025 355)", "oklch(25% 0.025 355)", "oklch(35% 0.025 355)", "oklch(47% 0.025 355)", "oklch(59% 0.025 355)", "oklch(71% 0.025 355)", "oklch(83% 0.025 355)", "oklch(95% 0.025 355)"]
+        "tonalRamp": ["oklch(15% 0.025 355)", "oklch(25% 0.025 355)", "oklch(35% 0.025 355)", "oklch(47% 0.025 355)", "oklch(59% 0.025 355)", "oklch(71% 0.02 355)", "oklch(83% 0.012 355)", "oklch(95% 0.005 355)"]
       }
     },
     "typographyMeta": {
-      "display": { "displayName": "Page Display", "purpose": "Compact page names; never a giant promotional headline." },
-      "headline": { "displayName": "Proof Headline", "purpose": "Concept name inside the proof canvas overlay." },
-      "title": { "displayName": "Panel Title", "purpose": "Numbered panel headings and key module titles." },
-      "body": { "displayName": "Operational Body", "purpose": "Editable task inputs and primary explanatory copy." },
-      "label": { "displayName": "Job Ticket Label", "purpose": "Field names, states, ratios and secondary actions." },
-      "mono": { "displayName": "Generation Detail Mono", "purpose": "Expanded generation prompt details only." }
+      "display": { "displayName": "Workbench Display", "purpose": "Compact page names; never a giant promotional headline inside tools." },
+      "headline": { "displayName": "Media Headline", "purpose": "Concept names and authored titles inside proof or media areas." },
+      "title": { "displayName": "Panel Title", "purpose": "Module, panel and workflow step headings." },
+      "body": { "displayName": "Operational Body", "purpose": "Task inputs, explanations and actionable feedback." },
+      "label": { "displayName": "Workbench Label", "purpose": "Field names, timestamps, states and secondary actions." },
+      "data": { "displayName": "Tabular Data", "purpose": "Points, costs, durations, balances and account metrics." }
     },
     "shadows": [
-      { "name": "panel-float", "value": "0 18px 50px rgba(0, 0, 0, .2)", "purpose": "Shared low lift for the job ticket, proof canvas and contact sheet panels." },
-      { "name": "proof-sheet", "value": "0 24px 70px rgba(0, 0, 0, .46), 0 0 0 1px rgba(255, 255, 255, .08)", "purpose": "Makes the output frame read as a physical proof sheet on the dark table." },
-      { "name": "menu-lift", "value": "0 18px 44px rgba(0, 0, 0, .5)", "purpose": "Temporary lift for the industry picker menu." },
-      { "name": "primary-action", "value": "0 10px 24px rgba(255, 77, 141, .18)", "purpose": "Restrained ink-colored lift under the generate button." },
-      { "name": "mobile-launch", "value": "0 18px 50px rgba(0, 0, 0, .5)", "purpose": "Separates the fixed mobile generation bar from scrolling content." }
+      { "name": "workbench-panel", "value": "0 18px 48px rgba(2, 5, 29, .22)", "purpose": "Low electric lift for the shared blue workbench panels." },
+      { "name": "graphite-panel", "value": "0 18px 50px rgba(0, 0, 0, .2)", "purpose": "Structural lift for AI director, market monitor and media tools." },
+      { "name": "menu-lift", "value": "0 18px 44px rgba(0, 0, 0, .5)", "purpose": "Temporary lift for account menus and pickers." },
+      { "name": "primary-action", "value": "0 10px 24px rgba(255, 77, 141, .18)", "purpose": "Restrained magenta lift under the sole primary action." }
     ],
     "motion": [
-      { "name": "proof-in", "value": "340ms ease-out", "purpose": "Subtle fade and 1.2% scale correction when the proof image changes." },
-      { "name": "disclosure", "value": "200ms ease", "purpose": "Rotates disclosure arrows when supplemental details open." },
-      { "name": "primary-hover", "value": "translateY(-1px)", "purpose": "A single-pixel lift on the generate action; active state returns to rest." },
-      { "name": "reduced-motion", "value": "none", "purpose": "Removes proof image animation and disclosure transitions when reduced motion is preferred." }
+      { "name": "state-standard", "value": "200ms ease-out", "purpose": "Hover, selection and disclosure state changes." },
+      { "name": "primary-hover", "value": "translateY(-1px)", "purpose": "One-pixel lift for the active primary action; pressed returns to rest." },
+      { "name": "media-change", "value": "340ms ease-out", "purpose": "Subtle opacity and scale correction when a preview changes." },
+      { "name": "reduced-motion", "value": "none", "purpose": "Removes non-essential transforms and preview transitions." }
     ],
     "breakpoints": [
-      { "name": "wide-compression", "value": "1380px" },
-      { "name": "two-column", "value": "1120px" },
-      { "name": "single-workflow", "value": "820px" },
+      { "name": "wide-shell", "value": "1080px" },
+      { "name": "mobile-shell", "value": "760px" },
+      { "name": "account-compact", "value": "680px" },
       { "name": "compact-phone", "value": "520px" }
     ]
   },
   "components": [
     {
-      "name": "Generate Button",
+      "name": "Primary Action",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "The sole high-emphasis action that launches three image generations.",
-      "html": "<button class=\"ds-generate\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M13 2 4.5 13H11l-1 9L19.5 11H13z\"/></svg><span>生成 3 张图片</span></button>",
-      "css": ".ds-generate { width: 100%; min-height: 54px; padding: 0 18px; display: flex; align-items: center; justify-content: center; gap: 9px; border: 0; border-radius: 11px; background: #ff4d8d; color: #190b11; cursor: pointer; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 15px; font-weight: 900; box-shadow: 0 10px 24px rgba(255,77,141,.18); transition: background .2s ease, transform .2s ease; } .ds-generate svg { width: 20px; height: 20px; color: #f4c95d; } .ds-generate:hover { background: #ff659e; transform: translateY(-1px); } .ds-generate:active { transform: translateY(0); } .ds-generate:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+      "description": "The sole high-emphasis action for the current workflow step.",
+      "html": "<button class=\"ds-primary\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"M13 2 4.5 13H11l-1 9L19.5 11H13z\"/></svg><span>开始生成</span></button>",
+      "css": ".ds-primary { min-height: 48px; padding: 0 18px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; border: 0; border-radius: 11px; background: #ff4d8d; color: #190b11; cursor: pointer; font: 800 15px/1.2 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; box-shadow: 0 10px 24px rgba(255,77,141,.18); transition: background .2s ease-out, transform .2s ease-out; } .ds-primary svg { width: 19px; height: 19px; color: #f4c95d; } .ds-primary:hover { background: #ff659e; transform: translateY(-1px); } .ds-primary:active { transform: translateY(0); } .ds-primary:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     },
     {
-      "name": "Download Button",
+      "name": "Secondary Action",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "A quiet bordered action shown only when a generated result is available.",
-      "html": "<button class=\"ds-download\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M12 3v12m-5-5 5 5 5-5M5 20h14\"/></svg><span>下载当前方案</span></button>",
-      "css": ".ds-download { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #434752; border-radius: 10px; background: transparent; color: #f6f3ef; cursor: pointer; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 11px; font-weight: 700; } .ds-download svg { width: 17px; height: 17px; } .ds-download:hover { border-color: #59d9e8; } .ds-download:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+      "description": "A quiet bordered action for retry, back, download or supporting work.",
+      "html": "<button class=\"ds-secondary\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M5 12h14M11 6l-6 6 6 6\"/></svg><span>返回上一步</span></button>",
+      "css": ".ds-secondary { min-height: 40px; padding: 0 14px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; border: 1px solid #34468c; border-radius: 10px; background: transparent; color: #f6f3ef; cursor: pointer; font: 700 11px/1.2 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; transition: border-color .2s ease-out, background .2s ease-out; } .ds-secondary svg { width: 17px; height: 17px; } .ds-secondary:hover { border-color: #59d9e8; background: rgba(89,217,232,.05); } .ds-secondary:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     },
     {
-      "name": "Job Ticket Field",
+      "name": "Workbench Field",
       "kind": "input",
       "refersTo": "field",
-      "description": "The standard labeled text area for task facts and campaign inputs.",
-      "html": "<label class=\"ds-field\"><span>核心卖点</span><textarea rows=\"3\">招牌现烤，真实门店可验证</textarea></label>",
-      "css": ".ds-field { display: block; color: #9a9eaa; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; font-size: 11px; font-weight: 700; } .ds-field span { display: block; margin-bottom: 7px; } .ds-field textarea { box-sizing: border-box; width: 100%; min-height: 72px; padding: 11px 12px; resize: vertical; border: 1px solid #30343d; border-radius: 10px; outline: 0; background: #121419; color: #f6f3ef; font: 400 13px/1.55 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-field textarea:hover { border-color: #434752; } .ds-field textarea:focus { border-color: #59d9e8; box-shadow: 0 0 0 3px rgba(89,217,232,.09); } .ds-field textarea:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+      "description": "The standard labeled field for task facts and merchant inputs.",
+      "html": "<label class=\"ds-field\"><span>真实资料与内容要求</span><textarea rows=\"3\">填写可以核对的行业、服务和受众信息</textarea></label>",
+      "css": ".ds-field { display: block; color: #b2bce8; font: 700 11px/1.4 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-field span { display: block; margin-bottom: 7px; } .ds-field textarea { width: 100%; min-height: 76px; padding: 11px 12px; resize: vertical; border: 1px solid #34468c; border-radius: 10px; outline: 0; background: #101738; color: #f6f3ef; font: 400 13px/1.55 \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-field textarea:hover { border-color: #536bd0; } .ds-field textarea:focus { border-color: #59d9e8; box-shadow: 0 0 0 3px rgba(89,217,232,.14); } .ds-field textarea:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     },
     {
-      "name": "Format Segmented Control",
+      "name": "Segmented Tabs",
       "kind": "chip",
-      "description": "A compact ratio switcher that keeps production formats visible above the proof canvas.",
-      "html": "<div class=\"ds-formats\" role=\"group\" aria-label=\"投放版式\"><button aria-pressed=\"true\">3:4</button><button aria-pressed=\"false\">1:1</button><button aria-pressed=\"false\">9:16</button><button aria-pressed=\"false\">16:9</button></div>",
-      "css": ".ds-formats { padding: 3px; display: inline-flex; gap: 3px; border-radius: 10px; background: #111318; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-formats button { min-width: 49px; height: 31px; padding: 0 8px; border: 0; border-radius: 7px; background: transparent; color: #90959f; cursor: pointer; font-family: inherit; font-size: 11px; font-weight: 800; line-height: 1; } .ds-formats button:hover { color: #fff; } .ds-formats button[aria-pressed=\"true\"] { background: #2b2d34; color: #fff; box-shadow: inset 0 -2px #ff4d8d; } .ds-formats button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+      "refersTo": "tab-selected",
+      "description": "A compact two-or-more option switch for history, media and workflow views.",
+      "html": "<div class=\"ds-tabs\" role=\"tablist\" aria-label=\"记录类型\"><button role=\"tab\" aria-selected=\"true\">消费记录 <span>25</span></button><button role=\"tab\" aria-selected=\"false\">充值记录 <span>1</span></button></div>",
+      "css": ".ds-tabs { padding: 4px; display: inline-grid; grid-template-columns: repeat(2,minmax(118px,1fr)); gap: 4px; border-radius: 11px; background: #101738; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-tabs button { min-height: 38px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #b2bce8; cursor: pointer; font-size: 11px; font-weight: 800; } .ds-tabs button span { margin-left: 5px; font-size: 9px; font-variant-numeric: tabular-nums; } .ds-tabs button:hover { color: #f6f3ef; } .ds-tabs button[aria-selected=\"true\"] { background: #1d285e; color: #f6f3ef; box-shadow: inset 0 -2px #ff4d8d; } .ds-tabs button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     },
     {
-      "name": "Creative Direction Card",
+      "name": "Creation Mode Card",
       "kind": "card",
-      "description": "A compact visual strategy choice with a thumbnail, sequence number and reaction cue.",
-      "html": "<button class=\"ds-direction\" aria-pressed=\"true\"><span class=\"ds-direction-art\" aria-hidden=\"true\"></span><span class=\"ds-direction-copy\"><small>01</small><b>产品定场</b><i>第一眼记住主推服务</i></span></button>",
-      "css": ".ds-direction { min-width: 220px; min-height: 64px; padding: 6px; display: grid; grid-template-columns: 48px minmax(0,1fr); align-items: center; gap: 8px; border: 1px solid #30343d; border-radius: 10px; background: #121419; color: #9a9eaa; cursor: pointer; text-align: left; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-direction-art { width: 48px; height: 48px; border-radius: 7px; background: linear-gradient(145deg,#3b2731,#ff4d8d 48%,#17191e 49%); } .ds-direction-copy { min-width: 0; display: grid; gap: 2px; } .ds-direction small { color: #ff4d8d; font-size: 10px; } .ds-direction b { color: #f6f3ef; font-size: 11px; } .ds-direction i { overflow: hidden; color: #90959f; font-size: 10px; font-style: normal; text-overflow: ellipsis; white-space: nowrap; } .ds-direction:hover { border-color: #434752; } .ds-direction[aria-pressed=\"true\"] { border-color: #754156; background: #251e23; box-shadow: inset 0 -2px #ff4d8d; } .ds-direction:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
-    },
-    {
-      "name": "Contact Sheet Result",
-      "kind": "card",
-      "description": "A numbered result row used both before generation as a direction preview and after generation as a selectable output.",
-      "html": "<button class=\"ds-result\" aria-pressed=\"true\"><span class=\"ds-result-number\">01</span><span class=\"ds-result-art\" aria-hidden=\"true\"></span><span class=\"ds-result-copy\"><b>产品定场</b><small>点击查看成品</small></span><span class=\"ds-result-check\">✓</span></button>",
-      "css": ".ds-result { width: 100%; min-height: 112px; padding: 7px; display: grid; grid-template-columns: 20px 106px minmax(0,1fr) 18px; align-items: center; gap: 9px; border: 1px solid #30343d; border-radius: 11px; background: #121419; color: #9a9eaa; cursor: pointer; text-align: left; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-result-number { color: #90959f; font-size: 10px; font-weight: 900; } .ds-result-art { width: 106px; height: 94px; border-radius: 7px; background: linear-gradient(155deg,#20232a,#ff4d8d 48%,#101114 49%); } .ds-result-copy { min-width: 0; display: grid; gap: 7px; } .ds-result-copy b { color: #f6f3ef; font-size: 13px; } .ds-result-copy small { color: #90959f; font-size: 10px; line-height: 1.4; } .ds-result-check { color: #ff4d8d; font-weight: 900; } .ds-result:hover { border-color: #434752; } .ds-result[aria-pressed=\"true\"] { border-color: #754156; background: #251e23; } .ds-result:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
-    },
-    {
-      "name": "Proof Canvas",
-      "kind": "custom",
-      "description": "The signature print-proof stage with center axes, registration marks and a low-radius output sheet.",
-      "html": "<div class=\"ds-stage\"><span class=\"ds-register ds-register-a\" aria-hidden=\"true\"></span><span class=\"ds-register ds-register-b\" aria-hidden=\"true\"></span><div class=\"ds-sheet\"><div class=\"ds-sheet-art\"></div><div class=\"ds-sheet-copy\"><small>01 / HERO</small><b>产品定场</b><span>第一眼记住主推服务</span></div></div></div>",
-      "css": ".ds-stage { position: relative; width: min(100%,420px); height: 410px; padding: 18px; display: grid; place-items: center; overflow: hidden; border: 1px solid #262930; border-radius: 13px; background: linear-gradient(90deg,transparent calc(50% - .5px),#262930 50%,transparent calc(50% + .5px)),linear-gradient(transparent calc(50% - .5px),#262930 50%,transparent calc(50% + .5px)),#0d0f13; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-register { position: absolute; z-index: 2; width: 10px; height: 10px; border: 1px solid #59d9e8; border-radius: 50%; opacity: .7; } .ds-register::before,.ds-register::after { content: \"\"; position: absolute; background: #59d9e8; } .ds-register::before { left: 4px; top: -4px; width: 1px; height: 16px; } .ds-register::after { top: 4px; left: -4px; width: 16px; height: 1px; } .ds-register-a { top: 12px; left: 12px; } .ds-register-b { right: 12px; bottom: 12px; border-color: #ff4d8d; } .ds-register-b::before,.ds-register-b::after { background: #ff4d8d; } .ds-sheet { position: relative; z-index: 1; height: 100%; aspect-ratio: 3/4; overflow: hidden; border-radius: 4px; background: #1c1f25; box-shadow: 0 24px 70px rgba(0,0,0,.46),0 0 0 1px rgba(255,255,255,.08); } .ds-sheet-art { width: 100%; height: 100%; background: radial-gradient(circle at 68% 28%,#f4c95d 0 13%,#ff4d8d 14% 31%,#20232a 55%,#101114); } .ds-sheet-copy { position: absolute; left: 7%; right: 7%; bottom: 6%; padding: 14px 16px; border-radius: 9px; background: rgba(9,10,13,.82); backdrop-filter: blur(8px); color: #f6f3ef; } .ds-sheet-copy small,.ds-sheet-copy b,.ds-sheet-copy span { display: block; } .ds-sheet-copy small { color: #59d9e8; font-size: 9px; font-weight: 800; letter-spacing: .08em; } .ds-sheet-copy b { margin-top: 4px; font-size: 24px; line-height: 1.05; letter-spacing: -.04em; } .ds-sheet-copy span { margin-top: 6px; color: #d5d6da; font-size: 11px; }"
+      "description": "A tall, quiet entry card that names one creation mode and its single launch action.",
+      "html": "<article class=\"ds-mode\"><span class=\"ds-mode-icon\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"m12 3 2.2 6.8L21 12l-6.8 2.2L12 21l-2.2-6.8L3 12l6.8-2.2Z\"/></svg></span><h3>AI成片</h3><button>开始制作</button></article>",
+      "css": ".ds-mode { width: 250px; min-height: 300px; padding: 24px; display: flex; flex-direction: column; border: 1px solid #34468c; border-radius: 16px; background: linear-gradient(145deg,rgba(25,35,86,.96),rgba(18,25,65,.96)); color: #f6f3ef; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; box-shadow: 0 18px 48px rgba(2,5,29,.22); } .ds-mode-icon { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 50%; background: #24326d; color: #59d9e8; } .ds-mode-icon svg { width: 24px; height: 24px; } .ds-mode h3 { margin: 18px 0; font-size: 24px; } .ds-mode button { width: 100%; height: 48px; margin-top: auto; border: 0; border-radius: 10px; background: #ff4d8d; color: #190b11; cursor: pointer; font-weight: 800; } .ds-mode button:hover { background: #ff659e; transform: translateY(-1px); } .ds-mode button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     },
     {
       "name": "Workbench Navigation",
       "kind": "nav",
-      "description": "The graphite shared shell navigation with one quiet magenta active state.",
-      "html": "<nav class=\"ds-nav\" aria-label=\"工作台导航\"><button><span class=\"ds-nav-icon\">⌂</span><span>工作台</span></button><button class=\"ds-nav-active\" aria-current=\"page\"><span class=\"ds-nav-icon\">▣</span><span>图片创作</span></button><button><span class=\"ds-nav-icon\">◫</span><span>素材库</span></button></nav>",
-      "css": ".ds-nav { width: 188px; padding: 14px; display: flex; flex-direction: column; gap: 5px; background: #141519; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-nav button { width: 100%; height: 45px; padding: 0 13px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 10px; background: transparent; color: #989ca6; cursor: pointer; text-align: left; font-size: 12px; font-weight: 700; } .ds-nav-icon { width: 20px; color: #747985; text-align: center; } .ds-nav button:hover { background: #202228; color: #f6f3ef; } .ds-nav .ds-nav-active { background: #29242b; color: #fff; box-shadow: inset 0 0 0 1px #4b3540; } .ds-nav .ds-nav-active .ds-nav-icon { color: #ff6aa0; } .ds-nav button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+      "description": "The deep-blue shared shell navigation with one quiet magenta active state.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"工作台导航\"><button><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M3 11.5 12 4l9 7.5V21h-6v-6H9v6H3Z\"/></svg><span>创作首页</span></button><button class=\"ds-nav-active\" aria-current=\"page\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M3 5h18v14H3zM7 9h.01M3 16l5-4 4 3 3-2 6 5\"/></svg><span>图片设计</span></button><button><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\" d=\"M4 7h16v10H4zM9 7l2-3h2l2 3\"/></svg><span>短视频</span></button></nav>",
+      "css": ".ds-nav { width: 188px; padding: 14px; display: flex; flex-direction: column; gap: 5px; background: linear-gradient(180deg,#151e55,#10173d 62%,#16113f); font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-nav button { width: 100%; height: 45px; padding: 0 13px; display: flex; align-items: center; gap: 12px; border: 0; border-radius: 10px; background: transparent; color: #aeb9ec; cursor: pointer; font-size: 12px; font-weight: 700; text-align: left; } .ds-nav svg { width: 19px; height: 19px; flex: 0 0 auto; } .ds-nav button:hover { background: #22316d; color: #f6f3ef; } .ds-nav .ds-nav-active { background: linear-gradient(100deg,rgba(255,77,141,.24),rgba(116,67,217,.22)); color: #fff; box-shadow: inset 0 0 0 1px #b15292, inset 3px 0 #ff4d8d; } .ds-nav .ds-nav-active svg { color: #ff4d8d; } .ds-nav button:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Workflow Steps",
+      "kind": "custom",
+      "description": "A continuous status rail for multi-step AI creation flows.",
+      "html": "<div class=\"ds-steps\" aria-label=\"制作进度\"><span class=\"ds-complete\"><i>1</i><b>上传素材</b></span><span class=\"ds-active\"><i>2</i><b>锁定口播</b></span><span><i>3</i><b>AI成片</b></span></div>",
+      "css": ".ds-steps { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); overflow: hidden; border: 1px solid #34468c; border-radius: 12px; background: #151d49; color: #777c9b; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-steps span { min-height: 62px; padding: 0 15px; display: flex; align-items: center; gap: 9px; border-right: 1px solid #34468c; } .ds-steps span:last-child { border-right: 0; } .ds-steps i { width: 28px; height: 28px; display: grid; place-items: center; border: 1px solid #536bd0; border-radius: 8px; font-size: 10px; font-style: normal; font-weight: 900; } .ds-steps b { font-size: 12px; } .ds-steps .ds-complete { color: #59d9e8; } .ds-steps .ds-complete i { background: rgba(89,217,232,.1); } .ds-steps .ds-active { background: rgba(255,77,141,.07); color: #f6f3ef; box-shadow: inset 0 -2px #ff4d8d; } .ds-steps .ds-active i { border-color: #ff4d8d; background: #ff4d8d; color: #190b11; }"
+    },
+    {
+      "name": "Account Record Row",
+      "kind": "custom",
+      "description": "A flat, auditable ledger row for daily consumption and recharge history.",
+      "html": "<article class=\"ds-record\"><div><b>AI 商家素材成片</b><span>12:55 · viral_1786…swpf6</span></div><strong>-28 PTS</strong><small>余额 8,299</small></article>",
+      "css": ".ds-record { min-height: 72px; padding: 13px 0; display: grid; grid-template-columns: minmax(0,1fr) auto minmax(110px,auto); gap: 22px; align-items: center; border-bottom: 1px solid #34468c; color: #f6f3ef; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-record div { min-width: 0; } .ds-record div b { display: block; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; } .ds-record div span { margin-top: 5px; display: block; overflow: hidden; color: #b2bce8; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; font-variant-numeric: tabular-nums; } .ds-record strong { color: #f4c95d; font-size: 13px; font-variant-numeric: tabular-nums; white-space: nowrap; } .ds-record small { color: #b2bce8; font-size: 9px; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }"
+    },
+    {
+      "name": "Media Preview",
+      "kind": "custom",
+      "description": "A low-radius media frame that preserves the source ratio and keeps controls visible.",
+      "html": "<figure class=\"ds-media\"><div class=\"ds-media-frame\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"m9 7 8 5-8 5Z\"/></svg></div><figcaption><b>成片已完成</b><a href=\"#\">下载成片</a></figcaption></figure>",
+      "css": ".ds-media { width: 260px; margin: 0; padding: 14px; border: 1px solid #34468c; border-radius: 16px; background: #151d49; color: #f6f3ef; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; box-shadow: 0 18px 48px rgba(2,5,29,.22); } .ds-media-frame { width: 100%; aspect-ratio: 9/16; display: grid; place-items: center; overflow: hidden; border-radius: 7px; background: radial-gradient(circle at 60% 28%,#34468c,#121419 58%); } .ds-media-frame svg { width: 44px; height: 44px; color: #f6f3ef; } .ds-media figcaption { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; } .ds-media figcaption b { font-size: 13px; } .ds-media figcaption a { color: #59d9e8; font-size: 10px; font-weight: 800; text-decoration: none; } .ds-media figcaption a:hover { text-decoration: underline; text-underline-offset: 3px; } .ds-media figcaption a:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
     }
   ],
   "narrative": {
-    "northStar": "The Print Proofing Table / 印刷打样台",
-    "overview": "图片创作世界把营销任务呈现成一张摆在石墨工作台上的印刷工单：信息具体、层级安静、每一步都可以立即操作。柔和的深色表面承担长时间工作，套准标记与克制的品红、电子青、信号黄只用来说明选择、焦点、成本和生产状态。\n\n体验遵循“工单 → 打样画布 → 联系表 → 生成”的阅读顺序。品牌可以有冲击力，但操作密度、可见状态和真实投放约束始终优先；共享工作台外壳也延续同一石墨材质与克制状态语言，不把旧页面的视觉习惯当作这一新世界的规则。",
+    "northStar": "The Electric Proofing Table / 电光打样台",
+    "overview": "爆点实验室把商家的图片、短视频、市场动态和会员资产组织成一张持续工作的数字打样台。深靛蓝是工作间的环境光，石墨黑是创作与预览的校样区域；品红、电子青和信号黄像三种功能明确的套准墨，只在选择、焦点、生成、成本与状态处出现。\n\n系统不是娱乐化控制台。它强调真实内容、清楚步骤、可恢复进度和可核对账目：复杂的 AI 流程被拆成稳定面板、步骤状态、素材轨道和结果区；市场动态使用账号栏、资料区与视频网格；会员中心使用余额、分区流水和资产入口。每个模块可以有自己的任务构图，但必须共享相同的色彩语义、控件密度和反馈语言。",
     "keyCharacteristics": [
-      "石墨纸张般的深色底与柔和分层表面",
-      "先任务、后画布、再成品联系表的清晰操作层级",
-      "品红表示主选择与生成，电子青表示焦点与校准，信号黄表示成本或提醒",
-      "标准矩形控件、轻圆角和印刷套准标记形成可识别的工作台世界",
-      "桌面端高密度并排工作，窄屏按任务顺序纵向展开"
+      "深靛蓝工作台外壳与石墨校样区域形成双层生产环境",
+      "品红表示主选择与生成，电子青表示焦点、校准与正向到账，信号黄表示成本、消费与提醒",
+      "面板、列表和步骤条优先承载任务状态，不用装饰性数据制造专业感",
+      "桌面端并排提高效率，移动端保持相同任务顺序并消除页面级横向溢出",
+      "图片、视频、账号、流水和生成结果都使用真实内容与明确空状态"
     ],
     "rules": [
-      { "name": "The Three-Ink Rule", "body": "品红只表示主选择或生成，电子青只表示焦点与校准，信号黄只表示成本或生产提示；不要互换语义。", "section": "colors" },
-      { "name": "The Ink Is Rare Rule", "body": "任一打样墨色都不铺满面板，也不叠加发光；大面积始终由石墨中性色承担。", "section": "colors" },
-      { "name": "The Job-Ticket Type Rule", "body": "字号服务于扫描和操作层级；页面标题保持克制，禁止用巨型展示字制造戏剧性。", "section": "typography" },
-      { "name": "The Workflow Order Rule", "body": "响应式重排可以改变列数，但不能改变“工单 → 打样画布 → 联系表 → 生成”的任务顺序。", "section": "layout" },
-      { "name": "The Structural Shadow Rule", "body": "阴影只说明真实层级或操作状态；静态装饰和信息卡不凭空漂浮。", "section": "elevation" },
-      { "name": "The Proof Sheet Rule", "body": "大容器可以柔和，成品画幅必须更像纸张；用较小圆角区分“工具”与“作品”。", "section": "shapes" }
+      { "name": "The Three-Ink Rule", "body": "品红只表示选择或生成，电子青只表示焦点、完成或正向到账，信号黄只表示成本、消费或提醒；不要互换语义。", "section": "colors" },
+      { "name": "The Two-Table Rule", "body": "深蓝承担产品外壳，石墨承担需要视觉后退的创作和媒体区域；同一面板内不要无理由混用两套底色。", "section": "colors" },
+      { "name": "The Ink Is Rare Rule", "body": "功能墨色不铺满大型面板，也不叠加霓虹发光；大面积始终由深蓝或石墨中性色承担。", "section": "colors" },
+      { "name": "The Operational Type Rule", "body": "字号服务于扫描、比较和操作；标题必须让位于素材、结果、账号数据和唯一主操作。", "section": "typography" },
+      { "name": "The Workflow Order Rule", "body": "响应式可以改变列数、固定方式和轨道方向，但不能改变用户完成任务的顺序。", "section": "layout" },
+      { "name": "The One Active Job Rule", "body": "一个页面只允许一个明确的当前步骤和一个高强调主操作；后台并行不转化为前台视觉噪音。", "section": "layout" },
+      { "name": "The Structural Shadow Rule", "body": "阴影只说明真实层级、悬停或固定状态；普通列表行和信息块保持平面。", "section": "elevation" },
+      { "name": "The Proof Sheet Rule", "body": "工具面板可以柔和，媒体与成品画幅必须更克制；用较小圆角区分“工具”与“内容”。", "section": "shapes" }
     ],
     "dos": [
-      "Do 保持工单、打样画布、联系表和生成操作的阅读顺序，即使布局在窄屏重排。",
-      "Do 用石墨色调、完整 1px 边框和轻阴影建立层级，让打样墨色只承担明确状态。",
-      "Do 保留可见的电子青键盘焦点、语义化选择状态和生成状态播报。",
-      "Do 让共享侧栏和内容表面使用同一石墨材质，并在 820px 以下转换为紧凑顶部导航。",
-      "Do 把套准标记限制在打样画布，把小圆角的成品纸与较柔和的工具面板区分开。"
+      "Do 保持每个模块的任务顺序、当前步骤、预计成本和结果状态一眼可见。",
+      "Do 用深蓝外壳、石墨工作区、完整 1px 边框和少量结构阴影建立层级。",
+      "Do 让品红、电子青和信号黄持续承担固定语义，并保留可见键盘焦点。",
+      "Do 为加载、空数据、错误、重试、已完成和历史记录提供真实状态。",
+      "Do 在移动端重排而非缩小桌面布局，保证素材、视频、账号与流水可以完整阅读。",
+      "Do 使用真实商家素材、账号信息、任务流水和可核对的商业事实。"
     ],
     "donts": [
-      "Don't 使用游戏控制台式 HUD、霓虹描边或发光堆叠。",
-      "Don't 裁切面板边缘、制造异形缺角，或把套准装饰复制到普通控件。",
-      "Don't 用巨型展示字压过任务信息、主画布或唯一主操作。",
-      "Don't 添加与任务无关的遥测数字、状态灯或装饰性技术读数。",
-      "Don't 把项目中无关的旧页面 CSS、绿色纸张世界或高饱和旧 Image Lab 规则视为本系统规范。"
+      "Don't 使用游戏控制台式 HUD、密集霓虹描边、装饰性遥测或无意义英文标签。",
+      "Don't 给每一条记录、每一个指标或每一个说明都套独立圆角卡片。",
+      "Don't 用厚重单侧彩边、异形缺角、渐变文字或硬偏移阴影制造“科技感”。",
+      "Don't 把主色互换语义，或让多个高强调按钮在同一当前步骤中竞争。",
+      "Don't 隐藏错误恢复、积分结算、生成状态或刷新后的草稿恢复状态。",
+      "Don't 强制裁切媒体、虚构账号数据或把 AI 合成场景冒充真实事实。"
     ]
   }
 }

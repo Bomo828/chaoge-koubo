@@ -153,6 +153,35 @@ export async function GET(request: Request) {
   if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
 
   const url = new URL(request.url);
+  const requestId = url.searchParams.get("request_id") || "";
+  if (url.searchParams.get("media") === "1") {
+    const stored = requestId ? getAiTask(member, requestId) : null;
+    const resultUrl = typeof stored?.result.resultUrl === "string" ? stored.result.resultUrl : "";
+    if (!stored || stored.kind !== "video" || stored.state !== "success" || !resultUrl) {
+      return Response.json({ error: "这个视频镜头尚未生成完成。" }, { status: 404 });
+    }
+    let sourceUrl: URL;
+    try {
+      sourceUrl = new URL(resultUrl);
+      if (sourceUrl.protocol !== "https:" && sourceUrl.protocol !== "http:") throw new Error("invalid protocol");
+    } catch {
+      return Response.json({ error: "视频结果地址无效。" }, { status: 502 });
+    }
+    try {
+      const source = await fetch(sourceUrl, { signal: AbortSignal.timeout(120_000) });
+      if (!source.ok || !source.body) return Response.json({ error: "视频镜头暂时无法读取，请稍后重试。" }, { status: 502 });
+      const headers = new Headers({
+        "Content-Type": source.headers.get("content-type") || "video/mp4",
+        "Cache-Control": "private, max-age=300",
+        "Content-Disposition": "inline",
+      });
+      const contentLength = source.headers.get("content-length");
+      if (contentLength) headers.set("Content-Length", contentLength);
+      return new Response(source.body, { status: 200, headers });
+    } catch (error) {
+      return aiErrorResponse(error);
+    }
+  }
   const taskId = url.searchParams.get("task_id") || "";
   if (!taskId) {
     try {
@@ -166,7 +195,6 @@ export async function GET(request: Request) {
       return aiErrorResponse(error);
     }
   }
-  const requestId = url.searchParams.get("request_id") || "";
   try {
     const provider = await lk888Fetch<ProviderPayload>(`/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`, { cache: "no-store" });
     const task = normalizedPayload(provider);
@@ -185,7 +213,7 @@ export async function GET(request: Request) {
       error: task.error,
       pointsCharged: task.isFinal && task.state === "success" ? chargedPoints : 0,
     });
-    return Response.json({ ...task, model: "kwvideo-v2-ref", requestId: requestId || null, wallet });
+    return Response.json({ ...task, model: stored?.input.model || "kwvideo-v2-ref", requestId: requestId || null, wallet });
   } catch (error) {
     return pointsErrorResponse(error) ?? aiErrorResponse(error);
   }

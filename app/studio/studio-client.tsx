@@ -10,6 +10,8 @@ import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-p
 import { segmentViralCaptions, viralSpeechLanguage } from "../../lib/viral-caption-segmentation";
 import { IndustryImageLab } from "./image-lab";
 import { MarketDynamics } from "./market-dynamics";
+import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
+import { AiDirectorStudio } from "./ai-director-studio";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -47,6 +49,20 @@ type MemberAssetItem = {
   retentionDays: number | null;
   mediaUrl: string;
   coverUrl?: string;
+};
+
+type WalletHistoryEntry = {
+  id: string;
+  delta: number;
+  balanceAfter: number;
+  reason: string;
+  taskId: string | null;
+  createdAt: number;
+};
+
+type WalletHistory = {
+  consumption: WalletHistoryEntry[];
+  recharge: WalletHistoryEntry[];
 };
 
 type AssetFilter = "all" | "image" | "video" | "audio";
@@ -490,6 +506,9 @@ const studioLabels: Record<string, string> = {
   member: "账号中心",
 };
 
+const STUDIO_ACTIVE_SESSION_KEY = "merchant-studio-active-section";
+const VIDEO_WORKSPACE_SESSION_KEY = "merchant-studio-video-workspace";
+
 export function StudioClient({ member, initialFeatures }: { member: MemberSession; initialFeatures: PlatformFeature[] }) {
   const isAdminAccount = member.role === "admin" || member.role === "super_admin";
   const accountTypeLabel = isAdminAccount ? "管理员账号" : "会员账号";
@@ -509,10 +528,28 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
     initialFeatures.map((item) => [item.entry, item.name || studioLabels[item.entry]]),
   ) as Partial<Record<PlatformFeature["entry"], string>>;
 
+  function openStudioSection(section: string) {
+    try {
+      window.sessionStorage.setItem(STUDIO_ACTIVE_SESSION_KEY, section);
+    } catch {
+      // The workspace still works when browser storage is unavailable.
+    }
+    setActive(section);
+  }
+
   useEffect(() => {
     const requestedTool = new URLSearchParams(window.location.search).get("tool");
     if (requestedTool && Object.hasOwn(studioLabels, requestedTool)) {
-      queueMicrotask(() => setActive(requestedTool));
+      queueMicrotask(() => openStudioSection(requestedTool));
+      return;
+    }
+    try {
+      const savedSection = window.sessionStorage.getItem(STUDIO_ACTIVE_SESSION_KEY);
+      if (savedSection && Object.hasOwn(studioLabels, savedSection)) {
+        queueMicrotask(() => setActive(savedSection));
+      }
+    } catch {
+      // Keep the default overview when browser storage is unavailable.
     }
   }, []);
 
@@ -565,7 +602,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
             return (
               <button className={active === item.id ? "active" : ""} key={`${item.id}-${index}`} onClick={() => {
                 if (item.id === "assets") setAssetInitialFilter("all");
-                setActive(item.id);
+                openStudioSection(item.id);
               }}>
                 <MenuIcon size={19} weight={active === item.id ? "fill" : "regular"} />
                 <span>{item.label}</span>
@@ -573,7 +610,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
             );
           })}
         </nav>
-        <div className="sidebar-member"><span>创作积分</span><b>{walletPoints.toLocaleString()} <small>PTS</small></b><button onClick={() => setActive("member")}>充值积分</button></div>
+        <div className="sidebar-member"><span>创作积分</span><b>{walletPoints.toLocaleString()} <small>PTS</small></b><button onClick={() => openStudioSection("member")}>充值积分</button></div>
         <a className="sidebar-exit" href="/api/auth/logout">退出账号</a>
       </aside>
 
@@ -607,20 +644,20 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           </div>
         </header>
         <div className="studio-content">
-          {active === "overview" && <Overview onOpen={setActive} />}
+          {active === "overview" && <Overview onOpen={openStudioSection} />}
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
           {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
           {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
             setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType });
-            setActive("video");
+            openStudioSection("video");
           }} />}
           {active === "member" && <Member
             points={walletPoints}
             onPointsChange={setWalletPoints}
             onOpenAssets={(filter) => {
               setAssetInitialFilter(filter);
-              setActive("assets");
+              openStudioSection("assets");
             }}
           />}
         </div>
@@ -1331,8 +1368,175 @@ type VideoQuote = {
   note: string;
 };
 
+type PhotoVideoTemplateId = "quiet-album" | "merchant-showcase" | "split-story" | "photo-wall" | "clean-proof" | "rhythm-cut";
+type PhotoVideoRatio = "9:16" | "1:1" | "16:9";
+
+type PhotoVideoTemplate = {
+  id: PhotoVideoTemplateId;
+  name: string;
+  detail: string;
+  tag: string;
+};
+
+const PHOTO_VIDEO_TEMPLATES: PhotoVideoTemplate[] = [
+  { id: "quiet-album", name: "极简相册", detail: "原图完整呈现，轻微推拉与柔和淡切", tag: "通用" },
+  { id: "merchant-showcase", name: "商家展示", detail: "环境铺底，主体居中，适合门店与服务", tag: "商家" },
+  { id: "split-story", name: "双画面叙事", detail: "主画面配合下一张预告，信息更连贯", tag: "故事" },
+  { id: "photo-wall", name: "多图拼贴", detail: "四张图片同屏轮换，适合活动与案例", tag: "丰富" },
+  { id: "clean-proof", name: "留白画册", detail: "浅色画册版式，适合产品与作品展示", tag: "质感" },
+  { id: "rhythm-cut", name: "节奏切片", detail: "快速切换与方向滑动，适合种草内容", tag: "活力" },
+];
+
+function photoVideoCanvasSize(ratio: PhotoVideoRatio, resolution: "480p" | "720p") {
+  const shortSide = resolution === "720p" ? 720 : 480;
+  if (ratio === "1:1") return { width: shortSide, height: shortSide };
+  if (ratio === "16:9") return { width: resolution === "720p" ? 1280 : 854, height: shortSide };
+  return { width: shortSide, height: resolution === "720p" ? 1280 : 854 };
+}
+
+function photoRect(image: HTMLImageElement, width: number, height: number, mode: "cover" | "contain", zoom = 1) {
+  const scale = (mode === "cover" ? Math.max(width / image.naturalWidth, height / image.naturalHeight) : Math.min(width / image.naturalWidth, height / image.naturalHeight)) * zoom;
+  const drawWidth = image.naturalWidth * scale;
+  const drawHeight = image.naturalHeight * scale;
+  return { x: (width - drawWidth) / 2, y: (height - drawHeight) / 2, width: drawWidth, height: drawHeight };
+}
+
+function drawPhotoImage(context: CanvasRenderingContext2D, image: HTMLImageElement, x: number, y: number, width: number, height: number, mode: "cover" | "contain", zoom = 1, offsetX = 0, offsetY = 0) {
+  const rect = photoRect(image, width, height, mode, zoom);
+  context.drawImage(image, x + rect.x + offsetX, y + rect.y + offsetY, rect.width, rect.height);
+}
+
+function drawPhotoTemplateFrame(
+  context: CanvasRenderingContext2D,
+  images: HTMLImageElement[],
+  index: number,
+  progress: number,
+  width: number,
+  height: number,
+  templateId: PhotoVideoTemplateId,
+  alpha = 1,
+) {
+  if (!images.length) return;
+  const safeIndex = Math.max(0, index) % images.length;
+  const image = images[safeIndex] || images[0];
+  const next = images[(safeIndex + 1) % images.length] || image;
+  const previousAlpha = context.globalAlpha;
+  context.globalAlpha = alpha;
+  context.save();
+
+  if (templateId === "clean-proof") {
+    context.fillStyle = "#f4f1ea";
+    context.fillRect(0, 0, width, height);
+    const margin = Math.round(Math.min(width, height) * .08);
+    context.shadowColor = "rgba(18,20,25,.22)";
+    context.shadowBlur = Math.round(Math.min(width, height) * .035);
+    context.shadowOffsetY = Math.round(Math.min(width, height) * .018);
+    context.fillStyle = "#ffffff";
+    context.fillRect(margin, margin, width - margin * 2, height - margin * 2);
+    context.shadowColor = "transparent";
+    context.save();
+    context.beginPath();
+    context.rect(margin, margin, width - margin * 2, height - margin * 2);
+    context.clip();
+    drawPhotoImage(context, image, margin, margin, width - margin * 2, height - margin * 2, "contain", 1 + progress * .018);
+    context.restore();
+    context.fillStyle = "#17191e";
+    context.fillRect(margin, height - margin - 5, Math.max(28, (width - margin * 2) * (.22 + progress * .62)), 5);
+  } else if (templateId === "photo-wall") {
+    context.fillStyle = "#101114";
+    context.fillRect(0, 0, width, height);
+    const gap = Math.max(8, Math.round(Math.min(width, height) * .018));
+    const cellWidth = (width - gap * 3) / 2;
+    const cellHeight = (height - gap * 3) / 2;
+    for (let cell = 0; cell < 4; cell += 1) {
+      const cellImage = images[(safeIndex + cell) % images.length] || image;
+      const column = cell % 2;
+      const row = Math.floor(cell / 2);
+      const x = gap + column * (cellWidth + gap);
+      const y = gap + row * (cellHeight + gap);
+      context.save();
+      context.beginPath();
+      context.rect(x, y, cellWidth, cellHeight);
+      context.clip();
+      drawPhotoImage(context, cellImage, x, y, cellWidth, cellHeight, "cover", 1.01 + progress * .02, (column ? -1 : 1) * progress * gap * .45);
+      context.restore();
+    }
+  } else if (templateId === "split-story") {
+    context.fillStyle = "#101114";
+    context.fillRect(0, 0, width, height);
+    const gap = Math.max(10, Math.round(Math.min(width, height) * .025));
+    const inset = Math.round(Math.min(width, height) * .055);
+    const portrait = height >= width;
+    const mainWidth = portrait ? width - inset * 2 : (width - inset * 2 - gap) * .64;
+    const mainHeight = portrait ? (height - inset * 2 - gap) * .64 : height - inset * 2;
+    context.save();
+    context.beginPath();
+    context.rect(inset, inset, mainWidth, mainHeight);
+    context.clip();
+    drawPhotoImage(context, image, inset, inset, mainWidth, mainHeight, "cover", 1.015 + progress * .025);
+    context.restore();
+    const nextX = portrait ? inset : inset + mainWidth + gap;
+    const nextY = portrait ? inset + mainHeight + gap : inset;
+    const nextWidth = portrait ? width - inset * 2 : width - inset * 2 - mainWidth - gap;
+    const nextHeight = portrait ? height - inset * 2 - mainHeight - gap : height - inset * 2;
+    context.save();
+    context.beginPath();
+    context.rect(nextX, nextY, nextWidth, nextHeight);
+    context.clip();
+    drawPhotoImage(context, next, nextX, nextY, nextWidth, nextHeight, "cover", 1.03, -progress * gap * .6);
+    context.restore();
+  } else {
+    context.fillStyle = "#0d0f13";
+    context.fillRect(0, 0, width, height);
+    context.save();
+    context.filter = templateId === "merchant-showcase" ? "blur(28px) brightness(.58)" : "blur(34px) brightness(.4)";
+    drawPhotoImage(context, image, 0, 0, width, height, "cover", 1.1 + progress * .018);
+    context.restore();
+
+    if (templateId === "rhythm-cut") {
+      context.save();
+      context.beginPath();
+      context.rect(0, 0, width, height);
+      context.clip();
+      drawPhotoImage(context, image, 0, 0, width, height, "cover", 1.015, (progress - .5) * width * .035);
+      context.restore();
+      context.fillStyle = "rgba(255,77,141,.88)";
+      context.fillRect(0, 0, Math.max(8, width * .018), height);
+      context.fillStyle = "rgba(89,217,232,.88)";
+      context.fillRect(width - Math.max(8, width * .012), 0, Math.max(8, width * .012), height);
+    } else {
+      const inset = templateId === "merchant-showcase" ? Math.round(Math.min(width, height) * .055) : 0;
+      context.save();
+      if (inset) {
+        context.beginPath();
+        context.rect(inset, inset, width - inset * 2, height - inset * 2);
+        context.clip();
+      }
+      drawPhotoImage(context, image, inset, inset, width - inset * 2, height - inset * 2, "contain", 1 + progress * .025);
+      context.restore();
+      if (templateId === "merchant-showcase") {
+        context.strokeStyle = "rgba(255,255,255,.72)";
+        context.lineWidth = Math.max(2, Math.round(Math.min(width, height) * .004));
+        context.strokeRect(inset, inset, width - inset * 2, height - inset * 2);
+        const gradient = context.createLinearGradient(0, height * .65, 0, height);
+        gradient.addColorStop(0, "rgba(8,10,14,0)");
+        gradient.addColorStop(1, "rgba(8,10,14,.72)");
+        context.fillStyle = gradient;
+        context.fillRect(0, height * .65, width, height * .35);
+      }
+    }
+  }
+
+  context.restore();
+  context.globalAlpha = previousAlpha;
+}
+
+type VideoWorkspace = "chooser" | "material" | "lip-sync" | "ai-benchmark" | "viral-edit" | "ai-director";
+
+const VIDEO_WORKSPACES = new Set<VideoWorkspace>(["chooser", "material", "lip-sync", "ai-benchmark", "viral-edit", "ai-director"]);
+
 function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string } | null }) {
-  const [workspace, setWorkspace] = useState<"chooser" | "material" | "lip-sync" | "ai-benchmark" | "viral-edit">("chooser");
+  const [workspace, setWorkspace] = useState<VideoWorkspace>("chooser");
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
   const [videoPlatforms, setVideoPlatforms] = useState<string[]>(["视频号"]);
@@ -1352,6 +1556,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [videoQuote, setVideoQuote] = useState<VideoQuote | null>(null);
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState("");
   const [videoProgress, setVideoProgress] = useState("");
+  const [photoTemplate, setPhotoTemplate] = useState<PhotoVideoTemplateId>("quiet-album");
+  const [photoRatio, setPhotoRatio] = useState<PhotoVideoRatio>("9:16");
+  const [excludedPhotoMaterialIds, setExcludedPhotoMaterialIds] = useState<string[]>([]);
+  const [photoRenderProgress, setPhotoRenderProgress] = useState(0);
   const [voiceSource, setVoiceSource] = useState<"saved" | "upload">("saved");
   const [selectedVoice, setSelectedVoice] = useState("");
   const [savedVoices, setSavedVoices] = useState<ClonedVoice[]>([]);
@@ -1434,6 +1642,26 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralResultBlob, setViralResultBlob] = useState<Blob | null>(null);
   const [viralDownloadUrl, setViralDownloadUrl] = useState("");
   const [viralSaved, setViralSaved] = useState(false);
+
+  function openVideoWorkspace(nextWorkspace: VideoWorkspace) {
+    try {
+      window.sessionStorage.setItem(VIDEO_WORKSPACE_SESSION_KEY, nextWorkspace);
+    } catch {
+      // The workspace still works when browser storage is unavailable.
+    }
+    setWorkspace(nextWorkspace);
+  }
+
+  useEffect(() => {
+    try {
+      const savedWorkspace = window.sessionStorage.getItem(VIDEO_WORKSPACE_SESSION_KEY);
+      if (savedWorkspace && VIDEO_WORKSPACES.has(savedWorkspace as VideoWorkspace)) {
+        queueMicrotask(() => setWorkspace(savedWorkspace as VideoWorkspace));
+      }
+    } catch {
+      // Keep the chooser when browser storage is unavailable.
+    }
+  }, []);
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: "auto" });
@@ -1524,7 +1752,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     queueMicrotask(() => {
       if (cancelled) return;
       setViralImportPreparing(true);
-      setWorkspace("viral-edit");
+      openVideoWorkspace("viral-edit");
       setViralFiles([viralImportAsset.name]);
       setViralSourceFile(null);
       setViralVideoPreviewUrl(viralImportAsset.mediaUrl);
@@ -1774,11 +2002,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       const ffmpeg = new FFmpeg();
       let converted: Uint8Array | string;
       try {
-        await ffmpeg.load({
-          classWorkerURL: "/ffmpeg/ffmpeg-worker.js",
-          coreURL: "/ffmpeg/ffmpeg-core.js",
-          wasmURL: "/ffmpeg/ffmpeg-core.wasm",
-        });
+        await ffmpeg.load(browserFfmpegLoadConfig());
         const inputName = `voice-input-${request}.m4a`;
         const outputName = `voice-output-${request}.mp3`;
         await ffmpeg.writeFile(inputName, new Uint8Array(await source.arrayBuffer()));
@@ -2016,7 +2240,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setSpeechError("");
     setLipSyncResultUrl("");
     setLipSyncError("");
-    setWorkspace("lip-sync");
+    openVideoWorkspace("lip-sync");
   }
 
   async function generateSpeechAudio() {
@@ -2175,7 +2399,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   function openLipSyncResultInViralEditor() {
     if (!lipSyncResultUrl || lipSyncBusy) return;
     const sourceName = "对口型成片.mp4";
-    setWorkspace("viral-edit");
+    openVideoWorkspace("viral-edit");
     setViralFiles([sourceName]);
     setViralSourceFile(null);
     setViralVideoPreviewUrl(lipSyncResultUrl);
@@ -2206,6 +2430,36 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       name: sourceName,
       mediaUrl: lipSyncResultUrl,
     }));
+  }
+
+  function openDirectorResultInViralEditor(source: { name: string; mediaUrl: string }) {
+    if (!source.mediaUrl) return;
+    openVideoWorkspace("viral-edit");
+    setViralFiles([source.name]);
+    setViralSourceFile(null);
+    setViralVideoPreviewUrl(source.mediaUrl);
+    setViralAnalyzed(true);
+    setViralTitle("");
+    setViralSubtitle("");
+    setViralCaptions([]);
+    setViralCaptionsConfirmed(false);
+    setViralAnalysisSummary("");
+    setViralAnalysisMode("");
+    setViralProcessingEngine("");
+    setViralRenderer("");
+    setViralCoverUrl("");
+    setViralProcessBusy(false);
+    setViralFailed(false);
+    setViralProgress(0);
+    setViralStage("");
+    setViralError("");
+    setViralTranscriptError("");
+    setViralProcessStarted(false);
+    setViralResultUrl("");
+    setViralResultBlob(null);
+    setViralDownloadUrl("");
+    setViralSaved(false);
+    window.sessionStorage.setItem("merchant-studio-viral-source", JSON.stringify({ id: `ai-director-${Date.now()}`, ...source }));
   }
 
   async function addMaterialFiles(event: ChangeEvent<HTMLInputElement>) {
@@ -3212,7 +3466,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     voiceRecoveryStarted.current = true;
     voiceRecoveryPending.current = true;
     queueMicrotask(() => {
-      setWorkspace("lip-sync");
+      openVideoWorkspace("lip-sync");
       setVoicesLoading(true);
       setVoiceError("");
       setVoiceNotice("正在恢复已克隆声音的试听样本…");
@@ -3293,6 +3547,111 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       .filter((item) => item.aiImage)
       .slice(0, 9)
       .map((item) => item.aiImage);
+  }
+
+  function photoVideoMaterials() {
+    return [...materialFiles, ...savedMaterialFiles]
+      .filter((item) => item.type === "image" && item.aiImage && !excludedPhotoMaterialIds.includes(item.id))
+      .slice(0, 12);
+  }
+
+  function removePhotoVideoMaterial(item: VideoMaterialItem) {
+    if (item.id.startsWith("saved-")) {
+      setExcludedPhotoMaterialIds((current) => current.includes(item.id) ? current : [...current, item.id]);
+    } else {
+      setMaterialFiles((current) => current.filter((file) => file.id !== item.id));
+    }
+    setGeneratedVideoUrl("");
+    setPhotoRenderProgress(0);
+  }
+
+  async function loadPhotoVideoImage(source: string) {
+    return await new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.onload = () => resolve(image);
+      image.onerror = () => reject(new Error("有一张图片无法读取，请移除后重试。"));
+      image.src = source;
+    });
+  }
+
+  async function generatePhotoMontage() {
+    const materials = photoVideoMaterials();
+    if (materials.length < 2) {
+      setVideoAgentError("请至少添加两张图片，再生成图片视频。");
+      return;
+    }
+    if (typeof MediaRecorder === "undefined") {
+      setVideoAgentError("当前浏览器不支持本地视频编码，请使用最新版 Chrome 或 Codex 浏览器。");
+      return;
+    }
+
+    setVideoAgentBusy("generate");
+    setVideoAgentError("");
+    setVideoProgress("正在读取图片");
+    setPhotoRenderProgress(2);
+    try {
+      const images = await Promise.all(materials.map((item) => loadPhotoVideoImage(item.aiImage)));
+      const { width, height } = photoVideoCanvasSize(photoRatio, videoResolution);
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) throw new Error("当前浏览器无法创建视频画布。");
+
+      const stream = canvas.captureStream(30);
+      const mimeType = ["video/webm;codecs=vp9", "video/webm;codecs=vp8", "video/webm"].find((type) => MediaRecorder.isTypeSupported(type)) || "";
+      const recorder = new MediaRecorder(stream, mimeType ? { mimeType, videoBitsPerSecond: videoResolution === "720p" ? 5_500_000 : 3_000_000 } : undefined);
+      const chunks: BlobPart[] = [];
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      const finished = new Promise<Blob>((resolve, reject) => {
+        recorder.onerror = () => reject(new Error("本地视频编码失败，请重试。"));
+        recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
+      });
+
+      const totalDuration = Math.max(6, videoDuration);
+      const imageDuration = totalDuration / images.length;
+      const startedAt = performance.now();
+      setVideoProgress("正在按模板生成画面");
+      setPhotoRenderProgress(5);
+      recorder.start(500);
+
+      await new Promise<void>((resolve) => {
+        let lastPercent = 4;
+        const render = (timestamp: number) => {
+          const elapsed = Math.min(totalDuration, (timestamp - startedAt) / 1000);
+          const rawIndex = Math.min(images.length - 1, Math.floor(elapsed / imageDuration));
+          const localProgress = Math.min(1, Math.max(0, (elapsed - rawIndex * imageDuration) / imageDuration));
+          const transition = rawIndex < images.length - 1 ? Math.min(1, Math.max(0, (localProgress - .82) / .18)) : 0;
+          drawPhotoTemplateFrame(context, images, rawIndex, localProgress, width, height, photoTemplate, 1);
+          if (transition > 0) drawPhotoTemplateFrame(context, images, rawIndex + 1, transition * .16, width, height, photoTemplate, transition);
+          const percent = Math.min(98, Math.max(5, Math.round((elapsed / totalDuration) * 96)));
+          if (percent !== lastPercent) {
+            lastPercent = percent;
+            setPhotoRenderProgress(percent);
+            setVideoProgress(percent < 92 ? `正在生成成片 ${percent}%` : "正在完成视频编码");
+          }
+          if (elapsed >= totalDuration) resolve();
+          else window.setTimeout(() => render(performance.now()), 33);
+        };
+        render(performance.now());
+      });
+
+      recorder.stop();
+      const result = await finished;
+      const resultUrl = URL.createObjectURL(result);
+      setGeneratedVideoUrl((current) => {
+        if (current.startsWith("blob:")) URL.revokeObjectURL(current);
+        return resultUrl;
+      });
+      setPhotoRenderProgress(100);
+      setVideoProgress("本地成片已完成");
+    } catch (error) {
+      setPhotoRenderProgress(0);
+      setVideoProgress("");
+      setVideoAgentError(error instanceof Error ? error.message : "本地图片视频生成失败，请重试。");
+    } finally {
+      setVideoAgentBusy("");
+    }
   }
 
   function videoMaterialNames() {
@@ -3461,91 +3820,92 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   }
 
   if (workspace === "material") {
-    const direction = videoDirections.find((item) => item.id === selectedDirection);
-    const availableMaterialCount = materialFiles.length + savedMaterialFiles.length;
-    const availableReferenceCount = videoReferenceImages().length;
-    const currentStep = generatedVideoUrl ? 5 : storyboard ? 4 : videoAnalysis ? 3 : availableMaterialCount ? 2 : 1;
-    return <section className="video-workspace">
-      <header className="video-workspace-head">
-        <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
-        <div><h1>素材智能成片</h1></div>
+    const photoMaterials = photoVideoMaterials();
+    const selectedPhotoTemplate = PHOTO_VIDEO_TEMPLATES.find((template) => template.id === photoTemplate) || PHOTO_VIDEO_TEMPLATES[0];
+    const previewImage = photoMaterials[0]?.previewUrl || "";
+    const canGeneratePhotoVideo = photoMaterials.length >= 2 && videoAgentBusy === "";
+    return <section className="video-workspace photo-video-workspace">
+      <header className="video-workspace-head photo-video-head">
+        <button type="button" onClick={() => openVideoWorkspace("chooser")}>← 返回短视频</button>
+        <div><h1>素材智能成片</h1><p>上传图片，选择模板，直接生成可预览的视频。</p></div>
+        <span>{generatedVideoUrl ? "成片已完成" : videoAgentBusy === "generate" ? "正在生成" : "本地模板测试"}</span>
       </header>
-      <nav className="video-flow-steps" aria-label="素材智能成片进度">
-        {["素材准备", "AI 分析", "方向确认", "分镜规划", "生成成片"].map((label, index) => <span className={currentStep > index ? "complete" : currentStep === index + 1 ? "active" : ""} key={label}><i>{currentStep > index + 1 ? "✓" : String(index + 1).padStart(2, "0")}</i><b>{label}</b></span>)}
-      </nav>
-      <div className="video-builder-grid video-director-grid">
-        <div className="video-builder-form">
-          <section className="video-builder-card">
-            <div className="video-card-title"><div><b>添加真实素材</b></div></div>
-            <div className="video-task-context"><i>材</i><div><b>本次素材已接入</b><span>{savedMaterialsLoading ? "正在读取会员资产中的图片…" : `当前可使用 ${savedMaterialFiles.length} 张已保存图片，也可以继续上传`}</span></div></div>
-            <label className={`video-file-drop ${materialFiles.length ? "has-files" : ""}`}>
-              <input type="file" accept="image/*,video/*" multiple onChange={addMaterialFiles} />
-              <i>＋</i><b>{materialFiles.length ? `继续添加素材（已添加 ${materialFiles.length} 个）` : "上传门头、环境、商品或服务素材"}</b>
-              <span>JPG、PNG、WebP、MP4 · 图片可直接交给多模态模型分析</span>
+
+      <div className="photo-video-layout">
+        <main className="photo-video-stage">
+          <section className="photo-video-upload" aria-labelledby="photo-video-upload-title">
+            <div className="photo-video-section-head">
+              <div><h2 id="photo-video-upload-title">添加图片</h2><p>按上传顺序生成；建议使用 4–12 张清晰图片。</p></div>
+              <b>{photoMaterials.length} / 12</b>
+            </div>
+            <label className="photo-video-drop">
+              <input type="file" accept="image/*" multiple onChange={addMaterialFiles} />
+              <ImageSquare size={28} weight="duotone" />
+              <span><b>{photoMaterials.length ? "继续添加图片" : "选择多张图片"}</b><small>支持 JPG、PNG、WebP</small></span>
             </label>
-            {materialFiles.length ? <div className="video-material-strip">{materialFiles.map((item) => <div key={item.id}>{item.type === "image" ? <img src={item.previewUrl} alt={item.name} /> : <video src={item.previewUrl} muted /> }<button type="button" aria-label={`删除${item.name}`} onClick={() => setMaterialFiles((current) => current.filter((file) => file.id !== item.id))}>×</button><span>{item.type === "image" ? "图片" : "视频"}</span></div>)}</div> : null}
-            <div className="video-platform-row"><span>发布平台</span>{["视频号", "抖音", "小红书"].map((platform) => <button type="button" className={videoPlatforms.includes(platform) ? "active" : ""} aria-pressed={videoPlatforms.includes(platform)} onClick={() => toggleVideoPlatform(platform)} key={platform}>{platform}</button>)}</div>
-            <textarea value={videoBrief} onChange={(event) => { setVideoBrief(event.target.value); setVideoAnalysis(null); setVideoDirections([]); setSelectedDirection(""); setStoryboard(null); }} aria-label="素材成片需求" />
-            <button type="button" className="video-stage-action" disabled={videoAgentBusy !== "" || savedMaterialsLoading || !videoBrief.trim()} onClick={() => void analyzeVideoMaterials()}>{videoAgentBusy === "analyze" ? "GPT‑5.5 正在阅读本次需求和素材…" : videoAnalysis ? "↻ 重新分析并换一批方向" : "✦ AI 分析需求与素材 · 预计 6–10 积分"}</button>
+            {savedMaterialsLoading ? <div className="photo-video-loading" role="status">正在读取会员资产中的图片…</div> : null}
+            {photoMaterials.length ? <div className="photo-filmstrip" aria-label="已添加图片顺序">
+              {photoMaterials.map((item, index) => <article key={item.id}>
+                <span>{String(index + 1).padStart(2, "0")}</span>
+                <img src={item.previewUrl} alt={item.name} />
+                <button type="button" aria-label={`移除${item.name}`} onClick={() => removePhotoVideoMaterial(item)}>移除</button>
+                <small>{item.name}</small>
+              </article>)}
+            </div> : <div className="photo-video-empty"><b>还没有图片</b><span>添加图片后，这里会显示成片顺序。</span></div>}
+            {excludedPhotoMaterialIds.length ? <button type="button" className="photo-video-restore" onClick={() => setExcludedPhotoMaterialIds([])}>恢复已移除的会员图片</button> : null}
           </section>
 
-          {videoAnalysis ? <section className="video-builder-card video-analysis-card">
-            <div className="video-card-title"><div><b>AI 需求与素材分析</b></div></div>
-            <div className="video-analysis-summary"><b>{videoAnalysis.summary}</b>{videoAnalysis.platformInsight ? <p>{videoAnalysis.platformInsight}</p> : null}{videoAnalysis.missing.length ? <small>建议补充：{videoAnalysis.missing.join("、")}</small> : null}</div>
-            <div className="video-direction-grid">
-              {videoDirections.map((item, index) => <button type="button" className={selectedDirection === item.id ? "selected" : ""} aria-pressed={selectedDirection === item.id} onClick={() => { setSelectedDirection(item.id); setStoryboard(null); }} key={item.id}><span><i>0{index + 1}</i><em>{item.tag}</em></span><b>{item.title}</b><strong>{item.hook}</strong><p>{item.story}</p><small>{item.reason}</small></button>)}
+          <section className="photo-video-templates" aria-labelledby="photo-video-template-title">
+            <div className="photo-video-section-head">
+              <div><h2 id="photo-video-template-title">选择模板</h2><p>六套模板均使用原图生成，不调用图片生视频模型。</p></div>
+              <b>{selectedPhotoTemplate.name}</b>
             </div>
-          </section> : null}
+            <div className="photo-template-grid">
+              {PHOTO_VIDEO_TEMPLATES.map((template) => <button type="button" className={`photo-template-card is-${template.id} ${photoTemplate === template.id ? "selected" : ""}`} aria-pressed={photoTemplate === template.id} onClick={() => { setPhotoTemplate(template.id); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} key={template.id}>
+                <span className="photo-template-art" aria-hidden="true">
+                  {previewImage ? <img src={previewImage} alt="" /> : <i />}
+                  <u /><em />
+                </span>
+                <span className="photo-template-copy"><small>{template.tag}</small><b>{template.name}</b><i>{template.detail}</i></span>
+              </button>)}
+            </div>
+          </section>
+        </main>
 
-          {direction ? <section className="video-builder-card">
-            <div className="video-card-title"><div><b>补充推广信息</b></div></div>
-            <div className="video-selected-direction"><small>已选方向</small><b>{direction.title}</b><span>{direction.hook}</span></div>
-            <div className="video-field-row">
-              <label><span>本次活动 / 主推内容（可选）</span><input value={campaignInfo} onChange={(event) => { setCampaignInfo(event.target.value); setStoryboard(null); }} placeholder="例如：新客体验、夏季新品、团购套餐" /></label>
-              <label><span>目标顾客</span><input value={targetAudience} onChange={(event) => { setTargetAudience(event.target.value); setStoryboard(null); }} placeholder="填写本次内容面向的人群" /></label>
-            </div>
-            <div className="video-field-row is-three">
-              <label><span>成片时长</span><select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setStoryboard(null); }}><option value="8">8 秒 · 快速种草</option><option value="12">12 秒 · 完整表达</option><option value="15">15 秒 · 推荐 / 模型上限</option></select></label>
-              <label><span>分辨率</span><select value={videoResolution} onChange={(event) => setVideoResolution(event.target.value as "480p" | "720p")}><option value="480p">480P · 快速预览</option><option value="720p">720P · 高清推荐</option></select></label>
-              <label><span>Seedance 生成模式</span><select value={videoVersion} onChange={(event) => setVideoVersion(event.target.value as "Mini" | "快速" | "标准")}><option value="Mini">Mini · 节省积分</option><option value="快速">快速 · 推荐</option><option value="标准">标准 · 质量优先</option></select></label>
-            </div>
-            <button type="button" className="video-stage-action" disabled={videoAgentBusy !== "" || !targetAudience.trim()} onClick={() => void createVideoStoryboard()}>{videoAgentBusy === "storyboard" ? "GPT‑5.5 正在编写脚本与分镜…" : storyboard ? "↻ 重新生成分镜" : "✦ 确认方向并生成分镜 · 预计 6–10 积分"}</button>
-          </section> : null}
-
-          {storyboard ? <section className="video-builder-card video-storyboard-card">
-            <div className="video-card-title"><div><b>{storyboard.title}</b></div></div>
-            <div className="video-shot-list">{storyboard.shots.map((shot, index) => <article key={`${shot.time}-${index}`}><span>{shot.time}</span><div><b>{shot.title}</b><p>{shot.visual}</p><small>字幕：{shot.caption || "无"} · 素材：{shot.source}</small></div></article>)}</div>
-            <details className="video-script-details"><summary>查看口播文案与模型提示词</summary><b>口播 / 字幕文案</b><p>{storyboard.script}</p><b>视频生成提示词</b><p>{storyboard.generationPrompt}</p></details>
-            <div className="video-model-pipeline">
-              {(storyboard.modelPlan.length ? storyboard.modelPlan : [
-                { step: "策划分析", model: "GPT‑5.5", reason: "读取本次需求与真实素材" },
-                { step: "关键帧补充", model: "GPT Image 2", reason: "仅在镜头不足时使用" },
-                { step: "参考生视频", model: "Seedance 2.0", reason: "读取 1–9 张参考图，生成 9:16 竖版视频" },
-              ]).map((item) => <span key={`${item.step}-${item.model}`}><small>{item.step}</small><b>{item.model}</b><i>{item.reason}</i></span>)}
-            </div>
-            <button type="button" className="video-generate-button" disabled={videoAgentBusy !== "" || !availableReferenceCount} onClick={() => void generateVideo()}>{videoAgentBusy === "generate" ? videoProgress || "正在生成视频…" : `✦ Seedance 2.0 生成 ${videoDuration} 秒 · ${videoResolution.toUpperCase()}${videoQuote ? ` · 预授权 ${videoQuote.reservedPoints} 积分` : ""}`}</button>
-            {!availableReferenceCount ? <small className="video-inline-warning">当前没有可交给模型的图片，请上传至少 1 张图片；正式云端版会先把视频上传 COS 后再交给模型。</small> : null}
-          </section> : null}
-          {videoAgentError ? <div className="video-agent-error" role="alert">{videoAgentError}</div> : null}
-        </div>
-        <aside className="video-builder-preview video-director-preview">
-          <div className="video-preview-head"><div><b>短视频项目状态</b></div><span>{generatedVideoUrl ? "已完成" : videoAgentBusy ? "AI 工作中" : `第 ${currentStep} 步`}</span></div>
-          <div className={`video-phone-frame ${generatedVideoUrl ? "has-video" : ""}`}>
-            {generatedVideoUrl ? <video src={generatedVideoUrl} controls playsInline /> : <div><i>{videoAgentBusy ? "✦" : "▶"}</i><b>{videoAgentBusy === "analyze" ? "正在读懂需求与素材" : videoAgentBusy === "storyboard" ? "正在规划脚本与分镜" : videoAgentBusy === "generate" ? videoProgress || "Seedance 2.0 正在生成视频" : storyboard ? storyboard.title : "成片将在这里实时预览"}</b><span>Seedance 2.0 · 9:16 · {videoResolution.toUpperCase()} · 最长 15 秒</span></div>}
-          </div>
-          {storyboard ? <div className="video-project-brief"><small>当前方案</small><b>{direction?.title}</b><p>{storyboard.script}</p></div> : videoAnalysis ? <div className="video-project-brief"><small>分析完成</small><b>已推荐 3 个视频方向</b><p>选择最适合的一项，再补充本次活动即可生成分镜。</p></div> : null}
-          <ol>{["需求与素材分析", "三个方向推荐", "推广信息确认", "脚本与分镜", "Seedance 生成与归档"].map((label, index) => <li className={currentStep > index + 1 ? "done" : currentStep === index + 1 ? "active" : ""} key={label}><b>{label}</b><span>{index === 0 ? `${availableMaterialCount} 个素材 · ${videoPlatforms.join(" / ")}` : index === 4 && videoQuote ? `${videoResolution.toUpperCase()} · 预授权 ${videoQuote.reservedPoints} 积分 · 完成后按实际 Token 结算` : currentStep > index + 1 ? "已完成" : "等待上一步"}</span></li>)}</ol>
-          <div className="video-cost-note"><b>费用说明</b><span>策划与 Seedance 2.0 均按实际 Token 计费。视频提交时先预授权积分上限，任务完成后按平台返回的实际 cost 结算，多余积分自动退回。</span></div>
+        <aside className="photo-video-controls">
+          <div className="photo-video-control-head"><VideoCamera size={22} weight="duotone" /><div><b>成片设置</b><span>本地直接生成，不消耗积分</span></div></div>
+          <label><span>画面比例</span><div className="photo-ratio-picker">{(["9:16", "1:1", "16:9"] as PhotoVideoRatio[]).map((ratio) => <button type="button" className={photoRatio === ratio ? "active" : ""} aria-pressed={photoRatio === ratio} onClick={() => { setPhotoRatio(ratio); setGeneratedVideoUrl(""); }} key={ratio}>{ratio}</button>)}</div></label>
+          <label><span>成片时长</span><select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setGeneratedVideoUrl(""); }}><option value="8">8 秒 · 快速预览</option><option value="12">12 秒 · 推荐</option><option value="15">15 秒 · 完整展示</option></select></label>
+          <label><span>清晰度</span><select value={videoResolution} onChange={(event) => { setVideoResolution(event.target.value as "480p" | "720p"); setGeneratedVideoUrl(""); }}><option value="480p">480P · 更快</option><option value="720p">720P · 高清</option></select></label>
+          <div className="photo-video-package-note"><b>先生成纯画面</b><span>字幕、背景音乐和音效在“一键网感”中继续添加。</span></div>
+          <button type="button" className="photo-video-generate" disabled={!canGeneratePhotoVideo} onClick={() => void generatePhotoMontage()}>{videoAgentBusy === "generate" ? `正在生成 ${photoRenderProgress}%` : generatedVideoUrl ? "重新生成成片" : "生成图片视频"}</button>
+          {!photoMaterials.length ? <small className="photo-video-control-tip">请先添加至少两张图片。</small> : photoMaterials.length === 1 ? <small className="photo-video-control-tip">再添加一张图片即可生成。</small> : null}
+          {videoAgentBusy === "generate" || photoRenderProgress ? <div className={`photo-video-progress ${photoRenderProgress === 100 ? "complete" : ""}`} role="status" aria-live="polite"><span style={{ width: `${photoRenderProgress}%` }} /><b>{videoProgress || "准备生成"}</b></div> : null}
+          {videoAgentError ? <div className="photo-video-error" role="alert">{videoAgentError}</div> : null}
+          {generatedVideoUrl ? <div className="photo-video-result">
+            <video src={generatedVideoUrl} controls playsInline preload="metadata" />
+            <div><b>成片已完成</b><span>{selectedPhotoTemplate.name} · {photoRatio} · {videoDuration} 秒</span></div>
+            <a href={generatedVideoUrl} download={`素材智能成片-${selectedPhotoTemplate.name}.webm`}>下载本地成片</a>
+            <button type="button" onClick={() => openDirectorResultInViralEditor({ name: `素材智能成片-${selectedPhotoTemplate.name}.webm`, mediaUrl: generatedVideoUrl })}>进入一键网感</button>
+          </div> : <div className={`photo-video-live-preview ratio-${photoRatio.replace(":", "-")}`}>
+            {previewImage ? <img src={previewImage} alt="当前图片预览" /> : <div><ImageSquare size={34} /><b>等待添加图片</b></div>}
+            <span>{selectedPhotoTemplate.name}</span>
+          </div>}
         </aside>
       </div>
     </section>;
+  }
+
+
+  if (workspace === "ai-director") {
+    return <AiDirectorStudio onBack={() => openVideoWorkspace("chooser")} onPointsChange={onPointsChange} onOpenViralEditor={openDirectorResultInViralEditor} />;
   }
 
   if (workspace === "ai-benchmark") {
     const benchmarkStep = benchmarkDraft.trim() ? 3 : benchmarkTranscript.trim() ? 2 : 1;
     return <section className="video-workspace lip-sync-workspace ai-benchmark-workspace">
       <header className="video-workspace-head lip-sync-workspace-head">
-        <button type="button" onClick={() => setWorkspace("lip-sync")}>← 返回对口型视频</button>
+        <button type="button" onClick={() => openVideoWorkspace("lip-sync")}>← 返回对口型视频</button>
         <div><h1>AI 对标改写</h1></div>
         <span>{benchmarkBusy === "extract" ? `读取中 · ${benchmarkProgress}%` : benchmarkBusy === "rewrite" ? "正在改写" : `第 ${benchmarkStep} 步`}</span>
       </header>
@@ -3615,7 +3975,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     };
     return <section className="video-workspace lip-sync-workspace">
       <header className="video-workspace-head lip-sync-workspace-head">
-        <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
+        <button type="button" onClick={() => openVideoWorkspace("chooser")}>← 返回短视频</button>
         <div><h1>对口型视频</h1></div>
         <span>{lipSyncResultUrl ? "视频已完成" : `正在制作 · 第 ${lipSyncCurrentStep} 步`}</span>
       </header>
@@ -3650,7 +4010,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>生成口播音频</b><small>{speechAudioReady ? "音频已生成，可以试听" : "输入文案并调整说话速度"}</small></div>{speechAudioReady ? <em>已完成</em> : voiceReady ? <em>当前步骤</em> : <em>等待声音</em>}</div>
             <textarea value={script} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
-              <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy} onClick={() => { setBenchmarkError(""); setWorkspace("ai-benchmark"); }}>AI 对标</button>
+              <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy} onClick={() => { setBenchmarkError(""); openVideoWorkspace("ai-benchmark"); }}>AI 对标</button>
               <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
               <label className="speech-speed-field">
                 <span>语速</span>
@@ -3696,7 +4056,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     const viralCurrentStep = viralResultUrl || viralProcessStarted ? 4 : viralCaptionsConfirmed ? 3 : viralFiles.length ? 2 : 1;
     return <section className="video-workspace viral-edit-workspace">
       <header className="video-workspace-head viral-edit-workspace-head">
-        <button type="button" onClick={() => setWorkspace("chooser")}>← 返回短视频</button>
+        <button type="button" onClick={() => openVideoWorkspace("chooser")}>← 返回短视频</button>
         <div><h1>一键网感剪辑</h1></div>
         <span>{viralResultUrl ? "成片已完成" : `正在制作 · 第 ${viralCurrentStep} 步`}</span>
       </header>
@@ -3828,11 +4188,46 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     </section>;
   }
 
-  return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => setWorkspace("material")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => setWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => setWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
+  return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => openVideoWorkspace("material")}>开始制作 →</button></article><article className="ai-director-mode"><i>◆</i><h3>AI成片</h3><button type="button" onClick={() => openVideoWorkspace("ai-director")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => openVideoWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => openVideoWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
 }
 
 function formatAssetTime(value: number) {
   return new Intl.DateTimeFormat("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date(value));
+}
+
+function walletDateKey(value: number) {
+  const parts = new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(new Date(value * 1000));
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value || "";
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function walletDayLabel(key: string) {
+  const now = Math.floor(Date.now() / 1000);
+  if (key === walletDateKey(now)) return "今日";
+  if (key === walletDateKey(now - 86_400)) return "昨日";
+  const [year, month, day] = key.split("-");
+  return `${year}年${Number(month)}月${Number(day)}日`;
+}
+
+function walletRecordTime(value: number, includeDate = false) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    ...(includeDate ? { year: "numeric", month: "2-digit", day: "2-digit" } : {}),
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(value * 1000));
+}
+
+function walletReference(value: string | null) {
+  if (!value) return "系统流水";
+  if (value.length <= 18) return value;
+  return `${value.slice(0, 10)}…${value.slice(-5)}`;
 }
 
 function formatAssetSize(value: number) {
@@ -3926,6 +4321,10 @@ function Member({
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [rechargePackages, setRechargePackages] = useState<Array<{ id: string; name: string; totalPoints: number; priceYuan: number }>>([]);
   const [selectedRecharge, setSelectedRecharge] = useState("");
+  const [historyTab, setHistoryTab] = useState<"consumption" | "recharge">("consumption");
+  const [walletHistory, setWalletHistory] = useState<WalletHistory>({ consumption: [], recharge: [] });
+  const [historyLoading, setHistoryLoading] = useState(true);
+  const [historyError, setHistoryError] = useState("");
 
   useEffect(() => {
     let mounted = true;
@@ -3948,6 +4347,28 @@ function Member({
       mounted = false;
       window.removeEventListener("member-assets-updated", refresh);
     };
+  }, []);
+
+  async function loadWalletHistory() {
+    setHistoryLoading(true);
+    setHistoryError("");
+    try {
+      const response = await fetch("/api/member/wallet/history", { cache: "no-store" });
+      const data = await response.json() as { error?: string; history?: Partial<WalletHistory> };
+      if (!response.ok) throw new Error(data.error || "积分记录读取失败。");
+      setWalletHistory({
+        consumption: Array.isArray(data.history?.consumption) ? data.history.consumption : [],
+        recharge: Array.isArray(data.history?.recharge) ? data.history.recharge : [],
+      });
+    } catch (error) {
+      setHistoryError(error instanceof Error ? error.message : "积分记录读取失败。");
+    } finally {
+      setHistoryLoading(false);
+    }
+  }
+
+  useEffect(() => {
+    queueMicrotask(() => void loadWalletHistory());
   }, []);
 
   useEffect(() => {
@@ -3977,6 +4398,7 @@ function Member({
       if (!response.ok || typeof data.wallet?.points !== "number") throw new Error(data.error || "充值失败，请稍后重试。");
       onPointsChange(data.wallet.points);
       setRechargeMessage(`${selected.totalPoints}积分已到账`);
+      await loadWalletHistory();
     } catch (error) {
       setRechargeMessage(error instanceof Error ? error.message : "充值失败，请稍后重试。");
     } finally {
@@ -3989,7 +4411,41 @@ function Member({
   const voiceCount = assetItems.filter((item) => item.kind === "voice" || item.kind === "audio").length;
 
   const currentPackage = rechargePackages.find((item) => item.id === selectedRecharge);
-  return <><ToolHeading title="会员与资产" /><div className="member-balance"><div><small>会员积分</small><b>{points.toLocaleString()} <span>PTS</span></b>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div><div className="member-recharge-actions"><select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select><button type="button" disabled={recharging || !currentPackage} onClick={() => void rechargeDemoPoints()}>{recharging ? "充值处理中…" : currentPackage ? `演示充值 ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button></div></div><div className="member-assets-heading"><h2>我的资产</h2><span>{assetsLoading ? "正在同步…" : `共 ${assetItems.length} 个资产`}</span></div><div className="member-grid"><article><span>账户状态</span><b>正常</b></article><button type="button" onClick={() => onOpenAssets("image")} aria-label={`打开图片素材，共 ${imageCount} 个`}><span>图片素材</span><b>{assetsLoading ? "—" : imageCount}</b></button><button type="button" onClick={() => onOpenAssets("video")} aria-label={`打开视频素材，共 ${videoCount} 个`}><span>视频素材</span><b>{assetsLoading ? "—" : videoCount}</b></button><button type="button" onClick={() => onOpenAssets("audio")} aria-label={`打开克隆声音，共 ${voiceCount} 个`}><span>克隆声音</span><b>{assetsLoading ? "—" : voiceCount}</b></button></div></>;
+  const consumptionDays = [...walletHistory.consumption.reduce((groups, item) => {
+    const key = walletDateKey(item.createdAt);
+    const records = groups.get(key) ?? [];
+    records.push(item);
+    groups.set(key, records);
+    return groups;
+  }, new Map<string, WalletHistoryEntry[]>())];
+  const activeRecords = historyTab === "consumption" ? walletHistory.consumption : walletHistory.recharge;
+
+  return <>
+    <ToolHeading title="会员与资产" />
+    <div className="member-balance"><div><small>会员积分</small><b>{points.toLocaleString()} <span>PTS</span></b>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div><div className="member-recharge-actions"><select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select><button type="button" disabled={recharging || !currentPackage} onClick={() => void rechargeDemoPoints()}>{recharging ? "充值处理中…" : currentPackage ? `演示充值 ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button></div></div>
+
+    <section className="member-history-panel" aria-labelledby="member-history-title">
+      <header className="member-history-toolbar">
+        <div><h2 id="member-history-title">账户记录</h2><p>消费按日期归档，充值逐笔留存。</p></div>
+        <div className="member-history-tabs" role="tablist" aria-label="账户记录类型">
+          <button type="button" role="tab" aria-selected={historyTab === "consumption"} className={historyTab === "consumption" ? "active" : ""} onClick={() => setHistoryTab("consumption")}>消费记录 <span>{walletHistory.consumption.length}</span></button>
+          <button type="button" role="tab" aria-selected={historyTab === "recharge"} className={historyTab === "recharge" ? "active" : ""} onClick={() => setHistoryTab("recharge")}>充值记录 <span>{walletHistory.recharge.length}</span></button>
+        </div>
+      </header>
+
+      {historyLoading ? <div className="member-history-state" role="status"><i /><b>正在核对账户流水</b><span>已结算记录马上就好</span></div> : historyError ? <div className="member-history-state is-error"><b>账户记录暂时无法打开</b><span>{historyError}</span><button type="button" onClick={() => void loadWalletHistory()}>重新加载</button></div> : !activeRecords.length ? <div className="member-history-state is-empty"><b>{historyTab === "consumption" ? "还没有消费记录" : "还没有充值记录"}</b><span>{historyTab === "consumption" ? "完成一次需要积分的 AI 任务后，明细会按日期出现在这里。" : "每次充值到账后，记录会保存在这里。"}</span></div> : historyTab === "consumption" ? <div className="member-history-days" role="tabpanel">
+        {consumptionDays.map(([key, records]) => <section className="member-history-day" key={key}>
+          <header><div><h3>{walletDayLabel(key)}</h3><span>{records.length} 笔已结算消费</span></div><b>-{records.reduce((total, item) => total + Math.abs(item.delta), 0).toLocaleString()} PTS</b></header>
+          <div className="member-history-list">{records.map((item) => <article className="member-history-row" key={item.id}><div><b>{item.reason}</b><span>{walletRecordTime(item.createdAt)} · <span title={item.taskId || undefined}>{walletReference(item.taskId)}</span></span></div><strong className="is-consumption">-{Math.abs(item.delta).toLocaleString()} PTS</strong><small>余额 {item.balanceAfter.toLocaleString()}</small></article>)}</div>
+        </section>)}
+      </div> : <div className="member-history-list is-recharge" role="tabpanel">
+        {walletHistory.recharge.map((item) => <article className="member-history-row" key={item.id}><div><b>{item.reason}</b><span>{walletRecordTime(item.createdAt, true)} · <span title={item.taskId || undefined}>{walletReference(item.taskId)}</span></span></div><strong className="is-recharge">+{item.delta.toLocaleString()} PTS</strong><small>到账后余额 {item.balanceAfter.toLocaleString()}</small></article>)}
+      </div>}
+      <footer className="member-history-note">消费记录仅展示已结算积分，失败任务的退回积分不会计入消费。</footer>
+    </section>
+
+    <div className="member-assets-heading"><h2>我的资产</h2><span>{assetsLoading ? "正在同步…" : `共 ${assetItems.length} 个资产`}</span></div><div className="member-grid"><article><span>账户状态</span><b>正常</b></article><button type="button" onClick={() => onOpenAssets("image")} aria-label={`打开图片素材，共 ${imageCount} 个`}><span>图片素材</span><b>{assetsLoading ? "—" : imageCount}</b></button><button type="button" onClick={() => onOpenAssets("video")} aria-label={`打开视频素材，共 ${videoCount} 个`}><span>视频素材</span><b>{assetsLoading ? "—" : videoCount}</b></button><button type="button" onClick={() => onOpenAssets("audio")} aria-label={`打开克隆声音，共 ${voiceCount} 个`}><span>克隆声音</span><b>{assetsLoading ? "—" : voiceCount}</b></button></div>
+  </>;
 }
 
 function ToolHeading({ title }: { title: string }) { return <div className="tool-heading"><h1>{title}</h1></div>; }
