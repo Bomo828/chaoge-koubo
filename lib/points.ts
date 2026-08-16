@@ -4,6 +4,7 @@ import { getPlatformSettings, pointCost } from "./server/platform-settings";
 
 export const AI_POINT_COSTS = {
   prompt_optimize: 2,
+  chat_assistant: 1,
   image_generate: 10,
   video_generate: 1,
   voice_clone: 80,
@@ -204,6 +205,7 @@ export async function reserveAiPoints(
 
 const actionReasons: Record<AiPointAction, string> = {
   prompt_optimize: "AI 优化生成要求",
+  chat_assistant: "AI 助手对话",
   image_generate: "AI 图片生成",
   video_generate: "AI 商家素材成片",
   voice_clone: "AI 克隆声音",

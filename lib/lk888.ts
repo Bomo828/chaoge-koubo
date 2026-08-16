@@ -21,11 +21,10 @@ function providerConfig() {
   return { apiKey, baseUrl };
 }
 
-export async function lk888Fetch<T>(path: string, init?: RequestInit): Promise<T> {
+export async function lk888Request(path: string, init?: RequestInit) {
   const { apiKey, baseUrl } = providerConfig();
-  let response: Response;
   try {
-    response = await fetch(`${baseUrl}${path}`, {
+    return await fetch(`${baseUrl}${path}`, {
       ...init,
       signal: init?.signal ?? AbortSignal.timeout(60_000),
       headers: {
@@ -37,10 +36,14 @@ export async function lk888Fetch<T>(path: string, init?: RequestInit): Promise<T
   } catch (error) {
     const name = error instanceof Error ? error.name : "";
     if (name === "AbortError" || name === "TimeoutError") {
-      throw new AiProviderError("AI 服务响应超时，正在切换备用通道。", 504);
+      throw new AiProviderError("AI 服务响应超时，请稍后重试。", 504);
     }
     throw error;
   }
+}
+
+export async function lk888Fetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const response = await lk888Request(path, init);
 
   const raw = await response.text();
   let data: unknown = null;

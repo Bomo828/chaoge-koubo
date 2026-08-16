@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // The development toolbar overlaps the compact wallet in the studio sidebar.
+  // Keep local previews visually identical to the deployed interface.
+  devIndicators: false,
   // Local testing may be opened through localhost, 127.0.0.1, or the Mac's
   // LAN address. Allow those origins so the client bundle can hydrate and
   // interactive controls such as the login modal keep working.

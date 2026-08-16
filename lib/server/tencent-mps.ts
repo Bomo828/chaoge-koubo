@@ -145,6 +145,14 @@ export async function putCosObject(objectKey: string, bytes: Buffer, contentType
   }
 }
 
+export function signedCosObjectUrl(objectKey: string, expiresIn = 2 * 60 * 60) {
+  const config = requireConfig();
+  const host = cosHost(config);
+  const pathname = encodeCosPath(objectKey);
+  const authorization = cosAuthorization("GET", pathname, { host }, Math.max(300, Math.min(expiresIn, 24 * 60 * 60)));
+  return `https://${host}${pathname}?${authorization}`;
+}
+
 export async function getCosObject(objectKey: string, range = "") {
   const config = requireConfig();
   const host = cosHost(config);

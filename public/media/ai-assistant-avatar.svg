@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-labelledby="title desc">
+  <title id="title">爆点 AI 助手头像</title>
+  <desc id="desc">电子青对话气泡、品红闪电与黄色灵感圆点组成的几何头像</desc>
+  <rect width="96" height="96" rx="24" fill="#101738"/>
+  <path d="M19 27.5C19 20.6 24.6 15 31.5 15h33C71.4 15 77 20.6 77 27.5v24C77 58.4 71.4 64 64.5 64H47L31 78V64C24.4 63.7 19 58.2 19 51.5v-24Z" fill="#59d9e8"/>
+  <path d="m53 23-20 28h14l-4 22 21-31H50l3-19Z" fill="#ff4d8d" stroke="#101738" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="72" cy="24" r="8" fill="#f4c95d" stroke="#101738" stroke-width="3"/>
+</svg>

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
-import { ChartLineUp, FolderOpen, House, ImageSquare, UserCircle, VideoCamera } from "@phosphor-icons/react";
+import { CaretRight, ChartLineUp, FolderOpen, House, ImageSquare, Plus, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
@@ -12,6 +12,7 @@ import { IndustryImageLab } from "./image-lab";
 import { MarketDynamics } from "./market-dynamics";
 import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
+import { AiAssistant } from "./ai-assistant";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -519,12 +520,12 @@ const VIDEO_WORKSPACE_SESSION_KEY = "merchant-studio-video-workspace";
 
 export function StudioClient({ member, initialFeatures }: { member: MemberSession; initialFeatures: PlatformFeature[] }) {
   const isAdminAccount = member.role === "admin" || member.role === "super_admin";
-  const accountTypeLabel = isAdminAccount ? "管理员账号" : "会员账号";
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
   const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [accountDialog, setAccountDialog] = useState<"password" | null>(null);
   const [dialogMessage, setDialogMessage] = useState("");
   const [walletPoints, setWalletPoints] = useState(member.points);
@@ -618,8 +619,21 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
             );
           })}
         </nav>
-        <div className="sidebar-member"><span>创作积分</span><b>{walletPoints.toLocaleString()} <small>PTS</small></b><button onClick={() => openStudioSection("member")}>充值积分</button></div>
-        <a className="sidebar-exit" href="/api/auth/logout">退出账号</a>
+        <div className="sidebar-utility">
+          <button type="button" className="sidebar-assistant" onClick={() => setAssistantOpen(true)}>
+            <img src="/media/ai-assistant-avatar.svg" alt="" />
+            <span><b>AI 助手</b><small>随时帮您创作</small></span>
+            <CaretRight size={16} weight="bold" />
+          </button>
+          <div className="sidebar-wallet-row">
+            <button type="button" className="sidebar-wallet-balance" onClick={() => openStudioSection("member")}>
+              <span>创作积分</span><b>{walletPoints.toLocaleString()} <small>PTS</small></b>
+            </button>
+            <button type="button" className="sidebar-wallet-recharge" onClick={() => openStudioSection("member")}>
+              <Plus size={14} weight="bold" /><span>充值</span>
+            </button>
+          </div>
+        </div>
       </aside>
 
       <section className="studio-main">
@@ -632,13 +646,12 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
               aria-expanded={memberMenuOpen}
               onClick={() => setMemberMenuOpen((open) => !open)}
             >
-              <span className="member-menu-copy"><b>{accountTypeLabel}</b><small>{member.displayName}</small></span>
+              <span className="member-menu-copy"><b>{member.displayName}</b></span>
               <i className={`member-chevron ${memberMenuOpen ? "is-open" : ""}`}>菜单</i>
             </button>
             {memberMenuOpen ? (
               <div className="member-dropdown" role="menu" aria-label="会员菜单">
                 <div className="member-dropdown-head">
-                  <small>{accountTypeLabel}</small>
                   <b>{member.displayName}</b>
                   <span>{walletPoints.toLocaleString()} 积分可用</span>
                 </div>
@@ -678,6 +691,12 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           onClose={() => { setAccountDialog(null); setDialogMessage(""); }}
         />
       ) : null}
+      <AiAssistant
+        open={assistantOpen}
+        memberName={member.displayName}
+        onClose={() => setAssistantOpen(false)}
+        onPointsChange={setWalletPoints}
+      />
     </main>
   );
 }

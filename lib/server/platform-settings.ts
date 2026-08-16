@@ -11,7 +11,7 @@ export type PlatformFeature = {
 };
 
 export type PointRule = {
-  action: "prompt_optimize" | "image_generate" | "video_generate" | "voice_clone" | "speech_generate" | "lip_sync_generate";
+  action: "prompt_optimize" | "chat_assistant" | "image_generate" | "video_generate" | "voice_clone" | "speech_generate" | "lip_sync_generate";
   name: string;
   points: number;
   enabled: boolean;
@@ -54,6 +54,7 @@ export const defaultPlatformSettings: PlatformSettings = {
   ],
   pointRules: [
     { action: "prompt_optimize", name: "AI 文案与方案分析", points: 2, enabled: true },
+    { action: "chat_assistant", name: "AI 助手（按实际算力结算）", points: 1, enabled: true },
     { action: "image_generate", name: "AI 图片生成（基础单张）", points: 10, enabled: true },
     { action: "video_generate", name: "AI 视频与网感剪辑", points: 28, enabled: true },
     { action: "voice_clone", name: "克隆声音（每次）", points: 80, enabled: true },

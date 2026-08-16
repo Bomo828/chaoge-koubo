@@ -206,6 +206,29 @@ function initialize(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS video_metric_snapshots_video_idx
       ON video_metric_snapshots(video_id, collected_at DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_conversations (
+      conversation_id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      model TEXT NOT NULL,
+      title TEXT NOT NULL DEFAULT '新对话',
+      last_cost REAL NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS agent_conversations_owner_idx
+      ON agent_conversations(owner_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS agent_generation_tasks (
+      task_id TEXT PRIMARY KEY,
+      owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      conversation_id TEXT,
+      result_type TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS agent_generation_tasks_owner_idx
+      ON agent_generation_tasks(owner_id, updated_at DESC);
   `);
 
   const clonedVoiceColumns = db.prepare("PRAGMA table_info(cloned_voices)").all() as Array<{ name: string }>;
