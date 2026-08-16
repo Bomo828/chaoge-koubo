@@ -33,7 +33,7 @@ async function archiveAudio(member: NonNullable<Awaited<ReturnType<typeof getMem
       id,
       projectName: input.projectName,
       kind: "audio",
-      name: `${input.voiceName || "克隆声音"} · 口播音频`,
+      name: `${input.voiceName || "口播声音"} · 口播音频`,
       sourceUrl: input.audioUrl,
       sourceTaskId: input.taskId || null,
       createdAt: Date.now(),
@@ -63,7 +63,7 @@ export async function POST(request: Request) {
     const requestedSpeed = Number(body.speed);
     const allowedSpeeds = [0.75, 1, 1.25, 1.5, 2];
     const speed = allowedSpeeds.includes(requestedSpeed) ? requestedSpeed : 1;
-    if (!voiceId) return Response.json({ error: "请先选择或克隆一个声音。" }, { status: 400 });
+    if (!voiceId) return Response.json({ error: "请先选择一个声音。" }, { status: 400 });
     if (text.length < 2) return Response.json({ error: "请先填写口播文案。" }, { status: 400 });
 
     const estimatedPoints = estimatedSpeechPoints(text, speed);
@@ -95,7 +95,7 @@ export async function GET(request: Request) {
   const taskId = url.searchParams.get("task_id") || "";
   const requestId = url.searchParams.get("request_id") || "";
   const projectName = (url.searchParams.get("project_name") || "口播音频").slice(0, 80);
-  const voiceName = (url.searchParams.get("voice_name") || "克隆声音").slice(0, 40);
+  const voiceName = (url.searchParams.get("voice_name") || "口播声音").slice(0, 40);
   const estimatedPoints = Math.max(1, Number(url.searchParams.get("estimated_points")) || 1);
   if (!taskId) return Response.json({ error: "缺少口播音频任务编号。" }, { status: 400 });
 
