@@ -4342,8 +4342,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return <section className="video-workspace photo-video-workspace">
       <header className="video-workspace-head photo-video-head">
         <button type="button" onClick={() => openVideoWorkspace("chooser")}>← 返回短视频</button>
-        <div><h1>素材智能成片</h1><p>图片、开放声音和字幕一次生成，完成后可继续进入一键网感。</p></div>
-        <span>{generatedVideoUrl ? "成片已完成" : videoAgentBusy === "generate" ? "正在生成" : "本地模板测试"}</span>
+        <div><h1>素材智能成片</h1></div>
+        {generatedVideoUrl || videoAgentBusy === "generate" ? <span>{generatedVideoUrl ? "成片已完成" : "正在生成"}</span> : null}
       </header>
 
       <div className="photo-video-layout">
@@ -4372,7 +4372,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
           <section className="photo-video-speech" aria-labelledby="photo-video-speech-title">
             <div className="photo-video-section-head">
-              <div><h2 id="photo-video-speech-title">添加口播与字幕</h2><p>使用蝉镜开放声音；字幕按口播时间自动对齐。</p></div>
+              <div><h2 id="photo-video-speech-title">添加口播与字幕</h2></div>
               <label className="photo-speech-switch"><input type="checkbox" checked={photoIncludeSpeech} onChange={(event) => { setPhotoIncludeSpeech(event.target.checked); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} /><span>{photoIncludeSpeech ? "已开启" : "纯画面"}</span></label>
             </div>
             {photoIncludeSpeech ? <div className="photo-speech-fields">
@@ -4388,7 +4388,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
           <section className="photo-video-templates" aria-labelledby="photo-video-template-title">
             <div className="photo-video-section-head">
-              <div><h2 id="photo-video-template-title">选择模板</h2><p>24 套模板按用途分类，包含 20 种转场效果。</p></div>
+              <div><h2 id="photo-video-template-title">选择模板</h2></div>
               <b>{selectedPhotoTemplate.name}</b>
             </div>
             <nav className="photo-template-categories" aria-label="图片成片模板分类">
@@ -4417,7 +4417,6 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           <label><span>画面比例</span><div className="photo-ratio-picker">{(["9:16", "1:1", "16:9"] as PhotoVideoRatio[]).map((ratio) => <button type="button" className={photoRatio === ratio ? "active" : ""} aria-pressed={photoRatio === ratio} onClick={() => { setPhotoRatio(ratio); setGeneratedVideoUrl(""); }} key={ratio}>{ratio}</button>)}</div></label>
           <label><span>成片时长</span>{photoIncludeSpeech ? <div className="photo-duration-locked">跟随口播音频</div> : <select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setGeneratedVideoUrl(""); }}><option value="8">8 秒 · 快速预览</option><option value="12">12 秒 · 推荐</option><option value="15">15 秒 · 完整展示</option></select>}</label>
           <label><span>清晰度</span><select value={videoResolution} onChange={(event) => { setVideoResolution(event.target.value as "480p" | "720p"); setGeneratedVideoUrl(""); }}><option value="480p">480P · 更快</option><option value="720p">720P · 高清</option></select></label>
-          <div className="photo-video-package-note"><b>{photoIncludeSpeech ? "口播与字幕一起生成" : "当前生成纯画面"}</b><span>成片完成后，可进入“一键网感”继续添加背景音乐和音效。</span></div>
           <button type="button" className="photo-video-generate" disabled={!canGeneratePhotoVideo} onClick={() => void generatePhotoMontage()}>{videoAgentBusy === "generate" ? `正在生成 ${photoRenderProgress}%` : generatedVideoUrl ? "重新生成成片" : "生成 MP4 成片"}</button>
           {!photoMaterials.length ? <small className="photo-video-control-tip">请先添加至少两张图片。</small> : photoMaterials.length === 1 ? <small className="photo-video-control-tip">再添加一张图片即可生成。</small> : null}
           {videoAgentBusy === "generate" || photoRenderProgress ? <div className={`photo-video-progress ${photoRenderProgress === 100 ? "complete" : ""}`} role="status" aria-live="polite"><span style={{ width: `${photoRenderProgress}%` }} /><b>{videoProgress || "准备生成"}</b></div> : null}
