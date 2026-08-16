@@ -75,6 +75,14 @@ type ClonedVoice = {
   createdAt?: number;
 };
 
+type CommonVoice = {
+  voiceId: string;
+  name: string;
+  auditionUrl: string;
+  gender: string;
+  language: string;
+};
+
 const VOICE_AUDITION_TEXT = "我是您的克隆声音，我可以说很多的话。";
 const VOICE_AUDITION_TEXT_EN = "Hello, this is my cloned voice. I can speak English naturally.";
 
@@ -1368,23 +1376,67 @@ type VideoQuote = {
   note: string;
 };
 
-type PhotoVideoTemplateId = "quiet-album" | "merchant-showcase" | "split-story" | "photo-wall" | "clean-proof" | "rhythm-cut";
+type PhotoVideoTemplateId = string;
 type PhotoVideoRatio = "9:16" | "1:1" | "16:9";
+type PhotoVideoCategory = "business" | "atmosphere" | "energy" | "commerce" | "story" | "cases";
+type PhotoVideoLayout = "quiet" | "showcase" | "split" | "grid" | "case-grid" | "proof" | "rhythm" | "spotlight" | "polaroid" | "timeline" | "letterbox" | "before-after" | "carousel";
+type PhotoVideoMotion = "zoom-in" | "zoom-out" | "pan-left" | "pan-right" | "pan-up" | "float";
+type PhotoVideoTransition = "fade" | "fade-black" | "fade-white" | "wipe-left" | "wipe-right" | "wipe-up" | "wipe-down" | "slide-left" | "slide-right" | "slide-up" | "slide-down" | "circle-open" | "diagonal" | "split-open" | "checker" | "zoom-in" | "zoom-out" | "blur" | "film-burn" | "glitch";
 
 type PhotoVideoTemplate = {
   id: PhotoVideoTemplateId;
   name: string;
   detail: string;
   tag: string;
+  category: PhotoVideoCategory;
+  layout: PhotoVideoLayout;
+  motion: PhotoVideoMotion;
+  transitions: PhotoVideoTransition[];
+  effectLabel: string;
+  background: string;
+  accent: string;
 };
 
+const PHOTO_VIDEO_CATEGORIES: Array<{ id: "all" | PhotoVideoCategory; name: string }> = [
+  { id: "all", name: "全部 24" },
+  { id: "business", name: "商务简洁" },
+  { id: "atmosphere", name: "情绪氛围" },
+  { id: "energy", name: "活力网感" },
+  { id: "commerce", name: "产品电商" },
+  { id: "story", name: "故事相册" },
+  { id: "cases", name: "门店案例" },
+];
+
 const PHOTO_VIDEO_TEMPLATES: PhotoVideoTemplate[] = [
-  { id: "quiet-album", name: "极简相册", detail: "原图完整呈现，轻微推拉与柔和淡切", tag: "通用" },
-  { id: "merchant-showcase", name: "商家展示", detail: "环境铺底，主体居中，适合门店与服务", tag: "商家" },
-  { id: "split-story", name: "双画面叙事", detail: "主画面配合下一张预告，信息更连贯", tag: "故事" },
-  { id: "photo-wall", name: "多图拼贴", detail: "四张图片同屏轮换，适合活动与案例", tag: "丰富" },
-  { id: "clean-proof", name: "留白画册", detail: "浅色画册版式，适合产品与作品展示", tag: "质感" },
-  { id: "rhythm-cut", name: "节奏切片", detail: "快速切换与方向滑动，适合种草内容", tag: "活力" },
+  { id: "quiet-album", name: "极简相册", detail: "原图完整呈现，轻微推拉与柔和淡切", tag: "通用", category: "business", layout: "quiet", motion: "zoom-in", transitions: ["fade", "blur", "wipe-left"], effectLabel: "柔推 · 淡切", background: "#0d0f13", accent: "#59d9e8" },
+  { id: "clean-proof", name: "留白画册", detail: "纸张留白与克制进度线，适合专业作品", tag: "质感", category: "business", layout: "proof", motion: "zoom-in", transitions: ["fade-white", "wipe-right", "slide-left"], effectLabel: "留白 · 轻移", background: "#f4f1ea", accent: "#17191e" },
+  { id: "brand-window", name: "品牌橱窗", detail: "完整边框与品牌色点缀，突出统一视觉", tag: "品牌", category: "business", layout: "showcase", motion: "pan-right", transitions: ["wipe-left", "fade-black", "slide-up"], effectLabel: "框景 · 平移", background: "#17191e", accent: "#f4c95d" },
+  { id: "data-board", name: "数据简报", detail: "主画面配合进度节点，适合成果与项目汇报", tag: "汇报", category: "business", layout: "timeline", motion: "pan-left", transitions: ["slide-left", "wipe-up", "fade"], effectLabel: "节点 · 推进", background: "#101738", accent: "#59d9e8" },
+
+  { id: "film-memory", name: "胶片回忆", detail: "暖色胶片燃烧与缓慢漂移，适合回顾内容", tag: "复古", category: "atmosphere", layout: "letterbox", motion: "pan-right", transitions: ["film-burn", "fade-black", "blur"], effectLabel: "胶片 · 暖闪", background: "#130f0b", accent: "#e89b58" },
+  { id: "dreamy-glow", name: "梦境柔光", detail: "柔焦背景与梦幻缩放，适合情绪写真", tag: "柔光", category: "atmosphere", layout: "quiet", motion: "zoom-out", transitions: ["blur", "zoom-in", "fade-white"], effectLabel: "柔焦 · 梦幻缩放", background: "#17132a", accent: "#d6b7ff" },
+  { id: "soft-focus", name: "静谧呼吸", detail: "低速悬浮与暗部叠化，画面更安静", tag: "沉静", category: "atmosphere", layout: "spotlight", motion: "float", transitions: ["fade-black", "circle-open", "fade"], effectLabel: "呼吸 · 暗切", background: "#0a1018", accent: "#8fc7d8" },
+  { id: "cinematic-letterbox", name: "电影宽幕", detail: "上下遮幅与横向运镜，建立电影叙事感", tag: "电影", category: "atmosphere", layout: "letterbox", motion: "pan-left", transitions: ["fade-black", "diagonal", "zoom-out"], effectLabel: "宽幕 · 横移", background: "#050607", accent: "#f4f1ea" },
+
+  { id: "rhythm-cut", name: "节奏切片", detail: "快速切换与方向滑动，适合种草内容", tag: "节奏", category: "energy", layout: "rhythm", motion: "pan-right", transitions: ["slide-left", "wipe-right", "glitch"], effectLabel: "切片 · 滑动", background: "#0d0f13", accent: "#ff4d8d" },
+  { id: "glitch-pulse", name: "故障脉冲", detail: "横向错位与电子色差，适合科技和潮流", tag: "故障", category: "energy", layout: "rhythm", motion: "zoom-in", transitions: ["glitch", "checker", "fade-black"], effectLabel: "错位 · 脉冲", background: "#080a14", accent: "#59d9e8" },
+  { id: "mosaic-beat", name: "马赛克卡点", detail: "方格揭幕和多图同屏，适合活动节奏", tag: "卡点", category: "energy", layout: "grid", motion: "zoom-in", transitions: ["checker", "split-open", "wipe-down"], effectLabel: "方格 · 卡点", background: "#101114", accent: "#f4c95d" },
+  { id: "zoom-rush", name: "冲击变焦", detail: "快速推进与缩放切换，强化视觉冲击", tag: "冲击", category: "energy", layout: "spotlight", motion: "zoom-in", transitions: ["zoom-in", "zoom-out", "fade-white"], effectLabel: "推进 · 闪切", background: "#100b13", accent: "#ff4d8d" },
+
+  { id: "merchant-showcase", name: "商家展示", detail: "环境铺底，主体居中，适合门店与服务", tag: "商家", category: "commerce", layout: "showcase", motion: "zoom-in", transitions: ["wipe-left", "fade", "slide-up"], effectLabel: "框景 · 推拉", background: "#28242b", accent: "#f4c95d" },
+  { id: "product-spotlight", name: "产品聚焦", detail: "暗场聚光与中心陈列，让商品成为唯一焦点", tag: "产品", category: "commerce", layout: "spotlight", motion: "zoom-in", transitions: ["circle-open", "zoom-in", "fade-black"], effectLabel: "聚光 · 聚焦", background: "#090b0f", accent: "#f4c95d" },
+  { id: "feature-carousel", name: "卖点轮播", detail: "主卡居中、两侧预告，适合连续展示卖点", tag: "卖点", category: "commerce", layout: "carousel", motion: "pan-left", transitions: ["slide-left", "slide-right", "wipe-left"], effectLabel: "轮播 · 推进", background: "#101738", accent: "#59d9e8" },
+  { id: "before-after", name: "前后对比", detail: "左右分屏对照，适合改造、服务与案例变化", tag: "对比", category: "commerce", layout: "before-after", motion: "zoom-in", transitions: ["split-open", "wipe-right", "fade-white"], effectLabel: "分屏 · 对照", background: "#111318", accent: "#ff4d8d" },
+
+  { id: "split-story", name: "双画面叙事", detail: "主画面配合下一张预告，信息更连贯", tag: "故事", category: "story", layout: "split", motion: "zoom-in", transitions: ["wipe-up", "slide-left", "fade"], effectLabel: "双景 · 预告", background: "#101114", accent: "#59d9e8" },
+  { id: "polaroid-story", name: "拍立得故事", detail: "照片卡片轻微旋转，适合生活记录与人物故事", tag: "生活", category: "story", layout: "polaroid", motion: "float", transitions: ["slide-up", "fade-white", "diagonal"], effectLabel: "卡片 · 漂浮", background: "#d8d0c3", accent: "#17191e" },
+  { id: "story-timeline", name: "时间轴回顾", detail: "节点随画面推进，适合成长与过程记录", tag: "时间轴", category: "story", layout: "timeline", motion: "pan-right", transitions: ["wipe-left", "slide-left", "fade"], effectLabel: "时间轴 · 推进", background: "#121419", accent: "#f4c95d" },
+  { id: "book-page", name: "书页章节", detail: "纸张构图与对角揭幕，适合课程和知识内容", tag: "章节", category: "story", layout: "proof", motion: "pan-up", transitions: ["diagonal", "wipe-right", "fade-white"], effectLabel: "书页 · 揭幕", background: "#eee8dd", accent: "#5b4935" },
+
+  { id: "photo-wall", name: "多图拼贴", detail: "四张图片同屏轮换，适合活动与案例", tag: "拼贴", category: "cases", layout: "grid", motion: "pan-left", transitions: ["checker", "fade", "wipe-down"], effectLabel: "拼贴 · 轮换", background: "#101114", accent: "#59d9e8" },
+  { id: "case-grid", name: "案例看板", detail: "一张主图搭配两张细节，快速展示完整案例", tag: "案例", category: "cases", layout: "case-grid", motion: "zoom-in", transitions: ["split-open", "slide-up", "wipe-left"], effectLabel: "主次 · 展开", background: "#111943", accent: "#f4c95d" },
+  { id: "testimonial", name: "口碑印象", detail: "留白照片与稳定进度，适合评价和服务成果", tag: "口碑", category: "cases", layout: "proof", motion: "zoom-out", transitions: ["fade-white", "blur", "slide-right"], effectLabel: "留白 · 稳切", background: "#f0ece5", accent: "#ff4d8d" },
+  { id: "venue-tour", name: "空间巡游", detail: "连续横移与前后画面预告，适合门店环境", tag: "空间", category: "cases", layout: "carousel", motion: "pan-right", transitions: ["slide-left", "slide-down", "wipe-left", "zoom-out"], effectLabel: "巡游 · 连续横移", background: "#0c1334", accent: "#59d9e8" },
 ];
 
 function photoVideoCanvasSize(ratio: PhotoVideoRatio, resolution: "480p" | "720p") {
@@ -1406,6 +1458,16 @@ function drawPhotoImage(context: CanvasRenderingContext2D, image: HTMLImageEleme
   context.drawImage(image, x + rect.x + offsetX, y + rect.y + offsetY, rect.width, rect.height);
 }
 
+function photoMotionValues(motion: PhotoVideoMotion, progress: number, width: number, height: number) {
+  const centered = progress - .5;
+  if (motion === "zoom-out") return { zoom: 1.045 - progress * .035, x: 0, y: 0 };
+  if (motion === "pan-left") return { zoom: 1.045, x: -centered * width * .05, y: 0 };
+  if (motion === "pan-right") return { zoom: 1.045, x: centered * width * .05, y: 0 };
+  if (motion === "pan-up") return { zoom: 1.035, x: 0, y: -centered * height * .04 };
+  if (motion === "float") return { zoom: 1.025, x: Math.sin(progress * Math.PI * 2) * width * .008, y: Math.sin(progress * Math.PI) * -height * .012 };
+  return { zoom: 1.01 + progress * .035, x: 0, y: 0 };
+}
+
 function drawPhotoTemplateFrame(
   context: CanvasRenderingContext2D,
   images: HTMLImageElement[],
@@ -1420,17 +1482,21 @@ function drawPhotoTemplateFrame(
   const safeIndex = Math.max(0, index) % images.length;
   const image = images[safeIndex] || images[0];
   const next = images[(safeIndex + 1) % images.length] || image;
+  const previous = images[(safeIndex - 1 + images.length) % images.length] || image;
+  const template = PHOTO_VIDEO_TEMPLATES.find((item) => item.id === templateId) || PHOTO_VIDEO_TEMPLATES[0];
+  const motion = photoMotionValues(template.motion, progress, width, height);
+  const shortSide = Math.min(width, height);
   const previousAlpha = context.globalAlpha;
   context.globalAlpha = alpha;
   context.save();
 
-  if (templateId === "clean-proof") {
-    context.fillStyle = "#f4f1ea";
+  if (template.layout === "proof") {
+    context.fillStyle = template.background;
     context.fillRect(0, 0, width, height);
-    const margin = Math.round(Math.min(width, height) * .08);
+    const margin = Math.round(shortSide * .08);
     context.shadowColor = "rgba(18,20,25,.22)";
-    context.shadowBlur = Math.round(Math.min(width, height) * .035);
-    context.shadowOffsetY = Math.round(Math.min(width, height) * .018);
+    context.shadowBlur = Math.round(shortSide * .035);
+    context.shadowOffsetY = Math.round(shortSide * .018);
     context.fillStyle = "#ffffff";
     context.fillRect(margin, margin, width - margin * 2, height - margin * 2);
     context.shadowColor = "transparent";
@@ -1438,14 +1504,14 @@ function drawPhotoTemplateFrame(
     context.beginPath();
     context.rect(margin, margin, width - margin * 2, height - margin * 2);
     context.clip();
-    drawPhotoImage(context, image, margin, margin, width - margin * 2, height - margin * 2, "contain", 1 + progress * .018);
+    drawPhotoImage(context, image, margin, margin, width - margin * 2, height - margin * 2, "contain", motion.zoom, motion.x, motion.y);
     context.restore();
-    context.fillStyle = "#17191e";
+    context.fillStyle = template.accent;
     context.fillRect(margin, height - margin - 5, Math.max(28, (width - margin * 2) * (.22 + progress * .62)), 5);
-  } else if (templateId === "photo-wall") {
-    context.fillStyle = "#101114";
+  } else if (template.layout === "grid") {
+    context.fillStyle = template.background;
     context.fillRect(0, 0, width, height);
-    const gap = Math.max(8, Math.round(Math.min(width, height) * .018));
+    const gap = Math.max(8, Math.round(shortSide * .018));
     const cellWidth = (width - gap * 3) / 2;
     const cellHeight = (height - gap * 3) / 2;
     for (let cell = 0; cell < 4; cell += 1) {
@@ -1458,14 +1524,38 @@ function drawPhotoTemplateFrame(
       context.beginPath();
       context.rect(x, y, cellWidth, cellHeight);
       context.clip();
-      drawPhotoImage(context, cellImage, x, y, cellWidth, cellHeight, "cover", 1.01 + progress * .02, (column ? -1 : 1) * progress * gap * .45);
+      drawPhotoImage(context, cellImage, x, y, cellWidth, cellHeight, "cover", 1.015 + progress * .025, (column ? -1 : 1) * progress * gap * .45);
       context.restore();
     }
-  } else if (templateId === "split-story") {
-    context.fillStyle = "#101114";
+  } else if (template.layout === "case-grid") {
+    context.fillStyle = template.background;
     context.fillRect(0, 0, width, height);
-    const gap = Math.max(10, Math.round(Math.min(width, height) * .025));
-    const inset = Math.round(Math.min(width, height) * .055);
+    const gap = Math.max(8, Math.round(shortSide * .018));
+    const inset = gap;
+    const leftWidth = (width - inset * 2 - gap) * .64;
+    const rightWidth = width - inset * 2 - gap - leftWidth;
+    context.save();
+    context.beginPath();
+    context.rect(inset, inset, leftWidth, height - inset * 2);
+    context.clip();
+    drawPhotoImage(context, image, inset, inset, leftWidth, height - inset * 2, "cover", motion.zoom, motion.x, motion.y);
+    context.restore();
+    for (let row = 0; row < 2; row += 1) {
+      const y = inset + row * ((height - inset * 2 - gap) / 2 + gap);
+      const cellHeight = (height - inset * 2 - gap) / 2;
+      const cellImage = row === 0 ? next : images[(safeIndex + 2) % images.length] || previous;
+      context.save();
+      context.beginPath();
+      context.rect(inset + leftWidth + gap, y, rightWidth, cellHeight);
+      context.clip();
+      drawPhotoImage(context, cellImage, inset + leftWidth + gap, y, rightWidth, cellHeight, "cover", 1.025);
+      context.restore();
+    }
+  } else if (template.layout === "split") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const gap = Math.max(10, Math.round(shortSide * .025));
+    const inset = Math.round(shortSide * .055);
     const portrait = height >= width;
     const mainWidth = portrait ? width - inset * 2 : (width - inset * 2 - gap) * .64;
     const mainHeight = portrait ? (height - inset * 2 - gap) * .64 : height - inset * 2;
@@ -1473,7 +1563,7 @@ function drawPhotoTemplateFrame(
     context.beginPath();
     context.rect(inset, inset, mainWidth, mainHeight);
     context.clip();
-    drawPhotoImage(context, image, inset, inset, mainWidth, mainHeight, "cover", 1.015 + progress * .025);
+    drawPhotoImage(context, image, inset, inset, mainWidth, mainHeight, "cover", motion.zoom, motion.x, motion.y);
     context.restore();
     const nextX = portrait ? inset : inset + mainWidth + gap;
     const nextY = portrait ? inset + mainHeight + gap : inset;
@@ -1485,38 +1575,163 @@ function drawPhotoTemplateFrame(
     context.clip();
     drawPhotoImage(context, next, nextX, nextY, nextWidth, nextHeight, "cover", 1.03, -progress * gap * .6);
     context.restore();
+  } else if (template.layout === "before-after") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const divider = width * (.38 + progress * .24);
+    context.save();
+    context.beginPath();
+    context.rect(0, 0, divider, height);
+    context.clip();
+    drawPhotoImage(context, image, 0, 0, width, height, "cover", motion.zoom, motion.x, motion.y);
+    context.restore();
+    context.save();
+    context.beginPath();
+    context.rect(divider, 0, width - divider, height);
+    context.clip();
+    drawPhotoImage(context, next, 0, 0, width, height, "cover", 1.035, -motion.x, motion.y);
+    context.restore();
+    context.fillStyle = "#ffffff";
+    context.fillRect(divider - 2, 0, 4, height);
+    context.fillStyle = template.accent;
+    context.beginPath();
+    context.arc(divider, height * .5, Math.max(13, shortSide * .026), 0, Math.PI * 2);
+    context.fill();
+  } else if (template.layout === "polaroid") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const cardWidth = width * .78;
+    const cardHeight = height * .72;
+    const angle = (progress - .5) * .035;
+    context.translate(width / 2 + motion.x, height / 2 + motion.y);
+    context.rotate(angle);
+    context.shadowColor = "rgba(18,20,25,.28)";
+    context.shadowBlur = shortSide * .04;
+    context.shadowOffsetY = shortSide * .02;
+    context.fillStyle = "#fffdf8";
+    context.fillRect(-cardWidth / 2, -cardHeight / 2, cardWidth, cardHeight);
+    context.shadowColor = "transparent";
+    const photoInset = shortSide * .035;
+    context.save();
+    context.beginPath();
+    context.rect(-cardWidth / 2 + photoInset, -cardHeight / 2 + photoInset, cardWidth - photoInset * 2, cardHeight - photoInset * 3.2);
+    context.clip();
+    drawPhotoImage(context, image, -cardWidth / 2 + photoInset, -cardHeight / 2 + photoInset, cardWidth - photoInset * 2, cardHeight - photoInset * 3.2, "cover", motion.zoom);
+    context.restore();
+    context.fillStyle = template.accent;
+    context.fillRect(-cardWidth * .32, cardHeight * .35, cardWidth * .28, Math.max(3, shortSide * .007));
+  } else if (template.layout === "timeline") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const inset = shortSide * .055;
+    const mediaHeight = height * .78;
+    context.save();
+    context.beginPath();
+    context.rect(inset, inset, width - inset * 2, mediaHeight - inset);
+    context.clip();
+    drawPhotoImage(context, image, inset, inset, width - inset * 2, mediaHeight - inset, "cover", motion.zoom, motion.x, motion.y);
+    context.restore();
+    const lineY = height * .88;
+    context.fillStyle = "rgba(255,255,255,.18)";
+    context.fillRect(inset, lineY, width - inset * 2, 3);
+    context.fillStyle = template.accent;
+    context.fillRect(inset, lineY, (width - inset * 2) * (.12 + progress * .88), 3);
+    for (let node = 0; node < 4; node += 1) {
+      const nodeX = inset + (width - inset * 2) * (node / 3);
+      context.beginPath();
+      context.arc(nodeX, lineY + 1.5, Math.max(4, shortSide * .009), 0, Math.PI * 2);
+      context.fillStyle = node / 3 <= progress ? template.accent : "rgba(255,255,255,.32)";
+      context.fill();
+    }
+  } else if (template.layout === "letterbox") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const mediaY = height * .11;
+    const mediaHeight = height * .78;
+    context.save();
+    context.beginPath();
+    context.rect(0, mediaY, width, mediaHeight);
+    context.clip();
+    drawPhotoImage(context, image, 0, mediaY, width, mediaHeight, "cover", motion.zoom, motion.x, motion.y);
+    context.restore();
+    context.fillStyle = template.accent;
+    context.globalAlpha = alpha * .72;
+    context.fillRect(width * .08, height * .925, width * (.16 + progress * .52), Math.max(3, shortSide * .006));
+    context.globalAlpha = alpha;
+  } else if (template.layout === "carousel") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const cardWidth = width * .72;
+    const cardHeight = height * .78;
+    const cardY = (height - cardHeight) / 2;
+    const sideWidth = width * .2;
+    context.globalAlpha = alpha * .42;
+    drawPhotoImage(context, previous, -sideWidth * .46, cardY + cardHeight * .08, sideWidth, cardHeight * .84, "cover", 1.04);
+    drawPhotoImage(context, next, width - sideWidth * .54, cardY + cardHeight * .08, sideWidth, cardHeight * .84, "cover", 1.04);
+    context.globalAlpha = alpha;
+    context.shadowColor = "rgba(0,0,0,.38)";
+    context.shadowBlur = shortSide * .035;
+    context.shadowOffsetY = shortSide * .018;
+    context.save();
+    context.beginPath();
+    context.rect((width - cardWidth) / 2, cardY, cardWidth, cardHeight);
+    context.clip();
+    drawPhotoImage(context, image, (width - cardWidth) / 2, cardY, cardWidth, cardHeight, "cover", motion.zoom, motion.x, motion.y);
+    context.restore();
+    context.shadowColor = "transparent";
+  } else if (template.layout === "spotlight") {
+    context.fillStyle = template.background;
+    context.fillRect(0, 0, width, height);
+    const glow = context.createRadialGradient(width * .5, height * .46, shortSide * .04, width * .5, height * .46, shortSide * .6);
+    glow.addColorStop(0, `${template.accent}55`);
+    glow.addColorStop(1, "rgba(0,0,0,0)");
+    context.fillStyle = glow;
+    context.fillRect(0, 0, width, height);
+    const insetX = width * .09;
+    const insetY = height * .08;
+    context.save();
+    context.beginPath();
+    context.rect(insetX, insetY, width - insetX * 2, height - insetY * 2);
+    context.clip();
+    drawPhotoImage(context, image, insetX, insetY, width - insetX * 2, height - insetY * 2, "contain", motion.zoom, motion.x, motion.y);
+    context.restore();
+    const vignette = context.createRadialGradient(width * .5, height * .5, shortSide * .22, width * .5, height * .5, shortSide * .82);
+    vignette.addColorStop(0, "rgba(0,0,0,0)");
+    vignette.addColorStop(1, "rgba(0,0,0,.72)");
+    context.fillStyle = vignette;
+    context.fillRect(0, 0, width, height);
   } else {
-    context.fillStyle = "#0d0f13";
+    context.fillStyle = template.background;
     context.fillRect(0, 0, width, height);
     context.save();
-    context.filter = templateId === "merchant-showcase" ? "blur(28px) brightness(.58)" : "blur(34px) brightness(.4)";
-    drawPhotoImage(context, image, 0, 0, width, height, "cover", 1.1 + progress * .018);
+    context.filter = template.layout === "showcase" ? "blur(28px) brightness(.58)" : "blur(34px) brightness(.4)";
+    drawPhotoImage(context, image, 0, 0, width, height, "cover", 1.1 + progress * .018, motion.x, motion.y);
     context.restore();
 
-    if (templateId === "rhythm-cut") {
+    if (template.layout === "rhythm") {
       context.save();
       context.beginPath();
       context.rect(0, 0, width, height);
       context.clip();
-      drawPhotoImage(context, image, 0, 0, width, height, "cover", 1.015, (progress - .5) * width * .035);
+      drawPhotoImage(context, image, 0, 0, width, height, "cover", motion.zoom, motion.x, motion.y);
       context.restore();
-      context.fillStyle = "rgba(255,77,141,.88)";
+      context.fillStyle = template.accent;
       context.fillRect(0, 0, Math.max(8, width * .018), height);
       context.fillStyle = "rgba(89,217,232,.88)";
       context.fillRect(width - Math.max(8, width * .012), 0, Math.max(8, width * .012), height);
     } else {
-      const inset = templateId === "merchant-showcase" ? Math.round(Math.min(width, height) * .055) : 0;
+      const inset = template.layout === "showcase" ? Math.round(shortSide * .055) : 0;
       context.save();
       if (inset) {
         context.beginPath();
         context.rect(inset, inset, width - inset * 2, height - inset * 2);
         context.clip();
       }
-      drawPhotoImage(context, image, inset, inset, width - inset * 2, height - inset * 2, "contain", 1 + progress * .025);
+      drawPhotoImage(context, image, inset, inset, width - inset * 2, height - inset * 2, "contain", motion.zoom, motion.x, motion.y);
       context.restore();
-      if (templateId === "merchant-showcase") {
+      if (template.layout === "showcase") {
         context.strokeStyle = "rgba(255,255,255,.72)";
-        context.lineWidth = Math.max(2, Math.round(Math.min(width, height) * .004));
+        context.lineWidth = Math.max(2, Math.round(shortSide * .004));
         context.strokeRect(inset, inset, width - inset * 2, height - inset * 2);
         const gradient = context.createLinearGradient(0, height * .65, 0, height);
         gradient.addColorStop(0, "rgba(8,10,14,0)");
@@ -1529,6 +1744,150 @@ function drawPhotoTemplateFrame(
 
   context.restore();
   context.globalAlpha = previousAlpha;
+}
+
+function drawPhotoTemplateTransition(
+  context: CanvasRenderingContext2D,
+  images: HTMLImageElement[],
+  index: number,
+  progress: number,
+  width: number,
+  height: number,
+  templateId: PhotoVideoTemplateId,
+) {
+  if (progress <= 0) return;
+  const template = PHOTO_VIDEO_TEMPLATES.find((item) => item.id === templateId) || PHOTO_VIDEO_TEMPLATES[0];
+  const transition = template.transitions[index % template.transitions.length] || "fade";
+  const p = Math.max(0, Math.min(1, progress));
+  const drawNext = (opacity = 1) => drawPhotoTemplateFrame(context, images, index + 1, p * .16, width, height, templateId, opacity);
+
+  context.save();
+  if (transition === "fade-black" || transition === "fade-white") {
+    const color = transition === "fade-white" ? "#ffffff" : "#000000";
+    context.fillStyle = color;
+    if (p < .5) {
+      context.globalAlpha = p * 2;
+      context.fillRect(0, 0, width, height);
+    } else {
+      context.fillRect(0, 0, width, height);
+      drawNext((p - .5) * 2);
+    }
+  } else if (transition.startsWith("wipe-")) {
+    context.beginPath();
+    if (transition === "wipe-left") context.rect(0, 0, width * p, height);
+    if (transition === "wipe-right") context.rect(width * (1 - p), 0, width * p, height);
+    if (transition === "wipe-up") context.rect(0, 0, width, height * p);
+    if (transition === "wipe-down") context.rect(0, height * (1 - p), width, height * p);
+    context.clip();
+    drawNext();
+  } else if (transition.startsWith("slide-")) {
+    if (transition === "slide-left") context.translate(width * (1 - p), 0);
+    if (transition === "slide-right") context.translate(-width * (1 - p), 0);
+    if (transition === "slide-up") context.translate(0, height * (1 - p));
+    if (transition === "slide-down") context.translate(0, -height * (1 - p));
+    drawNext();
+  } else if (transition === "circle-open") {
+    const radius = Math.hypot(width, height) * .52 * p;
+    context.beginPath();
+    context.arc(width / 2, height / 2, radius, 0, Math.PI * 2);
+    context.clip();
+    drawNext();
+  } else if (transition === "diagonal") {
+    context.beginPath();
+    context.moveTo(0, 0);
+    context.lineTo(Math.min(width, width * p * 1.7), 0);
+    context.lineTo(Math.min(width, width * p * 1.7 - height * .35), height);
+    context.lineTo(0, height);
+    context.closePath();
+    context.clip();
+    drawNext();
+  } else if (transition === "split-open") {
+    context.beginPath();
+    context.rect(width * .5 * (1 - p), 0, width * .5 * p, height);
+    context.rect(width * .5, 0, width * .5 * p, height);
+    context.clip();
+    drawNext();
+  } else if (transition === "checker") {
+    const columns = 8;
+    const rows = 12;
+    const cellWidth = width / columns;
+    const cellHeight = height / rows;
+    context.beginPath();
+    for (let row = 0; row < rows; row += 1) {
+      for (let column = 0; column < columns; column += 1) {
+        const threshold = ((row + column) % columns) / columns;
+        if (p >= threshold) context.rect(column * cellWidth, row * cellHeight, cellWidth + 1, cellHeight + 1);
+      }
+    }
+    context.clip();
+    drawNext();
+  } else if (transition === "zoom-in" || transition === "zoom-out") {
+    const scale = transition === "zoom-in" ? .72 + p * .28 : 1.28 - p * .28;
+    context.translate(width / 2, height / 2);
+    context.scale(scale, scale);
+    context.translate(-width / 2, -height / 2);
+    drawNext(Math.min(1, p * 1.35));
+  } else if (transition === "blur") {
+    context.filter = `blur(${Math.round((1 - p) * 22)}px)`;
+    drawNext(Math.min(1, p * 1.5));
+  } else if (transition === "film-burn") {
+    drawNext(Math.min(1, p * 1.4));
+    const burn = context.createLinearGradient(0, height, width, 0);
+    burn.addColorStop(0, "rgba(255,58,12,0)");
+    burn.addColorStop(.48, "rgba(255,98,24,.86)");
+    burn.addColorStop(.62, "rgba(255,239,184,.94)");
+    burn.addColorStop(1, "rgba(255,190,58,0)");
+    context.globalAlpha = Math.sin(p * Math.PI) * .82;
+    context.fillStyle = burn;
+    context.fillRect(0, 0, width, height);
+  } else if (transition === "glitch") {
+    const slices = 8;
+    for (let slice = 0; slice < slices; slice += 1) {
+      const sliceHeight = height / slices;
+      context.save();
+      context.beginPath();
+      context.rect(0, slice * sliceHeight, width, sliceHeight + 1);
+      context.clip();
+      context.translate((slice % 2 ? 1 : -1) * (1 - p) * width * .08, 0);
+      drawNext(Math.min(1, p * 1.5));
+      context.restore();
+    }
+  } else {
+    drawNext(p);
+  }
+  context.restore();
+}
+
+function drawPhotoCaption(
+  context: CanvasRenderingContext2D,
+  captions: ViralCaption[],
+  elapsed: number,
+  width: number,
+  height: number,
+) {
+  const caption = captions.find((item) => elapsed >= item.start && elapsed < item.end);
+  if (!caption?.text) return;
+  const text = caption.text.replace(/\s+/g, "").trim();
+  if (!text) return;
+  const maxCharacters = width > height ? 22 : 14;
+  const lines = Array.from({ length: Math.ceil(text.length / maxCharacters) }, (_, index) => text.slice(index * maxCharacters, (index + 1) * maxCharacters)).slice(0, 2);
+  const fontSize = Math.round(Math.max(28, Math.min(width * .056, height * .042)));
+  const lineHeight = Math.round(fontSize * 1.25);
+  const bottom = Math.round(height * .17);
+  context.save();
+  context.textAlign = "center";
+  context.textBaseline = "middle";
+  context.lineJoin = "round";
+  context.font = `900 ${fontSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
+  context.strokeStyle = "rgba(0,0,0,.86)";
+  context.lineWidth = Math.max(6, Math.round(fontSize * .16));
+  context.fillStyle = "#ffffff";
+  lines.forEach((line, index) => {
+    const y = height - bottom - (lines.length - 1 - index) * lineHeight;
+    context.strokeText(line, width / 2, y, width * .86);
+    context.fillText(line, width / 2, y, width * .86);
+  });
+  context.restore();
 }
 
 type VideoWorkspace = "chooser" | "material" | "lip-sync" | "ai-benchmark" | "viral-edit" | "ai-director";
@@ -1557,9 +1916,18 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [generatedVideoUrl, setGeneratedVideoUrl] = useState("");
   const [videoProgress, setVideoProgress] = useState("");
   const [photoTemplate, setPhotoTemplate] = useState<PhotoVideoTemplateId>("quiet-album");
+  const [photoTemplateCategory, setPhotoTemplateCategory] = useState<"all" | PhotoVideoCategory>("business");
   const [photoRatio, setPhotoRatio] = useState<PhotoVideoRatio>("9:16");
   const [excludedPhotoMaterialIds, setExcludedPhotoMaterialIds] = useState<string[]>([]);
   const [photoRenderProgress, setPhotoRenderProgress] = useState(0);
+  const [photoResultDuration, setPhotoResultDuration] = useState(0);
+  const [commonVoices, setCommonVoices] = useState<CommonVoice[]>([]);
+  const [commonVoicesLoading, setCommonVoicesLoading] = useState(false);
+  const [photoVoiceId, setPhotoVoiceId] = useState("");
+  const [photoScript, setPhotoScript] = useState("大家好，今天带大家看看我们的真实环境和特色服务。每一张图片，都是一次认真服务的记录。");
+  const [photoSpeechSpeed, setPhotoSpeechSpeed] = useState(1);
+  const [photoIncludeSpeech, setPhotoIncludeSpeech] = useState(true);
+  const [photoIncludeSubtitles, setPhotoIncludeSubtitles] = useState(true);
   const [voiceSource, setVoiceSource] = useState<"saved" | "upload">("saved");
   const [selectedVoice, setSelectedVoice] = useState("");
   const [savedVoices, setSavedVoices] = useState<ClonedVoice[]>([]);
@@ -3418,6 +3786,29 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   }, [videoDuration, videoResolution, videoVersion, workspace]);
 
   useEffect(() => {
+    if (workspace !== "material" || commonVoices.length) return;
+    const controller = new AbortController();
+    queueMicrotask(() => setCommonVoicesLoading(true));
+    fetch("/api/ai/common-voices", { cache: "no-store", signal: controller.signal })
+      .then(async (response) => {
+        const data = await response.json() as { error?: string; voices?: CommonVoice[] };
+        if (!response.ok) throw new Error(data.error || "开放声音读取失败。");
+        const voices = Array.isArray(data.voices) ? data.voices : [];
+        setCommonVoices(voices);
+        setPhotoVoiceId((current) => voices.some((voice) => voice.voiceId === current)
+          ? current
+          : voices.find((voice) => voice.name === "中年专家")?.voiceId || voices[0]?.voiceId || "");
+      })
+      .catch((error: unknown) => {
+        if (!(error instanceof DOMException && error.name === "AbortError")) {
+          setVideoAgentError(error instanceof Error ? error.message : "开放声音读取失败。");
+        }
+      })
+      .finally(() => setCommonVoicesLoading(false));
+    return () => controller.abort();
+  }, [commonVoices.length, workspace]);
+
+  useEffect(() => {
     if (workspace !== "material") return;
     let cancelled = false;
     const loadSavedMaterials = async () => {
@@ -3574,6 +3965,114 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     });
   }
 
+  async function generatePhotoSpeech() {
+    if (!photoIncludeSpeech) return null;
+    const voice = commonVoices.find((item) => item.voiceId === photoVoiceId);
+    if (!voice) throw new Error("请先选择一个开放声音。");
+    const text = photoScript.trim();
+    if (text.length < 2) throw new Error("请先填写口播文案。");
+
+    setVideoProgress("正在生成口播与字幕");
+    setPhotoRenderProgress(3);
+    const projectName = "素材智能成片口播";
+    const response = await fetch("/api/ai/speech", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        voiceId: voice.voiceId,
+        voiceName: voice.name,
+        text,
+        speed: photoSpeechSpeed,
+        projectName,
+        requestId: `photo_speech_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+      }),
+    });
+    let data = await response.json() as {
+      error?: string;
+      taskId?: string;
+      requestId?: string;
+      state?: string;
+      isFinal?: boolean;
+      audioUrl?: string;
+      duration?: number;
+      captions?: ViralCaption[];
+      estimatedPoints?: number;
+      wallet?: { points?: number };
+    };
+    if (!response.ok) throw new Error(data.error || "口播音频生成失败。");
+    if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+
+    for (let attempt = 0; !data.isFinal && data.taskId && attempt < 120; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, 2500));
+      const params = new URLSearchParams({
+        task_id: data.taskId,
+        request_id: data.requestId || "",
+        project_name: projectName,
+        voice_name: voice.name,
+        estimated_points: String(data.estimatedPoints || 1),
+      });
+      const statusResponse = await fetch(`/api/ai/speech?${params}`, { cache: "no-store" });
+      data = await statusResponse.json() as typeof data;
+      if (!statusResponse.ok) throw new Error(data.error || "口播音频状态读取失败。");
+      if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+      setPhotoRenderProgress(Math.min(16, 4 + Math.floor(attempt / 3)));
+    }
+    if (!data.isFinal || data.state === "failed" || !data.audioUrl) {
+      throw new Error(data.error || "口播音频生成失败，请重试。");
+    }
+    const duration = Math.max(1, Number(data.duration) || videoDuration);
+    const captions = Array.isArray(data.captions) ? data.captions : [];
+    const audioResponse = await fetch(data.audioUrl, { cache: "no-store" });
+    if (!audioResponse.ok) throw new Error("口播音频已生成，但暂时无法读取。");
+    window.dispatchEvent(new CustomEvent("member-assets-updated"));
+    return {
+      voice,
+      duration,
+      captions,
+      audio: await audioResponse.blob(),
+    };
+  }
+
+  async function transcodePhotoMontageToMp4(source: Blob, input: {
+    title: string;
+    duration: number;
+    width: number;
+    height: number;
+    audio?: Blob;
+  }) {
+    setVideoProgress("正在上传并转换为 MP4");
+    setPhotoRenderProgress(72);
+    const form = new FormData();
+    form.append("video", new File([source], "photo-video.webm", { type: source.type || "video/webm" }));
+    if (input.audio?.size) form.append("audio", new File([input.audio], "speech.mp3", { type: input.audio.type || "audio/mpeg" }));
+    form.append("title", input.title);
+    form.append("duration", String(input.duration));
+    form.append("width", String(input.width));
+    form.append("height", String(input.height));
+    const response = await fetch("/api/ai/photo-video/mps", { method: "POST", body: form });
+    const created = await response.json() as { error?: string; jobId?: string; progress?: number };
+    if (!response.ok || !created.jobId) throw new Error(created.error || "MP4 转码任务创建失败。");
+
+    for (let attempt = 0; attempt < 240; attempt += 1) {
+      await new Promise((resolve) => window.setTimeout(resolve, attempt === 0 ? 500 : 1500));
+      const statusResponse = await fetch(`/api/ai/photo-video/mps?jobId=${encodeURIComponent(created.jobId)}`, { cache: "no-store" });
+      const status = await statusResponse.json() as {
+        error?: string;
+        state?: "running" | "success" | "failed";
+        progress?: number;
+        mediaUrl?: string;
+      };
+      if (!statusResponse.ok) throw new Error(status.error || "MP4 转码状态读取失败。");
+      setPhotoRenderProgress(Math.max(75, Math.min(100, Number(status.progress) || 75)));
+      setVideoProgress(status.state === "success" ? "MP4 成片已完成" : "正在生成 MP4 成片");
+      if (status.state === "success" && status.mediaUrl) {
+        return `${status.mediaUrl}&v=${Date.now()}`;
+      }
+      if (status.state === "failed") throw new Error(status.error || "MP4 转码失败，请重试。");
+    }
+    throw new Error("MP4 转码等待超时，请稍后重试。");
+  }
+
   async function generatePhotoMontage() {
     const materials = photoVideoMaterials();
     if (materials.length < 2) {
@@ -3590,6 +4089,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setVideoProgress("正在读取图片");
     setPhotoRenderProgress(2);
     try {
+      const speech = await generatePhotoSpeech();
       const images = await Promise.all(materials.map((item) => loadPhotoVideoImage(item.aiImage)));
       const { width, height } = photoVideoCanvasSize(photoRatio, videoResolution);
       const canvas = document.createElement("canvas");
@@ -3608,7 +4108,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         recorder.onstop = () => resolve(new Blob(chunks, { type: recorder.mimeType || "video/webm" }));
       });
 
-      const totalDuration = Math.max(6, videoDuration);
+      const totalDuration = speech ? Math.max(1, speech.duration) : Math.max(6, videoDuration);
       const imageDuration = totalDuration / images.length;
       const startedAt = performance.now();
       setVideoProgress("正在按模板生成画面");
@@ -3623,8 +4123,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           const localProgress = Math.min(1, Math.max(0, (elapsed - rawIndex * imageDuration) / imageDuration));
           const transition = rawIndex < images.length - 1 ? Math.min(1, Math.max(0, (localProgress - .82) / .18)) : 0;
           drawPhotoTemplateFrame(context, images, rawIndex, localProgress, width, height, photoTemplate, 1);
-          if (transition > 0) drawPhotoTemplateFrame(context, images, rawIndex + 1, transition * .16, width, height, photoTemplate, transition);
-          const percent = Math.min(98, Math.max(5, Math.round((elapsed / totalDuration) * 96)));
+          if (transition > 0) drawPhotoTemplateTransition(context, images, rawIndex, transition, width, height, photoTemplate);
+          if (speech && photoIncludeSubtitles) drawPhotoCaption(context, speech.captions, elapsed, width, height);
+          const percent = Math.min(70, Math.max(5, Math.round((elapsed / totalDuration) * 65)));
           if (percent !== lastPercent) {
             lastPercent = percent;
             setPhotoRenderProgress(percent);
@@ -3638,13 +4139,21 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
       recorder.stop();
       const result = await finished;
-      const resultUrl = URL.createObjectURL(result);
+      const selectedTemplate = PHOTO_VIDEO_TEMPLATES.find((template) => template.id === photoTemplate) || PHOTO_VIDEO_TEMPLATES[0];
+      const resultUrl = await transcodePhotoMontageToMp4(result, {
+        title: `素材智能成片-${selectedTemplate.name}`,
+        duration: totalDuration,
+        width,
+        height,
+        audio: speech?.audio,
+      });
       setGeneratedVideoUrl((current) => {
         if (current.startsWith("blob:")) URL.revokeObjectURL(current);
         return resultUrl;
       });
       setPhotoRenderProgress(100);
-      setVideoProgress("本地成片已完成");
+      setPhotoResultDuration(totalDuration);
+      setVideoProgress("MP4 成片已完成");
     } catch (error) {
       setPhotoRenderProgress(0);
       setVideoProgress("");
@@ -3822,12 +4331,18 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   if (workspace === "material") {
     const photoMaterials = photoVideoMaterials();
     const selectedPhotoTemplate = PHOTO_VIDEO_TEMPLATES.find((template) => template.id === photoTemplate) || PHOTO_VIDEO_TEMPLATES[0];
+    const visiblePhotoTemplates = photoTemplateCategory === "all"
+      ? PHOTO_VIDEO_TEMPLATES
+      : PHOTO_VIDEO_TEMPLATES.filter((template) => template.category === photoTemplateCategory);
     const previewImage = photoMaterials[0]?.previewUrl || "";
-    const canGeneratePhotoVideo = photoMaterials.length >= 2 && videoAgentBusy === "";
+    const selectedCommonVoice = commonVoices.find((voice) => voice.voiceId === photoVoiceId);
+    const canGeneratePhotoVideo = photoMaterials.length >= 2
+      && videoAgentBusy === ""
+      && (!photoIncludeSpeech || Boolean(photoVoiceId && photoScript.trim().length >= 2));
     return <section className="video-workspace photo-video-workspace">
       <header className="video-workspace-head photo-video-head">
         <button type="button" onClick={() => openVideoWorkspace("chooser")}>← 返回短视频</button>
-        <div><h1>素材智能成片</h1><p>上传图片，选择模板，直接生成可预览的视频。</p></div>
+        <div><h1>素材智能成片</h1><p>图片、开放声音和字幕一次生成，完成后可继续进入一键网感。</p></div>
         <span>{generatedVideoUrl ? "成片已完成" : videoAgentBusy === "generate" ? "正在生成" : "本地模板测试"}</span>
       </header>
 
@@ -3855,38 +4370,63 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {excludedPhotoMaterialIds.length ? <button type="button" className="photo-video-restore" onClick={() => setExcludedPhotoMaterialIds([])}>恢复已移除的会员图片</button> : null}
           </section>
 
+          <section className="photo-video-speech" aria-labelledby="photo-video-speech-title">
+            <div className="photo-video-section-head">
+              <div><h2 id="photo-video-speech-title">添加口播与字幕</h2><p>使用蝉镜开放声音；字幕按口播时间自动对齐。</p></div>
+              <label className="photo-speech-switch"><input type="checkbox" checked={photoIncludeSpeech} onChange={(event) => { setPhotoIncludeSpeech(event.target.checked); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} /><span>{photoIncludeSpeech ? "已开启" : "纯画面"}</span></label>
+            </div>
+            {photoIncludeSpeech ? <div className="photo-speech-fields">
+              <label className="photo-script-field"><span>口播文案 <small>{photoScript.trim().length} 字</small></span><textarea value={photoScript} maxLength={3000} onChange={(event) => { setPhotoScript(event.target.value); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} placeholder="输入要转换成口播的文案" /></label>
+              <div className="photo-voice-row">
+                <label><span>开放声音</span><select value={photoVoiceId} disabled={commonVoicesLoading} onChange={(event) => { setPhotoVoiceId(event.target.value); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }}><option value="">{commonVoicesLoading ? "正在读取声音…" : "选择声音"}</option>{commonVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}</option>)}</select></label>
+                <label><span>语速</span><select value={photoSpeechSpeed} onChange={(event) => { setPhotoSpeechSpeed(Number(event.target.value)); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }}><option value="0.75">舒缓 · 0.75×</option><option value="1">正常 · 1.0×</option><option value="1.25">稍快 · 1.25×</option><option value="1.5">快速 · 1.5×</option><option value="2">极速 · 2.0×</option></select></label>
+                <label className="photo-subtitle-toggle"><span>字幕</span><button type="button" className={photoIncludeSubtitles ? "active" : ""} aria-pressed={photoIncludeSubtitles} onClick={() => { setPhotoIncludeSubtitles((current) => !current); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }}>{photoIncludeSubtitles ? "自动添加" : "不添加"}</button></label>
+              </div>
+              {selectedCommonVoice?.auditionUrl ? <div className="photo-voice-audition"><span><b>{selectedCommonVoice.name}</b><small>开放声音试听</small></span><audio key={selectedCommonVoice.voiceId} src={selectedCommonVoice.auditionUrl} controls preload="none" /></div> : null}
+            </div> : <div className="photo-speech-off">关闭后将按右侧设定时长生成纯画面视频。</div>}
+          </section>
+
           <section className="photo-video-templates" aria-labelledby="photo-video-template-title">
             <div className="photo-video-section-head">
-              <div><h2 id="photo-video-template-title">选择模板</h2><p>六套模板均使用原图生成，不调用图片生视频模型。</p></div>
+              <div><h2 id="photo-video-template-title">选择模板</h2><p>24 套模板按用途分类，包含 20 种转场效果。</p></div>
               <b>{selectedPhotoTemplate.name}</b>
             </div>
+            <nav className="photo-template-categories" aria-label="图片成片模板分类">
+              {PHOTO_VIDEO_CATEGORIES.map((category) => <button
+                type="button"
+                className={photoTemplateCategory === category.id ? "active" : ""}
+                aria-pressed={photoTemplateCategory === category.id}
+                onClick={() => setPhotoTemplateCategory(category.id)}
+                key={category.id}
+              >{category.name}</button>)}
+            </nav>
             <div className="photo-template-grid">
-              {PHOTO_VIDEO_TEMPLATES.map((template) => <button type="button" className={`photo-template-card is-${template.id} ${photoTemplate === template.id ? "selected" : ""}`} aria-pressed={photoTemplate === template.id} onClick={() => { setPhotoTemplate(template.id); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} key={template.id}>
+              {visiblePhotoTemplates.map((template) => <button type="button" className={`photo-template-card layout-${template.layout} is-${template.id} ${photoTemplate === template.id ? "selected" : ""}`} aria-pressed={photoTemplate === template.id} onClick={() => { setPhotoTemplate(template.id); setGeneratedVideoUrl(""); setPhotoRenderProgress(0); }} key={template.id}>
                 <span className="photo-template-art" aria-hidden="true">
                   {previewImage ? <img src={previewImage} alt="" /> : <i />}
                   <u /><em />
                 </span>
-                <span className="photo-template-copy"><small>{template.tag}</small><b>{template.name}</b><i>{template.detail}</i></span>
+                <span className="photo-template-copy"><small>{template.tag}</small><b>{template.name}</b><i>{template.detail}</i><span className="photo-template-effects">{template.effectLabel}</span></span>
               </button>)}
             </div>
           </section>
         </main>
 
         <aside className="photo-video-controls">
-          <div className="photo-video-control-head"><VideoCamera size={22} weight="duotone" /><div><b>成片设置</b><span>本地直接生成，不消耗积分</span></div></div>
+          <div className="photo-video-control-head"><VideoCamera size={22} weight="duotone" /><div><b>成片设置</b><span>自动输出标准 MP4</span></div></div>
           <label><span>画面比例</span><div className="photo-ratio-picker">{(["9:16", "1:1", "16:9"] as PhotoVideoRatio[]).map((ratio) => <button type="button" className={photoRatio === ratio ? "active" : ""} aria-pressed={photoRatio === ratio} onClick={() => { setPhotoRatio(ratio); setGeneratedVideoUrl(""); }} key={ratio}>{ratio}</button>)}</div></label>
-          <label><span>成片时长</span><select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setGeneratedVideoUrl(""); }}><option value="8">8 秒 · 快速预览</option><option value="12">12 秒 · 推荐</option><option value="15">15 秒 · 完整展示</option></select></label>
+          <label><span>成片时长</span>{photoIncludeSpeech ? <div className="photo-duration-locked">跟随口播音频</div> : <select value={videoDuration} onChange={(event) => { setVideoDuration(Number(event.target.value)); setGeneratedVideoUrl(""); }}><option value="8">8 秒 · 快速预览</option><option value="12">12 秒 · 推荐</option><option value="15">15 秒 · 完整展示</option></select>}</label>
           <label><span>清晰度</span><select value={videoResolution} onChange={(event) => { setVideoResolution(event.target.value as "480p" | "720p"); setGeneratedVideoUrl(""); }}><option value="480p">480P · 更快</option><option value="720p">720P · 高清</option></select></label>
-          <div className="photo-video-package-note"><b>先生成纯画面</b><span>字幕、背景音乐和音效在“一键网感”中继续添加。</span></div>
-          <button type="button" className="photo-video-generate" disabled={!canGeneratePhotoVideo} onClick={() => void generatePhotoMontage()}>{videoAgentBusy === "generate" ? `正在生成 ${photoRenderProgress}%` : generatedVideoUrl ? "重新生成成片" : "生成图片视频"}</button>
+          <div className="photo-video-package-note"><b>{photoIncludeSpeech ? "口播与字幕一起生成" : "当前生成纯画面"}</b><span>成片完成后，可进入“一键网感”继续添加背景音乐和音效。</span></div>
+          <button type="button" className="photo-video-generate" disabled={!canGeneratePhotoVideo} onClick={() => void generatePhotoMontage()}>{videoAgentBusy === "generate" ? `正在生成 ${photoRenderProgress}%` : generatedVideoUrl ? "重新生成成片" : "生成 MP4 成片"}</button>
           {!photoMaterials.length ? <small className="photo-video-control-tip">请先添加至少两张图片。</small> : photoMaterials.length === 1 ? <small className="photo-video-control-tip">再添加一张图片即可生成。</small> : null}
           {videoAgentBusy === "generate" || photoRenderProgress ? <div className={`photo-video-progress ${photoRenderProgress === 100 ? "complete" : ""}`} role="status" aria-live="polite"><span style={{ width: `${photoRenderProgress}%` }} /><b>{videoProgress || "准备生成"}</b></div> : null}
           {videoAgentError ? <div className="photo-video-error" role="alert">{videoAgentError}</div> : null}
           {generatedVideoUrl ? <div className="photo-video-result">
             <video src={generatedVideoUrl} controls playsInline preload="metadata" />
-            <div><b>成片已完成</b><span>{selectedPhotoTemplate.name} · {photoRatio} · {videoDuration} 秒</span></div>
-            <a href={generatedVideoUrl} download={`素材智能成片-${selectedPhotoTemplate.name}.webm`}>下载本地成片</a>
-            <button type="button" onClick={() => openDirectorResultInViralEditor({ name: `素材智能成片-${selectedPhotoTemplate.name}.webm`, mediaUrl: generatedVideoUrl })}>进入一键网感</button>
+            <div><b>成片已完成</b><span>{selectedPhotoTemplate.name} · {selectedCommonVoice?.name || "纯画面"} · {photoRatio} · {(photoResultDuration || videoDuration).toFixed(1)} 秒</span></div>
+            <a href={generatedVideoUrl} download={`素材智能成片-${selectedPhotoTemplate.name}.mp4`}>下载 MP4 成片</a>
+            <button type="button" onClick={() => openDirectorResultInViralEditor({ name: `素材智能成片-${selectedPhotoTemplate.name}.mp4`, mediaUrl: generatedVideoUrl })}>进入一键网感</button>
           </div> : <div className={`photo-video-live-preview ratio-${photoRatio.replace(":", "-")}`}>
             {previewImage ? <img src={previewImage} alt="当前图片预览" /> : <div><ImageSquare size={34} /><b>等待添加图片</b></div>}
             <span>{selectedPhotoTemplate.name}</span>

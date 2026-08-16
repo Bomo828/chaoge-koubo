@@ -13,6 +13,14 @@ export class ChanjingError extends Error {
 type JsonRecord = Record<string, unknown>;
 let tokenCache: { value: string; expiresAt: number } | null = null;
 
+export type ChanjingCommonVoice = {
+  voiceId: string;
+  name: string;
+  auditionUrl: string;
+  gender: string;
+  language: string;
+};
+
 function upstreamMessage(payload: JsonRecord, status: number) {
   const candidate = typeof payload.msg === "string" && payload.msg.trim()
     ? payload.msg.trim()
@@ -113,6 +121,56 @@ export async function ensureChanjingBalance(requiredPoints: number) {
     throw new ChanjingError(`蝉镜余额不足：当前 ${Math.floor(balance)} 蝉豆，本次预计需要 ${required} 蝉豆。请先充值蝉豆后再生成。`, 402);
   }
   return balance;
+}
+
+function commonVoiceFromRecord(value: unknown): ChanjingCommonVoice | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as JsonRecord;
+  const voiceId = [item.id, item.audio_man, item.audio_id, item.voice_id]
+    .find((candidate) => typeof candidate === "string" || typeof candidate === "number");
+  const name = [item.name, item.audio_name, item.voice_name]
+    .find((candidate) => typeof candidate === "string");
+  if (voiceId === undefined || !name) return null;
+  const auditionUrl = [item.audition, item.audition_url, item.demo_audio, item.audio_url, item.url]
+    .find((candidate) => typeof candidate === "string" && /^https?:\/\//i.test(candidate)) || "";
+  const gender = [item.gender, item.sex].find((candidate) => typeof candidate === "string") || "";
+  const language = [item.language, item.lang].find((candidate) => typeof candidate === "string") || "中文";
+  return {
+    voiceId: String(voiceId),
+    name: String(name).trim(),
+    auditionUrl: String(auditionUrl),
+    gender: String(gender),
+    language: String(language),
+  };
+}
+
+export async function listCommonVoices(page = 1, size = 50) {
+  const safePage = Math.max(1, Math.floor(page));
+  const safeSize = Math.max(1, Math.min(50, Math.floor(size)));
+  const payload = await request(`/open/v1/list_common_audio?page=${safePage}&size=${safeSize}`, {
+    method: "GET",
+    cache: "no-store",
+  });
+  const data = payload.data && typeof payload.data === "object" ? payload.data as JsonRecord : {};
+  const list = [data.list, data.items, data.records, data.audio_list]
+    .find((candidate): candidate is unknown[] => Array.isArray(candidate)) || [];
+  const pageInfo = data.page_info && typeof data.page_info === "object" ? data.page_info as JsonRecord : {};
+  const total = Number(data.total ?? data.total_count ?? pageInfo.total ?? list.length);
+  return {
+    voices: list.map(commonVoiceFromRecord).filter((voice): voice is ChanjingCommonVoice => Boolean(voice)),
+    total: Number.isFinite(total) ? total : list.length,
+  };
+}
+
+export async function listAllCommonVoices() {
+  const first = await listCommonVoices(1, 50);
+  const voices = [...first.voices];
+  for (let page = 2; page <= 6 && voices.length < 300 && voices.length >= (page - 1) * 50; page += 1) {
+    const next = await listCommonVoices(page, 50);
+    voices.push(...next.voices);
+    if (next.voices.length < 50) break;
+  }
+  return [...new Map(voices.map((voice) => [voice.voiceId, voice])).values()];
 }
 
 async function createUploadSlot(service: "lip_sync_video" | "lip_sync_audio", fileName: string) {
@@ -286,6 +344,25 @@ export async function getSpeechTask(taskId: string) {
       ? data.errReason
       : "";
   const audioUrl = typeof full.url === "string" ? full.url : "";
+  const subtitles = Array.isArray(data.subtitles) ? data.subtitles : [];
+  const rawCaptions = subtitles.flatMap((value) => {
+    if (!value || typeof value !== "object") return [];
+    const subtitle = value as JsonRecord;
+    const text = typeof subtitle.subtitle === "string"
+      ? subtitle.subtitle.trim()
+      : typeof subtitle.text === "string"
+        ? subtitle.text.trim()
+        : "";
+    const start = Number(subtitle.start_time ?? subtitle.start ?? 0);
+    const end = Number(subtitle.end_time ?? subtitle.end ?? start);
+    if (!text || !Number.isFinite(start) || !Number.isFinite(end)) return [];
+    return [{ start: Math.max(0, start), end: Math.max(start + .04, end), text }];
+  });
+  const duration = Number(full.duration) || 0;
+  const usesMilliseconds = duration > 0 && rawCaptions.some((caption) => caption.end > duration * 10);
+  const captions = usesMilliseconds
+    ? rawCaptions.map((caption) => ({ ...caption, start: caption.start / 1000, end: caption.end / 1000 }))
+    : rawCaptions;
   const success = status === 9 && Boolean(audioUrl);
   const failed = Boolean(error);
   return {
@@ -295,7 +372,8 @@ export async function getSpeechTask(taskId: string) {
     isFinal: success || failed,
     progress: success ? "100%" : "处理中",
     audioUrl,
-    duration: Number(full.duration) || 0,
+    duration,
+    captions,
     error,
   };
 }
