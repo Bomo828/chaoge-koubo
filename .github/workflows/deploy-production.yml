@@ -113,14 +113,14 @@ jobs:
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] && git diff --quiet HEAD^ HEAD -- services/video-worker services/remotion-worker; then
+          if [[ "${{ github.event_name }}" != "workflow_dispatch" ]] && git diff --quiet HEAD^ HEAD -- services/video-worker services/remotion-worker .github/workflows/deploy-production.yml deploy/deploy-video-worker; then
             echo "No video worker changes in this release."
             exit 0
           fi
           port="${DEPLOY_PORT:-22}"
           ssh_options=(-i "$HOME/.ssh/tencent_deploy" -p "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
           package_dir="$RUNNER_TEMP/video-worker-release"
-          archive="$RUNNER_TEMP/merchant-video-worker-${RELEASE_SHA}.tar.gz"
+          remote_cache="/home/merchantdeploy/video-worker-release-cache"
           remote_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
           mkdir -p "$package_dir"
           cp -R services/video-worker/. "$package_dir/"
@@ -137,18 +137,47 @@ jobs:
           printf '%s\n' '"""Bundled platform adapters."""' \
             > "$package_dir/vendor/social_media_toolkit/platforms/__init__.py"
           # The installed server deploy command activates one atomic worker
-          # directory. Bundle Remotion beside main.py and let main.py prefer
-          # this nested, release-matched renderer over a legacy sibling copy.
+          # directory. Bundle the renderer source beside main.py, but reuse the
+          # already installed production dependencies on the server. Shipping
+          # node_modules over SCP took close to an hour on the Tencent route and
+          # caused otherwise tiny worker fixes to be cancelled before activation.
           mkdir -p "$package_dir/remotion-worker"
           rsync --archive --exclude node_modules services/remotion-worker/ "$package_dir/remotion-worker/"
-          (
-            cd "$package_dir/remotion-worker"
-            pnpm install --prod --frozen-lockfile --config.node-linker=hoisted
-          )
           printf '%s\n' "$RELEASE_SHA" > "$package_dir/RELEASE_SHA"
-          tar -czf "$archive" -C "$package_dir" .
-          scp -i "$HOME/.ssh/tencent_deploy" -P "$port" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes \
-            "$archive" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_archive}"
+          # Seed a persistent source cache from the active worker once.  The
+          # following rsync then sends only files that actually changed, which
+          # keeps template assets and licensed audio out of repeat transfers.
+          ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "mkdir -p '${remote_cache}' && if [ ! -f '${remote_cache}/requirements.txt' ]; then rsync --archive --exclude '.env' --exclude '.venv' --exclude 'data' --exclude 'remotion-worker/node_modules' /opt/merchant-studio/video-worker/ '${remote_cache}/'; fi"
+          rsync --archive --compress --checksum --delete \
+            --exclude '.env' --exclude '.venv' --exclude 'data' --exclude 'remotion-worker/node_modules' \
+            -e "ssh -i $HOME/.ssh/tencent_deploy -p $port -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes" \
+            "$package_dir/" "${DEPLOY_USER}@${DEPLOY_HOST}:${remote_cache}/"
+          ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "RELEASE_SHA='${RELEASE_SHA}' bash -s" <<'REMOTE'
+          set -euo pipefail
+          final_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
+          scratch="/home/merchantdeploy/release-cache/video-worker-${RELEASE_SHA}"
+          source_cache="/home/merchantdeploy/video-worker-release-cache"
+          current_worker="/opt/merchant-studio/video-worker"
+          cleanup() {
+            rm -rf -- "$scratch"
+          }
+          trap cleanup EXIT
+          rm -rf -- "$scratch"
+          mkdir -p "$scratch"
+          cp -a "$source_cache"/. "$scratch"/
+          test -d "$current_worker/remotion-worker/node_modules"
+          test -f "$current_worker/remotion-worker/pnpm-lock.yaml"
+          test "$(sha256sum "$scratch/remotion-worker/pnpm-lock.yaml" | awk '{print $1}')" = \
+            "$(sha256sum "$current_worker/remotion-worker/pnpm-lock.yaml" | awk '{print $1}')"
+          if ! cp -al "$current_worker/remotion-worker/node_modules" "$scratch/remotion-worker/node_modules"; then
+            rm -rf -- "$scratch/remotion-worker/node_modules"
+            cp -a "$current_worker/remotion-worker/node_modules" "$scratch/remotion-worker/node_modules"
+          fi
+          rm -f -- "$final_archive"
+          tar -czf "$final_archive" -C "$scratch" .
+          REMOTE
           if ! ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "sudo -n -l /usr/local/sbin/deploy-video-worker >/dev/null 2>&1"; then
             echo "Video worker archive is staged at ${remote_archive}."
