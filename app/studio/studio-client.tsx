@@ -173,18 +173,10 @@ type ViralTemplateSpec = {
 };
 
 const VIRAL_TEMPLATES: ViralTemplateSpec[] = [
-  { id: "clean-green", name: "轻奢白·双语", previewUrl: "https://action-public.meitudata.com/video/689d49fa781365084pBCVGVw3u9974.mp4", accent: "#f5cd3b", titleColor: "#ffffff", panel: "transparent", align: "center", titleEffect: "开场上白下黄双行毛笔标题", subtitleEffect: "短句大字幕 · 中英双语 · 语义标黄", transition: "hard-cut-punch", transitionLabel: "语义节点轻推近、左右漂移与柔光闪切", sfx: "soft", sfxLabel: "轻奢白独立音效与背景音乐池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 19 },
-  { id: "high-red", name: "高级红", previewUrl: "https://action-public.meitudata.com/video/6881a63f229982215NNFeOVoJ96101.mp4", accent: "#ffe8d9", titleColor: "#fff8ef", panel: "rgba(126,35,35,.92)", align: "left", titleEffect: "强钩子弹入", subtitleEffect: "红色重点字幕", transition: "flash", transitionLabel: "高能闪切", sfx: "impact", sfxLabel: "冲击强调音" },
-  { id: "warm-gold", name: "青绿知识·双语", previewUrl: "https://action-public.meitudata.com/video/689d4b87827624340I8IjRwLiG5755.mp4", accent: "#71efd0", titleColor: "#fffefa", panel: "transparent", align: "left", titleEffect: "左上固定双行知识标题", subtitleEffect: "打字机双语字幕 · 青绿关键词", transition: "zoom", transitionLabel: "语义节点轻推近与柔和闪切", sfx: "click", sfxLabel: "青绿知识独立音效与背景音乐池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 2 },
-  { id: "bold-yellow-white", name: "醒目黄白", previewUrl: "https://action-public.meitudata.com/video/693bcecd2740535809WJejI0Dz8630.mp4", accent: "#fff300", titleColor: "#fffdf7", panel: "transparent", align: "center", titleEffect: "顶部双行白色冲击标题", subtitleEffect: "黄白短句 · 语义标黄", transition: "flash", transitionLabel: "节奏点轻推近与柔光闪切", sfx: "bright", sfxLabel: "醒目黄白独立音效与背景音乐池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 2 },
-  { id: "viral-pulse", name: "爆点笔记", previewUrl: "", coverUrl: "/template-covers/viral-pulse-cover-v23.jpg", accent: "#ff287f", titleColor: "#fffdf8", panel: "rgba(24,20,22,.88)", align: "left", titleEffect: "玫红手写错位标题", subtitleEffect: "双排粗宋字幕 · 关键词玫红强调", transition: "hard-cut-punch", transitionLabel: "语义节点轻推近、漂移与柔光闪切", sfx: "impact", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-2", name: "柔光叙说", previewUrl: "", coverUrl: "/template-covers/template-2-cover-v23.jpg", accent: "#904565", titleColor: "#fffdfb", panel: "rgba(62,32,47,.88)", align: "right", titleEffect: "柔粉右侧双排标题", subtitleEffect: "柔粉错位字幕 · 关键词轻强调", transition: "fade", transitionLabel: "语义停顿触发柔和漂移与淡出", sfx: "soft", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-3", name: "智识卡片", previewUrl: "", coverUrl: "/template-covers/template-3-cover-v23.jpg", accent: "#ffd64f", titleColor: "#102d3d", panel: "rgba(248,251,255,.94)", align: "left", titleEffect: "黄蓝知识卡标题", subtitleEffect: "卡片式粗体字幕 · 黄蓝重点词", transition: "slide", transitionLabel: "章节节点触发卡片滑入与轻推近", sfx: "click", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-4", name: "步骤主场", previewUrl: "", coverUrl: "/template-covers/template-4-cover-v23.jpg", accent: "#ff7849", titleColor: "#fffdf7", panel: "rgba(36,27,21,.9)", align: "left", titleEffect: "橙色章节标题", subtitleEffect: "粗体步骤字幕 · 橙色关键词", transition: "slide", transitionLabel: "步骤节点触发章节切换与轻推近", sfx: "wood", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-5", name: "薄荷清言", previewUrl: "", coverUrl: "/template-covers/template-5-cover-v23.jpg", accent: "#77e6bd", titleColor: "#ffffff", panel: "transparent", align: "center", titleEffect: "薄荷留白标题", subtitleEffect: "白字薄荷重点词 · 下划线逐字呈现", transition: "fade", transitionLabel: "语义停顿触发柔和呼吸与淡入淡出", sfx: "soft", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-6", name: "深度引言", previewUrl: "", coverUrl: "/template-covers/template-6-cover-v23.jpg", accent: "#d8b36a", titleColor: "#fffaf0", panel: "rgba(82,30,48,.9)", align: "left", titleEffect: "酒红引言标题", subtitleEffect: "引言卡字幕 · 金色重点词", transition: "fade", transitionLabel: "观点停顿触发克制淡出与轻漂移", sfx: "wood", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-7", name: "橙意画报", previewUrl: "", coverUrl: "/template-covers/template-7-cover-v23.jpg", accent: "#ff5a36", titleColor: "#251b16", panel: "rgba(255,250,239,.94)", align: "left", titleEffect: "橙色分栏标题", subtitleEffect: "画报式字幕 · 橙色关键词", transition: "slide", transitionLabel: "内容节点触发分栏切换与海报式闪切", sfx: "bright", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "panel", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
-  { id: "template-8", name: "黑白观点", previewUrl: "", coverUrl: "/template-covers/template-8-cover-v23.jpg", accent: "#d8dadd", titleColor: "#ffffff", panel: "rgba(7,7,8,.72)", align: "center", titleEffect: "黑白极简标题 · 打字机进入", subtitleEffect: "白色描边字幕 · 克制关键词强调", transition: "fade", transitionLabel: "逻辑停顿触发极简淡切与轻推近", sfx: "click", sfxLabel: "独立开场、强调、转场和收尾音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 23 },
+  { id: "template-9", name: "红白双语", previewUrl: "", coverUrl: "/template-covers/template-9.jpg", accent: "#9f2538", titleColor: "#fffdf9", panel: "transparent", align: "center", titleEffect: "红白双排常驻标题", subtitleEffect: "红白双语字幕 · 关键词语义强调", transition: "fade", transitionLabel: "语义节点触发编辑式切换", sfx: "soft", sfxLabel: "模板9独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 22 },
+  { id: "template-10", name: "黄白大字双语", previewUrl: "", coverUrl: "/template-covers/template-10.jpg", accent: "#fff300", titleColor: "#fffdf8", panel: "transparent", align: "center", titleEffect: "黄白大字双排手书标题", subtitleEffect: "黄白双语字幕 · 语义大字强调", transition: "slide", transitionLabel: "语义停顿触发轻切与景别变化", sfx: "impact", sfxLabel: "模板10独占语义音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 11 },
+  { id: "template-11", name: "青白高亮双语", previewUrl: "", coverUrl: "/template-covers/template-11.jpg", accent: "#79f4e4", titleColor: "#ffffff", panel: "transparent", align: "left", titleEffect: "青白高亮常驻标题", subtitleEffect: "逐字双语字幕 · 青色关键词放大", transition: "zoom", transitionLabel: "语义节点触发克制景别切换", sfx: "click", sfxLabel: "模板11独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 13 },
+  { id: "template-12", name: "黑黄聚焦双语", previewUrl: "", coverUrl: "/template-covers/template-12.jpg", accent: "#fff000", titleColor: "#ffffff", panel: "rgba(5,5,5,.82)", align: "center", titleEffect: "黑底黄白双排常驻标题", subtitleEffect: "黑黄双语字幕 · 单次语义聚焦", transition: "zoom", transitionLabel: "语义节点景别切换与柔边聚焦", sfx: "bright", sfxLabel: "模板12独占语义音效池", overlay: "panel", titleTiming: "persistent", effectCadence: "rhythm", version: 12 },
 ];
 
 function viralTemplateById(id: string, templates: ViralTemplateSpec[] = VIRAL_TEMPLATES) {
@@ -1999,7 +1991,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralSourceFile, setViralSourceFile] = useState<File | null>(null);
   const [viralVideoPreviewUrl, setViralVideoPreviewUrl] = useState("");
   const [viralAnalyzed, setViralAnalyzed] = useState(false);
-  const [viralTemplate, setViralTemplate] = useState("clean-green");
+  const [viralTemplate, setViralTemplate] = useState("template-9");
   const [viralTemplates, setViralTemplates] = useState<ViralTemplateSpec[]>([]);
   const [viralTemplatesLoading, setViralTemplatesLoading] = useState(true);
   const [viralTemplatesError, setViralTemplatesError] = useState("");
@@ -3203,13 +3195,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     }
 
     const padding = Math.round(width * 0.055);
-    const isCleanYellowWhite = template.id === "clean-green";
-    const titleSize = Math.max(26, Math.round(width * (isCleanYellowWhite ? 0.078 : 0.08)));
-    const subtitleSize = Math.max(17, Math.round(width * (isCleanYellowWhite ? 0.052 : 0.043)));
+    const isBoldYellowWhite = template.id === "template-10";
+    const titleSize = Math.max(26, Math.round(width * (isBoldYellowWhite ? 0.078 : 0.08)));
+    const subtitleSize = Math.max(17, Math.round(width * (isBoldYellowWhite ? 0.052 : 0.043)));
     const currentCaption = content.captions.find((caption) => time >= caption.start && time < caption.end);
     const introDuration = template.titleTiming === "persistent"
       ? Math.max(1.8, duration - 0.05)
-      : isCleanYellowWhite
+      : isBoldYellowWhite
         ? Math.min(2.4, Math.max(1.8, duration - 0.05))
         : Math.min(3.2, Math.max(1.8, duration * 0.24));
     const introProgress = Math.min(1, Math.max(0, time / 0.38));
@@ -3217,7 +3209,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     context.save();
     if (time <= introDuration) {
       const title = content.title.trim() || "真实体验";
-      const forceTwoLines = isCleanYellowWhite && title.length >= 6;
+      const forceTwoLines = isBoldYellowWhite && title.length >= 6;
       const splitAt = title.length > 9 || forceTwoLines
         ? Math.max(3, Math.min(title.length - 3, Math.round(title.length / 2)))
         : title.length;
@@ -3273,7 +3265,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       context.textAlign = "center";
       context.textBaseline = "middle";
       context.font = `800 ${subtitleSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
-      const captionLineLength = isCleanYellowWhite ? 8 : 14;
+      const captionLineLength = isBoldYellowWhite ? 8 : 14;
       const captionLines = currentCaption.text.length > captionLineLength
         ? [currentCaption.text.slice(0, captionLineLength), currentCaption.text.slice(captionLineLength, captionLineLength * 2)]
         : [currentCaption.text];
@@ -3283,7 +3275,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         context.lineWidth = Math.max(4, Math.round(width * 0.011));
         context.shadowColor = "rgba(0,0,0,.55)";
         context.shadowBlur = Math.max(2, Math.round(width * 0.005));
-        const baseY = isCleanYellowWhite
+        const baseY = isBoldYellowWhite
           ? Math.round(height * 0.6)
           : height - Math.round(height * 0.095);
         captionLines.forEach((line, index) => {

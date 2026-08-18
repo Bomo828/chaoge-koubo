@@ -1,0 +1,82 @@
+{
+  "version": 12,
+  "package_contract_version": 3,
+  "id": "template-12",
+  "name": "黑黄聚焦双语",
+  "status": "approved-local",
+  "approved_at": "2026-08-18T18:04:07+08:00",
+  "style_lock": true,
+  "package_mode": "isolated",
+  "renderer_key": "template-12-black-yellow-focus-v1",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "/Users/chaoge/Downloads/818.mp4",
+  "cover": {"time_seconds": 0.8, "width": 1080, "height": 1920, "format": "jpg", "include_title": true, "include_caption": true, "path": "cover.jpg"},
+  "canvas": {"aspect_ratio": "9:16", "width": 1080, "height": 1920, "fit": "cover"},
+  "opening": {"min_seconds": 23.0, "max_seconds": 120.0, "title_mode": "persistent", "safe_top_px": 38, "title_font_size_px": 88, "title_line_gap_px": -2, "sfx": "impact"},
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 10,
+    "caption_max_seconds": 2.6,
+    "pause_split_seconds": 0.42,
+    "bilingual": true,
+    "word_highlight": true,
+    "transition_trigger": "semantic-focus-only",
+    "transition_pool": [],
+    "rhythm_interval_seconds": 99,
+    "minimum_transition_gap_seconds": 99,
+    "scene_threshold": 1,
+    "maximum_effects_per_minute": 2,
+    "camera_mode": "semantic-stepped-with-single-radial-focus",
+    "camera_scale_min": 1.0,
+    "camera_scale_max": 1.1,
+    "radial_focus_seconds": [3.2, 4.5]
+  },
+  "ending": {"min_seconds": 0.4, "max_seconds": 0.8, "mode": "source-hold"},
+  "style": {
+    "font_name": "Noto Sans SC",
+    "primary": "&H00FFFFFF",
+    "accent": "&H0000F0FF",
+    "outline": "&H00000000",
+    "title_size_ratio": 0.062,
+    "subtitle_size_ratio": 0.046,
+    "title_y_ratio": 0.02,
+    "subtitle_y_ratio": 0.622,
+    "title_animation": "soft-rise",
+    "subtitle_animation": "phrase-pop",
+    "keyword_scale": 1.12,
+    "caption_line_max_chars": 10,
+    "caption_max_width": 930,
+    "title_second_line_color": "&H0000F0FF",
+    "subtitle_english_size_ratio": 0.029
+  },
+  "audio": {
+    "preserve_source": true,
+    "music": {
+      "enabled": true,
+      "file": "music/template-12/bright-training.ogg",
+      "volume": 0.095,
+      "loop": false,
+      "ducking": "speech-safe",
+      "tracks": [
+        {"id": "template-12-bright-training", "file": "music/template-12/bright-training.ogg", "role": "training-business", "moods": ["training", "workplace", "positive"], "match_keywords": ["培训", "技能", "职场", "课程"], "volume": 0.095},
+        {"id": "template-12-soft-explainer", "file": "music/template-12/soft-explainer.ogg", "role": "calm-explainer", "moods": ["knowledge", "service", "calm"], "match_keywords": ["AI", "知识", "讲解", "基础"], "volume": 0.09},
+        {"id": "template-12-calm-service", "file": "music/template-12/calm-service.ogg", "role": "service-intro", "moods": ["service", "business", "warm"], "match_keywords": ["服务", "咨询", "了解", "老师"], "volume": 0.085}
+      ]
+    },
+    "speech_gain": 1.0,
+    "sfx_gain": 0.34,
+    "sfx": {
+      "mode": "template-owned-adaptive-pool",
+      "minimum_gap_seconds": 2.8,
+      "maximum_hits_per_minute": 10,
+      "opening_pool": ["sfx/template-12/open-impact.ogg"],
+      "accent_pool": ["sfx/template-12/caption-pop.ogg", "sfx/template-12/keyword-tick.ogg"],
+      "transition_pool": ["sfx/template-12/focus-swish.ogg"],
+      "ending_pool": ["sfx/template-12/end-confirm.ogg"]
+    }
+  },
+  "quality": {"video_codec": "h264", "crf": 18, "fps": 30, "render_concurrency": 1, "supersampling": 2, "scale_filter": "lanczos"},
+  "quality_gate": {"frame_analysis": "every-decoded-frame", "caption_text_coverage_min": 0.95, "speech_time_coverage_min": 0.94, "decoded_frame_match_required": true, "maximum_corrupt_frames": 0, "cross_template_fallback_allowed": false, "minimum_test_videos": 2},
+  "content_director": {"enabled": true, "preserve_camera": false, "camera_policy": "semantic-node-stepped-plus-single-radial-focus", "title_policy": "two-line-persistent-except-focus", "caption_policy": "semantic-bilingual-black-yellow", "audio_policy": "speech-safe-bgm-sparse-cues"}
+}

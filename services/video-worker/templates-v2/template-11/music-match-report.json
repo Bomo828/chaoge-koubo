@@ -1,0 +1,9 @@
+{
+  "template_id": "template-11",
+  "reference_music": "none",
+  "categories": [
+    {"content_node": "hook", "selected": null, "reason": "参考片无连续背景音乐，保持开场人声干净"},
+    {"content_node": "core_viewpoint", "selected": null, "reason": "参考片无连续背景音乐，避免循环感和抢人声"},
+    {"content_node": "cta", "selected": null, "reason": "参考片以人声收尾，仅允许轻结尾音效"}
+  ]
+}

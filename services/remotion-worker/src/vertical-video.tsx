@@ -36,6 +36,12 @@ const normalizeWords = (caption: CaptionCue) => {
 const kineticFontFamily = '"Songti SC", "STSong", "Noto Serif CJK SC", serif';
 const brushFontFamily = '"Merchant Brush", "Weibei SC", "Kaiti SC", "STKaiti", "Songti SC", serif';
 const englishSerifFontFamily = 'Georgia, "Times New Roman", serif';
+const editorialTitleFontFamily = '"Merchant Serif", "Songti SC", "STSong", serif';
+const editorialHumanistFontFamily = '"Merchant Humanist", "Kaiti SC", serif';
+const editorialNumberFontFamily = '"Merchant Condensed", "Arial Narrow", sans-serif';
+const template10BrushTitleFontFamily = '"Merchant Template10 Brush", "Merchant Brush", serif';
+const template11SansFontFamily = '"Merchant Template11 Sans", "Merchant Sans", sans-serif';
+const template12SansFontFamily = '"Merchant Template12 Sans", "Merchant Sans", sans-serif';
 
 let bundledFontsPromise: Promise<void> | null = null;
 
@@ -44,6 +50,12 @@ const loadBundledFonts = () => {
   bundledFontsPromise = Promise.all([
     new FontFace("Merchant Brush", `url(${staticFile("fonts/MaShanZheng-Regular.ttf")})`, {weight: "400"}).load(),
     new FontFace("Merchant Sans", `url(${staticFile("fonts/NotoSansSC-Variable.ttf")})`, {weight: "100 900"}).load(),
+    new FontFace("Merchant Serif", `url(${staticFile("fonts/template-9/NotoSerifSC-Variable.ttf")})`, {weight: "200 900"}).load(),
+    new FontFace("Merchant Humanist", `url(${staticFile("fonts/template-9/LXGWWenKai-Medium.ttf")})`, {weight: "500"}).load(),
+    new FontFace("Merchant Condensed", `url(${staticFile("fonts/template-9/Oswald-Variable.ttf")})`, {weight: "200 700"}).load(),
+    new FontFace("Merchant Template10 Brush", `url(${staticFile("fonts/template-10/WenYueHuiMoShouShu.otf")})`, {weight: "400"}).load(),
+    new FontFace("Merchant Template11 Sans", `url(${staticFile("fonts/template-11/NotoSansSC-Variable.ttf")})`, {weight: "100 900"}).load(),
+    new FontFace("Merchant Template12 Sans", `url(${staticFile("fonts/template-12/NotoSansSC-Variable.ttf")})`, {weight: "100 900"}).load(),
   ]).then((fonts) => {
     fonts.forEach((font) => {
       (document.fonts as FontFaceSet & {add: (face: FontFace) => void}).add(font);
@@ -154,7 +166,7 @@ type StudioStyle = {
 };
 
 const studioStyleFor = (rendererKey = ""): StudioStyle | null => {
-  const match = rendererKey.match(/^template-([1-8])-/);
+  const match = rendererKey.match(/^template-(\d+)-/);
   if (!match) return null;
   return {
     1: {id: 1, accent: "#ff287f", accent2: "#f3ddc7", foreground: "#fffdf8", panel: "rgba(15,10,14,.86)"},
@@ -165,6 +177,10 @@ const studioStyleFor = (rendererKey = ""): StudioStyle | null => {
     6: {id: 6, accent: "#d8b36a", accent2: "#f6ead1", foreground: "#fffaf0", panel: "rgba(47,17,28,.84)"},
     7: {id: 7, accent: "#ff5a36", accent2: "#fff1df", foreground: "#fffdf8", panel: "rgba(24,18,16,.84)"},
     8: {id: 8, accent: "#ffffff", accent2: "#bfc4ca", foreground: "#ffffff", panel: "rgba(6,6,7,.80)"},
+    9: {id: 9, accent: "#a52b26", accent2: "#f1e5dc", foreground: "#fffdf9", panel: "rgba(31,12,17,.72)"},
+    10: {id: 10, accent: "#fff300", accent2: "#fffdf8", foreground: "#fffdf8", panel: "transparent"},
+    11: {id: 11, accent: "#79f4e4", accent2: "#ffffff", foreground: "#ffffff", panel: "transparent"},
+    12: {id: 12, accent: "#fff000", accent2: "#ffffff", foreground: "#ffffff", panel: "rgba(7,7,7,.52)"},
   }[Number(match[1])] ?? null;
 };
 
@@ -184,11 +200,126 @@ const StudioOpeningTitle: React.FC<{timeline: ViralTimeline; style: StudioStyle;
     transform: `translateY(${(1 - entrance) * 28}px) scale(${.96 + entrance * .04})`,
     fontFamily,
   };
+  if (style.id === 12) {
+    const titleParts = [firstLine, headline].filter(Boolean);
+    const whiteLine = titleParts[0] ?? headline;
+    const yellowLine = titleParts[1] ?? "";
+    const whiteSize = Math.max(112, Math.min(140, 940 / Math.max(5, Array.from(whiteLine).length)));
+    const yellowSize = Math.max(118, Math.min(146, 950 / Math.max(5, Array.from(yellowLine || whiteLine).length)));
+    return <div style={{...base, top: 68, left: 36, right: 36, height: 365, transform: `translateY(${(1 - entrance) * 10}px)`, transformOrigin: "center top"}}>
+      <svg width="100%" height="365" viewBox="0 0 1008 365" textRendering="geometricPrecision" shapeRendering="geometricPrecision" style={{display: "block", overflow: "visible"}}>
+        <defs>
+          <filter id="template12-title-shadow" x="-8%" y="-10%" width="120%" height="135%">
+            <feDropShadow dx="2.5" dy="4.5" stdDeviation="1.2" floodColor="rgba(0,0,0,.92)" />
+          </filter>
+        </defs>
+        <rect x="0" y="0" width="1008" height="365" rx="0" fill={style.panel} />
+        <text x="504" y="163" textAnchor="middle" fill={style.foreground} stroke="rgba(0,0,0,.98)" strokeWidth="6.8" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={whiteSize} fontWeight="900" letterSpacing="-5.2" filter="url(#template12-title-shadow)">{whiteLine}</text>
+        {yellowLine ? <text x="504" y="318" textAnchor="middle" fill={style.accent} stroke="rgba(0,0,0,.98)" strokeWidth="7.2" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={yellowSize} fontWeight="900" letterSpacing="-5.8" filter="url(#template12-title-shadow)">{yellowLine}</text> : null}
+      </svg>
+    </div>;
+  }
+  if (style.id === 11) {
+    const titleParts = [firstLine, headline].filter(Boolean);
+    const cyanLine = titleParts[0] ?? headline;
+    const whiteLine = titleParts[1] ?? "";
+    const cyanSize = Math.max(88, Math.min(112, 760 / Math.max(5, Array.from(cyanLine).length)));
+    const whiteSize = Math.max(68, Math.min(84, 690 / Math.max(5, Array.from(whiteLine || cyanLine).length)));
+    return <div style={{...base, top: 18, left: 54, right: 46, height: 248, transform: `translateY(${(1 - entrance) * 12}px)`, transformOrigin: "left top"}}>
+      <svg width="100%" height="248" viewBox="0 0 980 248" style={{display: "block", overflow: "visible"}}>
+        <defs>
+          <filter id="template11-title-shadow" x="-10%" y="-12%" width="126%" height="145%">
+            <feDropShadow dx="3" dy="7" stdDeviation="1.8" floodColor="rgba(0,0,0,.88)" />
+          </filter>
+        </defs>
+        <text x="0" y="112" fill={style.accent} stroke="rgba(0,0,0,.94)" strokeWidth="3.2" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={cyanSize} fontWeight="900" letterSpacing="-4.2" filter="url(#template11-title-shadow)">{cyanLine}</text>
+        {whiteLine ? <text x="2" y="208" fill={style.foreground} stroke="rgba(0,0,0,.92)" strokeWidth="2.6" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={whiteSize} fontWeight="480" letterSpacing="-4" filter="url(#template11-title-shadow)">{whiteLine}</text> : null}
+      </svg>
+    </div>;
+  }
+  if (style.id === 10) {
+    const titleParts = [firstLine, headline].filter(Boolean);
+    const whiteLine = titleParts[0] ?? headline;
+    const yellowLine = titleParts[1] ?? "";
+    return <div style={{...base, top: 22, left: 28, right: 28, height: 332, textAlign: "center", transform: `translateY(${(1 - entrance) * 18}px) scale(${.975 + entrance * .025})`}}>
+      <svg width="100%" height="332" viewBox="0 0 1024 332" style={{display: "block", overflow: "visible"}}>
+        <defs>
+          <filter id="template10-brush-shadow" x="-12%" y="-18%" width="124%" height="145%">
+            <feDropShadow dx="0" dy="8" stdDeviation="3.2" floodColor="rgba(34,28,23,.62)" />
+          </filter>
+          <filter id="template10-block-shadow" x="-12%" y="-18%" width="124%" height="145%">
+            <feTurbulence type="fractalNoise" baseFrequency="0.035" numOctaves="2" seed="10" result="texture" />
+            <feDisplacementMap in="SourceGraphic" in2="texture" scale="1.2" xChannelSelector="R" yChannelSelector="G" result="roughened" />
+            <feDropShadow in="roughened" dx="0" dy="8" stdDeviation="3.6" floodColor="rgba(34,28,23,.68)" />
+          </filter>
+        </defs>
+        <text x="512" y="151" textAnchor="middle" fill={style.foreground} stroke="rgba(27,22,18,.24)" strokeWidth="1.4" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template10BrushTitleFontFamily} fontSize="154" fontWeight="400" letterSpacing="-2.8" filter="url(#template10-brush-shadow)">{whiteLine}</text>
+        {yellowLine ? <text x="512" y="272" textAnchor="middle" fill={style.accent} stroke="rgba(31,25,20,.32)" strokeWidth="2.2" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template10BrushTitleFontFamily} fontSize="138" fontWeight="400" letterSpacing="-4.8" filter="url(#template10-block-shadow)">{yellowLine}</text> : null}
+      </svg>
+    </div>;
+  }
+  if (style.id === 9) {
+    const titleParts = [firstLine, headline].filter(Boolean);
+    const mainTitle = titleParts.length > 1
+      ? [...titleParts].sort((a, b) => Array.from(b).length - Array.from(a).length)[0]
+      : headline;
+    const smallTitle = titleParts.length > 1 ? titleParts.find((item) => item !== mainTitle) ?? "" : "";
+    const headlineLength = Array.from(mainTitle).length;
+    const headlineSize = headlineLength <= 4 ? 128 : headlineLength <= 7 ? 142 : 124;
+    const titleOffset = Math.round((1 - entrance) * 24);
+    return <div style={{...base, top: 96, left: 38, right: 38, height: 300, transform: titleOffset ? `translateY(${titleOffset}px)` : "none"}}>
+      <svg
+        width="100%"
+        height="300"
+        viewBox="0 0 1004 300"
+        textRendering="geometricPrecision"
+        shapeRendering="geometricPrecision"
+        style={{display: "block", overflow: "visible", filter: "drop-shadow(3px 5px 0 rgba(21,8,9,.48))"}}
+      >
+        {smallTitle ? <text
+          x="970"
+          y="82"
+          textAnchor="end"
+          fill="rgba(255,255,255,.99)"
+          stroke={style.accent}
+          strokeWidth="4"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          strokeMiterlimit="2"
+          paintOrder="stroke fill"
+          fontFamily={editorialTitleFontFamily}
+          fontSize="78"
+          fontWeight="900"
+          letterSpacing="-4"
+        >{smallTitle}</text> : null}
+        <text
+          x="970"
+          y={smallTitle ? 232 : 166}
+          textAnchor="end"
+          fill={style.accent}
+          stroke="rgba(255,255,255,.99)"
+          strokeWidth="5.2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          strokeMiterlimit="2"
+          paintOrder="stroke fill"
+          fontFamily={editorialTitleFontFamily}
+          fontSize={headlineSize}
+          fontWeight="900"
+          letterSpacing="-8"
+        >{mainTitle}</text>
+      </svg>
+    </div>;
+  }
   if (style.id === 1) {
-    return <div style={{...base, left: titleVariant === "secondary" ? 94 : 54, right: titleVariant === "secondary" ? 54 : 92, transform: `${base.transform} rotate(${titleVariant === "secondary" ? .8 : -1.1}deg)`}}>
-      <div style={{display: "flex", flexDirection: "column", alignItems: "flex-start"}}>
-        {firstLine ? <div style={{padding: "3px 17px 9px", color: style.accent, fontFamily: brushFontFamily, fontSize: 62, lineHeight: .94, background: "rgba(10,8,10,.72)", textShadow: "0 6px 14px rgba(0,0,0,.7)"}}>{firstLine}</div> : null}
-        <div style={{alignSelf: titleVariant === "secondary" ? "flex-start" : "flex-end", marginTop: -2, padding: "9px 22px 13px", color: style.foreground, fontFamily: kineticFontFamily, fontSize: 84, lineHeight: .96, fontWeight: 950, letterSpacing: -3, background: style.panel, WebkitTextStroke: "3px #111", paintOrder: "stroke fill", boxShadow: `${titleVariant === "secondary" ? -10 : 10}px 10px 0 ${style.accent}`}}>{headline}</div>
+    const secondary = titleVariant === "secondary";
+    return <div style={{...base, left: secondary ? 72 : 54, right: secondary ? 54 : 72, transform: `${base.transform} rotate(${secondary ? .3 : -.3}deg)`}}>
+      <div style={{display: "flex", flexDirection: "column", alignItems: secondary ? "flex-start" : "flex-end"}}>
+        <div style={{position: "relative", minWidth: 620, maxWidth: 930, padding: firstLine ? "24px 30px 27px" : "21px 30px 25px", background: "rgba(12,10,12,.87)", borderLeft: secondary ? `9px solid ${style.accent}` : undefined, borderRight: secondary ? undefined : `9px solid ${style.accent}`, boxShadow: "0 16px 34px rgba(0,0,0,.32)"}}>
+          {firstLine ? <div style={{color: style.accent, fontFamily: brushFontFamily, fontSize: 55, lineHeight: .92, fontWeight: 400, letterSpacing: 1.2, WebkitTextStroke: "1.2px rgba(255,255,255,.92)", paintOrder: "stroke fill", textShadow: "0 4px 8px rgba(0,0,0,.72)"}}>{firstLine}</div> : null}
+          <div style={{marginTop: firstLine ? 8 : 0, color: style.foreground, fontFamily, fontSize: 91, lineHeight: .98, fontWeight: 900, letterSpacing: -3.6, WebkitTextStroke: "3.2px rgba(0,0,0,.98)", paintOrder: "stroke fill", textShadow: "0 5px 10px rgba(0,0,0,.56)"}}>{headline}</div>
+          <div style={{position: "absolute", left: secondary ? 28 : 120, right: secondary ? 120 : 28, bottom: -6, height: 6, background: style.accent}} />
+        </div>
       </div>
     </div>;
   }
@@ -268,18 +399,173 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const translateX = style.id === 7 ? (1 - enter) * 80 * direction : style.id === 3 ? (1 - enter) * -48 : 0;
   const rotate = style.id === 4 ? (1 - enter) * direction * 2.2 : 0;
   const panel = style.id === 3 || style.id === 6 || style.id === 7;
+  if (style.id === 12) {
+    const compactTranslation = String(caption.translation ?? "").trim();
+    const captionLines = splitCaptionLines(compact, Math.max(6, Math.min(10, timeline.theme.captionLineMaxChars ?? 9)));
+    const strong = caption.emphasis === "strong" || caption.role === "focus";
+    const plain = caption.captionStyle === "plain" || caption.captionStyle === "focus-lower";
+    const baseFontSize = strong ? 140 : 122;
+    const keywordFontSize = Math.round(baseFontSize * 1.12);
+    const svgHeight = captionLines.length * 154 + 16;
+    const captionOffset = Math.round((1 - enter) * 13);
+    const captionTop = caption.captionStyle === "focus-lower" ? 1370 : 1295;
+    return <div style={{position: "absolute", top: captionTop, left: 36, right: 36, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut * enter, transform: captionOffset ? `translateY(${captionOffset}px) scale(${.97 + enter * .03})` : "none"}}>
+      <svg width="988" height={svgHeight} viewBox={`0 0 988 ${svgHeight}`} textRendering="geometricPrecision" shapeRendering="geometricPrecision" style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "visible", filter: "drop-shadow(2px 4px 1px rgba(0,0,0,.78))"}}>
+        {captionLines.map((line, lineIndex) => {
+          const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
+          const phraseHighlighted = strong;
+          const lineCharacters = Array.from(line);
+          const characterLayer = (outer: boolean) => lineCharacters.map((character, localIndex) => {
+            const characterIndex = characterOffset + localIndex;
+            const highlighted = phraseHighlighted || (!plain && keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0));
+            return <tspan key={`${outer ? "outer" : "main"}-${character}-${characterIndex}`} fill={outer ? "transparent" : highlighted ? style.accent : style.foreground} stroke={outer ? "rgba(255,255,255,.98)" : "rgba(0,0,0,.99)"} strokeWidth={outer ? 13.5 : 8.2} paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={highlighted && !phraseHighlighted ? keywordFontSize : baseFontSize} fontWeight="900" letterSpacing={highlighted ? "-5.2" : "-4.4"}>{character}</tspan>;
+          });
+          return <React.Fragment key={`${line}-${lineIndex}`}>
+            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" fill="transparent" stroke="rgba(255,255,255,.98)" strokeWidth="13.5" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={baseFontSize} fontWeight="900" letterSpacing="-4.4">{characterLayer(true)}</text>
+            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" fill={phraseHighlighted ? style.accent : style.foreground} stroke="rgba(0,0,0,.99)" strokeWidth="8.2" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={baseFontSize} fontWeight="900" letterSpacing="-4.4">
+              {characterLayer(false)}
+            </text>
+          </React.Fragment>;
+        })}
+      </svg>
+      {compactTranslation ? <div style={{marginTop: -2, color: "rgba(255,255,255,.99)", fontFamily: "Arial, Helvetica, sans-serif", fontSize: 48, lineHeight: 1.02, fontWeight: 800, letterSpacing: -1.1, WebkitTextStroke: "2.4px rgba(0,0,0,.98)", paintOrder: "stroke fill", textShadow: "1px 3px 1px rgba(0,0,0,.78)"}}>{compactTranslation}</div> : null}
+    </div>;
+  }
+  if (style.id === 11) {
+    const compactTranslation = String(caption.translation ?? "").trim();
+    const captionLines = splitCaptionLines(compact, Math.max(8, Math.min(11, timeline.theme.captionLineMaxChars ?? 10)));
+    const baseFontSize = 106;
+    const keywordFontSize = 128;
+    const svgHeight = captionLines.length * 132 + 12;
+    return <div style={{position: "absolute", top: 1232, left: 38, right: 38, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut}}>
+      <svg width="984" height={svgHeight} viewBox={`0 0 984 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "visible", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.72))"}}>
+        {captionLines.map((line, lineIndex) => {
+          const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
+          const lineCharacters = Array.from(line);
+          return <text key={`${line}-${lineIndex}`} x="492" y={112 + lineIndex * 132} textAnchor="middle" fill={style.foreground} stroke="rgba(0,0,0,.88)" strokeWidth="2.6" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={baseFontSize} fontWeight="480" letterSpacing="-3.6">
+            {lineCharacters.map((character, localIndex) => {
+              const characterIndex = characterOffset + localIndex;
+              const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
+              const delay = Math.min(24, characterIndex * 2.4);
+              const reveal = interpolate(frame, [delay, delay + 4], [0, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
+              return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} fillOpacity={reveal} stroke="rgba(0,0,0,.92)" strokeOpacity={reveal} strokeWidth={highlighted ? 4 : 2.6} paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={highlighted ? keywordFontSize : baseFontSize} fontWeight={highlighted ? 900 : 480} letterSpacing={highlighted ? "-4.8" : "-3.6"}>{character}</tspan>;
+            })}
+          </text>;
+        })}
+      </svg>
+      {compactTranslation ? <div style={{marginTop: -6, color: "rgba(255,255,255,.98)", fontFamily: "Arial, Helvetica, sans-serif", fontSize: 44, lineHeight: 1.04, fontWeight: 500, letterSpacing: -.9, opacity: interpolate(frame, [5, 11], [0, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"}), textShadow: "-1px -1px 0 rgba(0,0,0,.9), 1px -1px 0 rgba(0,0,0,.9), -1px 1px 0 rgba(0,0,0,.9), 2px 4px 2px rgba(0,0,0,.72)"}}>{compactTranslation}</div> : null}
+    </div>;
+  }
+  if (style.id === 10) {
+    const compactTranslation = String(caption.translation ?? "").trim();
+    const captionLines = lines;
+    const baseFontSize = caption.emphasis === "strong" || caption.role === "focus" ? 76 : 72;
+    const svgHeight = captionLines.length * 89 + 12;
+    const calloutText = keyword || compact.slice(0, 6);
+    const captionOffset = Math.round((1 - enter) * 13);
+    return <>
+      {caption.sectionEmphasis && calloutText ? <div style={{position: "absolute", top: 92, left: 40, right: 40, zIndex: 4, textAlign: "center", opacity: fadeOut * enter * .72, transform: `translateY(${(1 - enter) * 16}px)`, color: "rgba(255,255,255,.88)", fontFamily: brushFontFamily, fontSize: Math.max(94, 146 - Math.max(0, Array.from(calloutText).length - 3) * 13), lineHeight: 1, fontWeight: 600, letterSpacing: 4, WebkitTextStroke: "2.2px rgba(16,12,9,.45)", paintOrder: "stroke fill", textShadow: "0 6px 13px rgba(0,0,0,.30)"}}>{calloutText}</div> : null}
+      <div style={{position: "absolute", top: 1198, left: 72, right: 72, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut * enter, transform: captionOffset ? `translateY(${captionOffset}px)` : "none"}}>
+        <svg width="936" height={svgHeight} viewBox={`0 0 936 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 896, overflow: "visible", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.58))"}}>
+          {captionLines.map((line, lineIndex) => {
+            const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
+            return <text key={`${line}-${lineIndex}`} x="468" y={74 + lineIndex * 89} textAnchor="middle" fill={style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth="4.4" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={brushFontFamily} fontSize={baseFontSize} fontWeight="600" letterSpacing=".3">
+              {Array.from(line).map((character, localIndex) => {
+                const characterIndex = characterOffset + localIndex;
+                const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
+                return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth={highlighted ? 5 : 4.4} paintOrder="stroke fill" fontFamily={highlighted ? kineticFontFamily : brushFontFamily} fontSize={highlighted ? Math.round(baseFontSize * 1.14) : baseFontSize} fontWeight={highlighted ? 950 : 600} letterSpacing={highlighted ? "-1.7" : ".3"}>{character}</tspan>;
+              })}
+            </text>;
+          })}
+        </svg>
+        {compactTranslation ? <div style={{marginTop: 2, color: "rgba(255,255,255,.97)", fontFamily: englishSerifFontFamily, fontSize: 27, lineHeight: 1.06, fontWeight: 700, letterSpacing: .1, textShadow: "-1px -1px 0 rgba(0,0,0,.78), 1px 1px 1px rgba(0,0,0,.75)"}}>{compactTranslation}</div> : null}
+      </div>
+    </>;
+  }
+  if (style.id === 9) {
+    const strong = caption.emphasis === "strong" || caption.role === "focus";
+    const compactTranslation = String(caption.translation ?? "").trim();
+    const captionLines = lines;
+    const baseFontSize = strong ? 86 : 82;
+    const keywordFontSize = Math.round(baseFontSize * 1.26);
+    const svgHeight = captionLines.length * 104 + 18;
+    const captionOffset = Math.round((1 - enter) * 14);
+    return <div style={{
+      position: "absolute",
+      top: 1192,
+      left: 76,
+      right: 64,
+      zIndex: 6,
+      display: "flex",
+      flexDirection: "column",
+      alignItems: "flex-start",
+      textAlign: "left",
+      opacity: fadeOut * enter,
+      transform: captionOffset ? `translateY(${captionOffset}px)` : "none",
+      transformOrigin: "left center",
+    }}>
+      <svg
+        width="940"
+        height={svgHeight}
+        viewBox={`0 0 940 ${svgHeight}`}
+        textRendering="geometricPrecision"
+        shapeRendering="geometricPrecision"
+        style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 850, overflow: "visible", filter: "drop-shadow(3px 4px 0 rgba(0,0,0,.55))"}}
+      >
+        {captionLines.map((line, lineIndex) => {
+          const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
+          return <text
+            key={`${line}-${lineIndex}`}
+            x="8"
+            y={92 + lineIndex * 104}
+            textAnchor="start"
+            fill={style.foreground}
+            stroke="rgba(13,9,10,.96)"
+            strokeWidth="3.2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+            strokeMiterlimit="2"
+            paintOrder="stroke fill"
+            fontFamily={editorialTitleFontFamily}
+            fontSize={baseFontSize}
+            fontWeight={strong ? 900 : 880}
+            letterSpacing="-3.6"
+          >
+            {Array.from(line).map((character, localIndex) => {
+              const characterIndex = characterOffset + localIndex;
+              const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
+              return <tspan
+                key={`${character}-${characterIndex}`}
+                fill={highlighted ? style.accent : style.foreground}
+                stroke={highlighted ? "rgba(255,255,255,.99)" : "rgba(13,9,10,.96)"}
+                strokeWidth={highlighted ? 4.2 : 3.2}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                strokeMiterlimit="2"
+                paintOrder="stroke fill"
+                fontSize={highlighted ? keywordFontSize : baseFontSize}
+                fontWeight={highlighted ? 900 : (strong ? 900 : 880)}
+                letterSpacing={highlighted ? "-4.2" : "-3.6"}
+              >{character}</tspan>;
+            })}
+          </text>;
+        })}
+      </svg>
+      {compactTranslation ? <div style={{marginTop: -1, color: "rgba(255,255,255,.98)", fontFamily: "Arial, sans-serif", fontSize: 34, lineHeight: 1.02, fontWeight: 700, letterSpacing: -.4, WebkitTextStroke: ".8px rgba(0,0,0,.92)", paintOrder: "stroke fill", textShadow: "2px 3px 0 rgba(0,0,0,.58)"}}>{compactTranslation}</div> : null}
+    </div>;
+  }
   if (style.id === 1 || style.id === 2) {
     const twoRows = splitTwoRowCaption(compact, keyword);
     return <div style={{
-      position: "absolute", top: style.id === 1 ? 1218 : 1210,
+      position: "absolute", top: style.id === 1 ? 1208 : 1210,
       left: timeline.theme.captionSafeInset ?? 82, right: timeline.theme.captionSafeInset ?? 82,
       zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center",
       opacity: fadeOut * enter,
       transform: style.id === 1
-        ? `translateY(${(1 - enter) * 24}px) rotate(${(1 - enter) * -1.6}deg) scale(${.94 + enter * .06})`
+        ? `translateY(${(1 - enter) * 18}px) scale(${.97 + enter * .03})`
         : `translateX(${(1 - enter) * 54}px) scale(${.97 + enter * .03})`,
     }}>
-      <div style={{minWidth: 650, maxWidth: timeline.theme.captionMaxWidth ?? 900, display: "flex", flexDirection: "column", gap: style.id === 1 ? 1 : 6}}>
+      <div style={{minWidth: 650, maxWidth: timeline.theme.captionMaxWidth ?? 900, display: "flex", flexDirection: "column", gap: style.id === 1 ? 7 : 6}}>
         {twoRows.map((line, lineIndex) => {
           const offset = twoRows.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
           return <div key={`${line}-${lineIndex}`} style={{
@@ -289,14 +575,14 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
             paddingRight: lineIndex === 1 ? 10 : 0,
             whiteSpace: "nowrap",
             fontFamily: style.id === 1 && lineIndex === 1 ? brushFontFamily : kineticFontFamily,
-            fontSize: style.id === 1 ? (lineIndex === 0 ? 78 : 96) : (lineIndex === 0 ? 74 : 88),
-            lineHeight: style.id === 1 ? .93 : .98,
-            fontWeight: style.id === 2 ? 850 : 950,
-            letterSpacing: -2,
+            fontSize: style.id === 1 ? (lineIndex === 0 ? 82 : 102) : (lineIndex === 0 ? 74 : 88),
+            lineHeight: style.id === 1 ? .96 : .98,
+            fontWeight: style.id === 1 && lineIndex === 1 ? 400 : style.id === 2 ? 850 : 900,
+            letterSpacing: style.id === 1 && lineIndex === 1 ? .4 : -1.8,
             color: style.id === 1 ? (lineIndex === 1 ? style.accent : style.foreground) : (lineIndex === 0 ? style.accent2 : style.foreground),
-            WebkitTextStroke: "3px rgba(0,0,0,.94)",
+            WebkitTextStroke: style.id === 1 && lineIndex === 1 ? "5px rgba(255,255,255,.98)" : "4.5px rgba(0,0,0,.96)",
             paintOrder: "stroke fill",
-            textShadow: "0 7px 16px rgba(0,0,0,.76)",
+            textShadow: style.id === 1 && lineIndex === 1 ? "3px 6px 2px rgba(0,0,0,.82)" : "0 6px 12px rgba(0,0,0,.74)",
           }}>
             {Array.from(line).map((character, localIndex) => {
               const characterIndex = offset + localIndex;
@@ -308,10 +594,12 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
                 color: highlighted ? style.accent : undefined,
                 opacity: frame >= delay ? charEnter : 0,
                 filter: style.id === 2 ? `blur(${(1 - charEnter) * 7}px)` : undefined,
-                clipPath: style.id === 1 ? `inset(${(1 - charEnter) * 58}% ${(1 - charEnter) * 42}% 0 0)` : undefined,
+                clipPath: style.id === 1 ? `inset(${(1 - charEnter) * 32}% ${(1 - charEnter) * 20}% 0 0)` : undefined,
                 transform: style.id === 1
-                  ? `translate(${(1 - charEnter) * 31}px, ${(1 - charEnter) * 22}px) scale(${.78 + charEnter * (highlighted || lineIndex === 1 ? .28 : .22)})`
+                  ? `translate(${(1 - charEnter) * 22}px, ${(1 - charEnter) * 14}px) scale(${.9 + charEnter * (highlighted || lineIndex === 1 ? .12 : .1)})`
                   : `translateX(${(1 - charEnter) * -28}px) scale(${.96 + charEnter * .04})`,
+                WebkitTextStroke: style.id === 1 && highlighted && lineIndex === 0 ? "4.5px rgba(255,255,255,.98)" : undefined,
+                paintOrder: style.id === 1 && highlighted ? "stroke fill" : undefined,
               }}>{character}</span>;
             })}
           </div>;
@@ -1462,9 +1750,23 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
   const viralPulse = timeline.theme.captionMode === "kinetic-viral-pulse";
   const softRose = timeline.theme.captionMode === "kinetic-soft-rose";
   const studioStyle = studioStyleFor(timeline.theme.rendererKey);
+  const cyanMinimal = studioStyle?.id === 11;
+  const blackYellowFocus = studioStyle?.id === 12;
+  const steppedStudioCamera = studioStyle?.id === 9 || studioStyle?.id === 10 || studioStyle?.id === 11 || blackYellowFocus;
   const activeCaptionIndex = Math.max(0, timeline.captions.findIndex((caption) => currentTime >= caption.start && currentTime < (caption.displayEnd ?? caption.end)));
   const cameraCueIndex = timeline.cameraCues?.findIndex((cue) => currentTime >= cue.start && currentTime < cue.end) ?? -1;
   const cameraCue = cameraCueIndex >= 0 ? timeline.cameraCues?.[cameraCueIndex] : undefined;
+  const focusCue = blackYellowFocus ? timeline.focusCues?.find((cue) => currentTime >= cue.start && currentTime < cue.end) : undefined;
+  const focusDuration = focusCue ? Math.max(.3, focusCue.end - focusCue.start) : 1;
+  const focusLocalTime = focusCue ? currentTime - focusCue.start : 0;
+  const focusEdge = Math.min(.28, focusDuration * .18);
+  const focusRadius = focusCue
+    ? focusLocalTime < focusEdge
+      ? interpolate(focusLocalTime, [0, focusEdge], [86, focusCue.radius ?? 31], {extrapolateLeft: "clamp", extrapolateRight: "clamp"})
+      : focusLocalTime > focusDuration - focusEdge
+        ? interpolate(focusLocalTime, [focusDuration - focusEdge, focusDuration], [focusCue.radius ?? 31, 86], {extrapolateLeft: "clamp", extrapolateRight: "clamp"})
+        : focusCue.radius ?? 31
+    : 86;
   const transitionCue = timeline.transitionCues?.find((cue) => {
     const duration = Math.max(.18, cue.duration ?? .32);
     return currentTime >= cue.start && currentTime < cue.start + duration;
@@ -1508,15 +1810,20 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
       : yellowBrush ? [1, 1.018, 1.008, 1.026][Math.floor(activeCaptionIndex / 2) % 4] : kinetic ? 1 + (activeCaptionIndex % 3) * .018 : 1;
   const automaticOrigin = ["50% 44%", "46% 42%", "54% 43%"][activeCaptionIndex % 3];
   const previousCameraCue = cameraCueIndex > 0 ? timeline.cameraCues?.[cameraCueIndex - 1] : cameraCue;
-  const cameraEaseEnd = cameraCue ? Math.min(cameraCue.end, cameraCue.start + .34) : currentTime;
-  const easedCameraScale = viralPulse && cameraCue
-    ? interpolate(
+  const semanticPairCamera = studioStyle?.id === 1;
+  const cameraEaseEnd = cameraCue ? Math.min(cameraCue.end, cameraCue.start + (semanticPairCamera ? .46 : .34)) : currentTime;
+  const easedCameraScale = steppedStudioCamera && cameraCue
+    ? cameraCue.scale
+    : cyanMinimal
+    ? 1
+    : (viralPulse || semanticPairCamera) && cameraCue
+      ? interpolate(
       currentTime,
       [cameraCue.start, Math.max(cameraCue.start + .001, cameraEaseEnd)],
       [previousCameraCue?.scale ?? cameraCue.scale, cameraCue.scale],
       {extrapolateLeft: "clamp", extrapolateRight: "clamp"},
     )
-    : cameraCue?.scale ?? automaticScale;
+      : cameraCue?.scale ?? automaticScale;
   const kineticCut = kinetic && !yellowBrush
     ? timeline.captions.reduce((maximum, caption, index) => {
       if (index === 0) return maximum;
@@ -1539,11 +1846,17 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
     ? 1
     : interpolate(frame, [0, 7, durationInFrames - 18, durationInFrames - 1], [0, 1, 1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
   return (
-    <AbsoluteFill style={{overflow: "hidden", background: timeline.theme.background, opacity: fade}}>
+    <AbsoluteFill style={{overflow: "hidden", background: blackYellowFocus ? "#000" : timeline.theme.background, opacity: fade}}>
       <AbsoluteFill style={{
-        transform: `scale(${(easedCameraScale + punch * .045 + kineticCut * .028) * transitionScale}) translateX(${transitionShift + editorialCutShift}%) rotate(${transitionRotation}deg)`,
+        transform: cyanMinimal && !cameraCue
+          ? "scale(1)"
+          : steppedStudioCamera
+          ? `scale(${easedCameraScale})`
+          : `scale(${(easedCameraScale + punch * .045 + kineticCut * .028) * transitionScale}) translateX(${transitionShift + editorialCutShift}%) rotate(${transitionRotation}deg)`,
         transformOrigin: cameraCue?.origin ?? automaticOrigin,
-        filter: `blur(${transitionBlur}px) contrast(${mintKnowledge ? 1.01 + punch * .02 : 1.02 + punch * .04 + kineticCut * .025}) saturate(${mintKnowledge ? .98 + punch * .03 : yellowBrush ? 1.0 + punch * .04 : 1.02 + punch * .08})`,
+        filter: steppedStudioCamera ? "none" : cyanMinimal ? "none" : `blur(${transitionBlur}px) contrast(${mintKnowledge ? 1.01 + punch * .02 : 1.02 + punch * .04 + kineticCut * .025}) saturate(${mintKnowledge ? .98 + punch * .03 : yellowBrush ? 1.0 + punch * .04 : 1.02 + punch * .08})`,
+        WebkitMaskImage: focusCue ? `radial-gradient(ellipse ${focusRadius * 1.1}% ${focusRadius * .87}% at ${focusCue.x ?? 50}% ${focusCue.y ?? 51}%, #000 0%, #000 91%, rgba(0,0,0,.94) 95%, transparent 100%)` : undefined,
+        maskImage: focusCue ? `radial-gradient(ellipse ${focusRadius * 1.1}% ${focusRadius * .87}% at ${focusCue.x ?? 50}% ${focusCue.y ?? 51}%, #000 0%, #000 91%, rgba(0,0,0,.94) 95%, transparent 100%)` : undefined,
       }}>
         <OffthreadVideo
           src={staticFile(timeline.sourceFile)}
@@ -1577,8 +1890,8 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
           mixBlendMode: "screen",
         }} />
       ) : null}
-      <AbsoluteFill style={{background: "linear-gradient(180deg,rgba(0,0,0,.2) 0%,transparent 22%,transparent 66%,rgba(0,0,0,.28) 100%)"}} />
-      <OpeningTitle timeline={timeline} />
+      <AbsoluteFill style={{background: cyanMinimal ? "linear-gradient(180deg,rgba(0,0,0,.06) 0%,transparent 28%,transparent 72%,rgba(0,0,0,.08) 100%)" : "linear-gradient(180deg,rgba(0,0,0,.2) 0%,transparent 22%,transparent 66%,rgba(0,0,0,.28) 100%)"}} />
+      {!focusCue ? <OpeningTitle timeline={timeline} /> : null}
       {timeline.captions.map((caption, index) => {
         const from = secondsToFrames(caption.start, fps);
         const duration = Math.max(1, secondsToFrames((caption.displayEnd ?? caption.end) - caption.start, fps));
@@ -1600,15 +1913,20 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
       {timeline.bgmFile ? (
         <Audio
           src={staticFile(timeline.bgmFile)}
-          loop
+          loop={timeline.bgmLoop ?? (studioStyle?.id !== 9)}
           volume={(audioFrame) => {
             const fadeFrames = Math.max(1, Math.round(fps * .8));
-            return interpolate(
+            const seconds = audioFrame / fps;
+            const speaking = timeline.captions.some((caption) => seconds >= caption.start && seconds <= caption.end);
+            const speechSafe = timeline.bgmVolume ?? .115;
+            const phraseGapLift = Math.min(.18, speechSafe * 1.18);
+            const envelope = interpolate(
               audioFrame,
               [0, fadeFrames, durationInFrames - fadeFrames, durationInFrames - 1],
-              [0, timeline.bgmVolume ?? .055, timeline.bgmVolume ?? .055, 0],
+              [0, 1, 1, 0],
               {extrapolateLeft: "clamp", extrapolateRight: "clamp"},
             );
+            return envelope * (speaking ? speechSafe : phraseGapLift);
           }}
         />
       ) : null}

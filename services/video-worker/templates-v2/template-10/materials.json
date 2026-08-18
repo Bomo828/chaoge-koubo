@@ -1,0 +1,22 @@
+{
+  "schema_version": 3,
+  "template_id": "template-10",
+  "scope": "template-owned-only",
+  "cross_template_fallback": false,
+  "assets": [
+    {"id":"template-10-huimo-title","type":"font","file":"fonts/template-10/WenYueHuiMoShouShu.otf","sha256":"0cbb4400ac24977d50d8df71efd3a20f55efbf88b13ccc8643e62b0b7c4bdcc2","source":"文悦官网/文悦挥墨手书 7.004","license":"用户指定效果优先，作为模板10固定标题字体"},
+    {"id":"template-10-easy-minimal","type":"bgm","file":"music/template-10/easy-minimal.mp3","sha256":"bf5afd2d1121f96fd6c1cd8ac314efdd9ba56034f1df1fdc2b49a240fb1659a9","duration_seconds":148.402,"source":"BGM背景纯音乐素材配音包/简单而轻松的最小环境22.mp3","license":"用户提供并确认可商用"},
+    {"id":"template-10-elegant-science","type":"bgm","file":"music/template-10/elegant-science.mp3","sha256":"e332ec787dd3dc5762589ffe05a214c5074c3b7a270fc12a89f2bfdb55cbe461","duration_seconds":76.042,"source":"BGM背景纯音乐素材配音包/优雅的环境k科学.mp3","license":"用户提供并确认可商用"},
+    {"id":"template-10-morning-acoustic","type":"bgm","file":"music/template-10/morning-acoustic.mp3","sha256":"9a94a229fdedc9cb86c44bddd3565566ff828317cf0498c163aa3894838fcca0","duration_seconds":233.064,"source":"BGM背景纯音乐素材配音包/晨间g花园 - Acoustic Chill.mp3","license":"用户提供并确认可商用"},
+    {"id":"template-10-tender-piano","type":"bgm","file":"music/template-10/tender-piano.mp3","sha256":"882fbdd9adb55febbe2dbe21a5e08da4b8b0617bb9af9158fed5a292c55d33bd","duration_seconds":176.927,"source":"BGM背景纯音乐素材配音包/po青涩的轻的希望的温柔钢琴.mp3","license":"用户提供并确认可商用"},
+    {"id":"template-10-opening-impact","type":"sfx","file":"sfx/template-10/opening-impact.wav","sha256":"6e443b43a0b73303c6bee8d7d945466bb88d018369731cb7eebd270f15767c6a","duration_seconds":1.235,"source":"A080/a080-ip-impact-04","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-reversal-soft","type":"sfx","file":"sfx/template-10/reversal-soft.wav","sha256":"a8a4907ae6ae0ef8fa464c600f4edec84439a218b3eb09a76ffb334da37f0637","duration_seconds":0.915,"source":"A080/emotion-24","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-viewpoint-soft","type":"sfx","file":"sfx/template-10/viewpoint-soft.wav","sha256":"eb24a64b1a779956fa3617fffef948466aaadfd2cb14d4b85565fdaf5945982e","duration_seconds":0.695,"source":"A080/emotion-25","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-number-chime","type":"sfx","file":"sfx/template-10/number-chime.wav","sha256":"f48a19f03e8debb65341ee530cc70c7d0c1a4c7155924fc8624473b6b46e6992","duration_seconds":0.635,"source":"A080/emotion-16","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-step-tick","type":"sfx","file":"sfx/template-10/step-tick.wav","sha256":"fb904fe90b1b8e898767569caa368761416c5771b8a5898d25f2035b1fd7ad0e","duration_seconds":0.435,"source":"A080/emotion-14","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-keyword-tick","type":"sfx","file":"sfx/template-10/keyword-tick.wav","sha256":"d510b668c8f41602e992fbcadeb1a30d653c255c8b419d32fabb3919507bb338","duration_seconds":0.315,"source":"A080/emotion-30","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-brand-reveal","type":"sfx","file":"sfx/template-10/brand-reveal.wav","sha256":"866f56876a2ef28edcad7c4a4fdd7d59f1304e7210cbf0c7b874ac93869ae91e","duration_seconds":1.015,"source":"A080/emotion-37","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-ending-confirm","type":"sfx","file":"sfx/template-10/ending-confirm.wav","sha256":"dd99a8afeea38f3c0f1bb362811ac6ea34235f43386c9c19de853ee336cc6367","duration_seconds":1.208,"source":"A080/emotion-54","license":"用户于2026-08-12确认A080素材可商用"},
+    {"id":"template-10-transition-air","type":"sfx","file":"sfx/template-10/transition-air.wav","sha256":"0e35200d0ca49a03bd128132a29a162e6980ab47e0e1b3e218fc66a341de1c8a","duration_seconds":1.575,"source":"A080/atmosphere-02","license":"用户于2026-08-12确认A080素材可商用"}
+  ]
+}

@@ -1,0 +1,108 @@
+{
+  "schema_version": 3,
+  "template_id": "template-9",
+  "display_name": "红白双语",
+  "ownership": "template-exclusive",
+  "caption_materials": [
+    {
+      "id": "red-white-editorial-stack",
+      "palette": ["#fffdf9", "#9f2538", "#f1e5dc"],
+      "motion": "语义组内逐条进入、左右错落、红色重点词"
+    }
+  ],
+  "fonts": [
+    {
+      "file": "fonts/template-9/NotoSerifSC-Variable.ttf",
+      "family": "Noto Serif SC",
+      "role": "标题与章节主标题",
+      "license": "SIL Open Font License 1.1",
+      "source_manifest": "fonts/template-9/font-sources.json"
+    },
+    {
+      "file": "fonts/template-9/LXGWWenKai-Medium.ttf",
+      "family": "LXGW WenKai",
+      "role": "人物口吻、引用与亲和短句",
+      "license": "SIL Open Font License 1.1",
+      "source_manifest": "fonts/template-9/font-sources.json"
+    },
+    {
+      "file": "fonts/template-9/Oswald-Variable.ttf",
+      "family": "Oswald",
+      "role": "数字、英文与序号",
+      "license": "SIL Open Font License 1.1",
+      "source_manifest": "fonts/template-9/font-sources.json"
+    }
+  ],
+  "music": [
+    {
+      "file": "music/template-9/calm-piano-003.mp3",
+      "sha256": "3817b88ad9f011169e60c80c7fcbe6baa6aa0a36971731e6164a3f5eb391243b",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/短视频热门配乐6000/2020钢琴专场/2020钢琴专场（003）.mp3",
+      "role": "平稳、叙事、知识口播",
+      "speech_safe_volume": 0.115
+    },
+    {
+      "file": "music/template-9/mellow-puzzler.mp3",
+      "sha256": "11a0a5c1074caa34fe742a4c37a2918eb244732a4cd0c8f037974f4299508582",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/2.情绪分类纯音乐1500首/益智类_思考中_明朗的/Mellow-Puzzler.mp3",
+      "role": "AI、工具、效率与步骤类口播",
+      "speech_safe_volume": 0.12
+    },
+    {
+      "file": "music/template-9/corporate-soft.mp3",
+      "sha256": "d2c9ae846753420815d13de9eb6b78ed407d59f29095e1942471fcdefe392e40",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/2.情绪分类纯音乐1500首/放松_愉悦_轻快/企业优雅温柔光滑的背景.mp3",
+      "role": "企业、品牌、团队与服务类口播",
+      "speech_safe_volume": 0.115
+    },
+    {
+      "file": "music/template-9/perfect-picture-no-drums.mp3",
+      "sha256": "b911f16bcbf7792a81cfda0a4104597d2eef7c57509a34376c537c0c06678082",
+      "license": "用户素材包商用授权声明",
+      "source": "BGM背景纯音乐素材配音包/2.情绪分类纯音乐1500首/放松_愉悦_轻快/完美画面-无鼓.mp3",
+      "role": "案例、环境、体验与生活分享类口播",
+      "speech_safe_volume": 0.11
+    }
+  ],
+  "sfx": [
+    "sfx/template-9/soft-pop.wav",
+    "sfx/template-9/soft-blip.wav",
+    "sfx/template-9/soft-swish.wav",
+    "sfx/template-9/soft-pop-echo.wav",
+    "sfx/template-9/semantic-pop.wav",
+    "sfx/template-9/semantic-water-drop.wav",
+    "sfx/template-9/semantic-click.wav",
+    "sfx/template-9/semantic-bell.wav"
+  ],
+  "sfx_sources": [
+    {
+      "file": "sfx/template-9/semantic-pop.wav",
+      "sha256": "f3c1adb104fc34a3d306eabcc249980ca90ce19d1994d04d3fe6307160b5d747",
+      "role": "开场钩子与轻强调",
+      "source": "A080 商用素材包/MG动画音效合集02/popnew01.wav"
+    },
+    {
+      "file": "sfx/template-9/semantic-water-drop.wav",
+      "sha256": "f629ac3f9059d883b8dc1068eec4d0e89944aaaf83a3254db110654afeb05d57",
+      "role": "反差、观点确认与轻提示",
+      "source": "A080 商用素材包/其他收集的音效/水滴.WAV"
+    },
+    {
+      "file": "sfx/template-9/semantic-click.wav",
+      "sha256": "ec1bbc0b8a1aaa3439fea2f7610708bac09465b489f7ddc1729782c7d7f03220",
+      "role": "步骤与操作节点",
+      "source": "A080 商用素材包/MG动画音效合集02/clicksharp1.wav"
+    },
+    {
+      "file": "sfx/template-9/semantic-bell.wav",
+      "sha256": "4bceb508eb894cbe05bea0a371641deeee960fa2ad3ba594adb6156db6500c30",
+      "role": "数字利益点与行动号召",
+      "source": "A080 商用素材包/MG动画音效合集02/bell01.wav"
+    }
+  ],
+  "license_record": "licenses/bgm-commercial-pack-user-statement.txt",
+  "rule": "Only template-9 owned namespaces may be selected."
+}

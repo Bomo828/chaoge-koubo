@@ -27,6 +27,10 @@ export type CaptionCue = {
   role?: "anchor" | "focus";
   sectionEmphasis?: boolean;
   layout?: "center" | "split" | "stack-left" | "stack-right" | "impact";
+  blockId?: number;
+  blockSlot?: number;
+  blockSize?: number;
+  emphasis?: "normal" | "strong";
   animation?: "pop" | "scatter" | "merge" | "slide-up" | "impact" | "fade-rise" | "word-reveal" | "spark-emphasis" | "steady" | "hook-slam" | "keyword-hit" | "number-count" | "reversal-swap" | "step-card" | "conclusion-stamp" | "brand-tag" | "cta-push";
 };
 
@@ -35,6 +39,15 @@ export type CameraCue = {
   end: number;
   scale: number;
   origin?: string;
+};
+
+export type FocusCue = {
+  start: number;
+  end: number;
+  style: "radial-spotlight";
+  radius?: number;
+  x?: number;
+  y?: number;
 };
 
 export type TransitionCue = {
@@ -98,6 +111,7 @@ export type ViralTimeline = {
   bgmFile?: string;
   bgmTrackId?: string;
   bgmVolume?: number;
+  bgmLoop?: boolean;
   sfxFile?: string;
   sfxVolume?: number;
   sfxCues?: SfxCue[];
@@ -108,6 +122,7 @@ export type ViralTimeline = {
   coverTime?: number;
   captions: CaptionCue[];
   cameraCues?: CameraCue[];
+  focusCues?: FocusCue[];
   transitionCues?: TransitionCue[];
   chapters: ChapterCue[];
   cards: InfoCardCue[];

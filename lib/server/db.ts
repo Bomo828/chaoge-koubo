@@ -285,20 +285,17 @@ function initialize(db: DatabaseSync) {
     );
   }
 
-  // These were early visual demos rather than renderer-backed template
-  // packages. Keep the records for administrators, but do not expose them in
-  // the member catalog now that the four validated packages are available.
+  // Keep member and admin catalogs aligned with the four approved packages.
   db.prepare(`
-    UPDATE templates
-    SET status = 'archived', updated_at = ?
-    WHERE id IN (
-      'tpl_viral_soft_white',
-      'tpl_viral_brand_card',
-      'tpl_viral_bold_yellow',
-      'tpl_viral_classic_blue',
-      'tpl_viral_warm_brown'
-    )
-  `).run(now);
+    DELETE FROM templates
+    WHERE category = 'viral_video'
+      AND id NOT IN (
+        'tpl_viral_template_9',
+        'tpl_viral_template_10',
+        'tpl_viral_template_11',
+        'tpl_viral_template_12'
+      )
+  `).run();
 }
 
 export function getDatabase() {

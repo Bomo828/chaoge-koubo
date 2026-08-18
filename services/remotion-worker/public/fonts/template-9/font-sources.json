@@ -1,0 +1,59 @@
+{
+  "template_id": "template-9",
+  "package_mode": "isolated",
+  "fonts": [
+    {
+      "family": "Noto Serif SC",
+      "file": "fonts/template-9/NotoSerifSC-Variable.ttf",
+      "role": "editorial-title",
+      "sha256": "050080d9255a86808f2945bffac582b31ef32bc36411ce29563b4961670c66f9",
+      "version_source": "google/fonts main 2026-08-16",
+      "license": "SIL Open Font License 1.1",
+      "license_file": "fonts/template-9/licenses/NotoSerifSC-OFL.txt",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/notoserifsc"
+    },
+    {
+      "family": "Smiley Sans",
+      "file": "fonts/template-9/SmileySans-Oblique.ttf",
+      "role": "rejected-after-local-review",
+      "active": false,
+      "sha256": "b447d7e781f08bc95c4c9f23ba71ed2b8ebb639aa7184485c71c4ca5afcd25c4",
+      "version_source": "v2.0.1",
+      "license": "SIL Open Font License 1.1",
+      "license_file": "fonts/template-9/licenses/SmileySans-OFL.txt",
+      "source_url": "https://github.com/atelier-anchor/smiley-sans/releases/tag/v2.0.1"
+    },
+    {
+      "family": "LXGW WenKai",
+      "file": "fonts/template-9/LXGWWenKai-Medium.ttf",
+      "role": "humanist-quote",
+      "sha256": "d4bdeb38a39151d74d084cba5090f8cb7d20bf83eedb78c35939ae70b9f4e3f6",
+      "version_source": "v1.522",
+      "license": "SIL Open Font License 1.1",
+      "license_file": "fonts/template-9/licenses/LXGWWenKai-OFL.txt",
+      "source_url": "https://github.com/lxgw/LxgwWenKai/releases/tag/v1.522"
+    },
+    {
+      "family": "Oswald",
+      "file": "fonts/template-9/Oswald-Variable.ttf",
+      "role": "latin-number-condensed",
+      "sha256": "5b38c246e255a12f5712d640d56bcced0472466fc68983d2d0410ec0457c2817",
+      "version_source": "google/fonts main 2026-08-16",
+      "license": "SIL Open Font License 1.1",
+      "license_file": "fonts/template-9/licenses/Oswald-OFL.txt",
+      "source_url": "https://github.com/google/fonts/tree/main/ofl/oswald"
+    }
+  ],
+  "shared_fonts": [
+    {
+      "family": "Noto Sans SC",
+      "file": "fonts/NotoSansSC-Variable.ttf",
+      "role": "body-caption"
+    },
+    {
+      "family": "Ma Shan Zheng",
+      "file": "fonts/MaShanZheng-Regular.ttf",
+      "role": "brush-accent"
+    }
+  ]
+}

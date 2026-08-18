@@ -36,6 +36,9 @@ const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chro
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || (existsSync(systemChrome) ? systemChrome : null);
 const fps = Number(timeline.fps) || 30;
 const durationInFrames = Math.max(1, Math.ceil((Number(timeline.duration) || 1) * fps));
+const supersample = Math.min(2, Math.max(1, Number(process.env.REMOTION_SUPERSAMPLE || 2)));
+const outputWidth = 1080;
+const outputHeight = 1920;
 const bundledUrl = await bundle({
   entryPoint: path.join(serviceDir, "src", "index.ts"),
   publicDir: manifestDir,
@@ -58,11 +61,12 @@ const selected = await selectComposition({
 });
 
 await renderMedia({
-  composition: {...selected, fps, durationInFrames, width: 1080, height: 1920},
+  composition: {...selected, fps, durationInFrames, width: outputWidth, height: outputHeight},
   serveUrl,
   port: Number(process.env.REMOTION_PORT || 32123),
   codec: "h264",
   audioCodec: "aac",
+  imageFormat: "png",
   outputLocation: outputPath,
   inputProps: {timeline},
   browserExecutable,
@@ -72,11 +76,32 @@ await renderMedia({
   // for deterministic frame-by-frame output; operators may raise it after a
   // clean validation render.
   concurrency: Math.max(1, Number(process.env.REMOTION_CONCURRENCY || 1)),
-  // Talking-head footage with burned-in captions stays crisp at CRF 22 while
-  // producing substantially smaller files than the previous CRF 20 export.
-  crf: Math.min(30, Math.max(16, Number(process.env.REMOTION_CRF || 22))),
+  // High-contrast Chinese glyphs and white outlines need a substantially
+  // cleaner master than ordinary talking-head footage. Render at 2x and let
+  // the stitcher downsample with Lanczos for stable edge antialiasing.
+  scale: supersample,
+  crf: Math.min(22, Math.max(8, Number(process.env.REMOTION_CRF || 10))),
+  x264Preset: "slow",
   audioBitrate: process.env.REMOTION_AUDIO_BITRATE || "160k",
   pixelFormat: "yuv420p",
+  colorSpace: "bt709",
+  ffmpegOverride: ({type, args}) => {
+    if (type !== "stitcher") return args;
+    const output = args.at(-1);
+    const baseArgs = args.slice(0, -1);
+    const scaleArgs = supersample > 1
+      ? ["-vf", `scale=${outputWidth}:${outputHeight}:flags=lanczos+accurate_rnd+full_chroma_int`]
+      : [];
+    return [
+      ...baseArgs,
+      ...scaleArgs,
+      "-color_range", "tv",
+      "-colorspace", "bt709",
+      "-color_primaries", "bt709",
+      "-color_trc", "bt709",
+      output,
+    ];
+  },
   chromiumOptions: {enableMultiProcessOnLinux: true},
 });
 

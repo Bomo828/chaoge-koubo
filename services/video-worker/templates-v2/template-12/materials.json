@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "template_id": "template-12",
+  "ownership": "template-exclusive",
+  "fonts": [{"id": "template12-sans", "file": "fonts/template-12/NotoSansSC-Variable.ttf", "role": "title-caption-cjk", "source": "Noto Sans SC"}],
+  "music": [
+    {"id": "template-12-bright-training", "file": "music/template-12/bright-training.ogg", "role": "training-business", "source": "BGM背景纯音乐素材配音包 / 商用素材"},
+    {"id": "template-12-soft-explainer", "file": "music/template-12/soft-explainer.ogg", "role": "calm-explainer", "source": "BGM背景纯音乐素材配音包 / 商用素材"},
+    {"id": "template-12-calm-service", "file": "music/template-12/calm-service.ogg", "role": "service-intro", "source": "BGM背景纯音乐素材配音包 / 商用素材"}
+  ],
+  "sfx": [
+    {"id": "open-impact", "file": "sfx/template-12/open-impact.ogg", "role": "opening", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "caption-pop", "file": "sfx/template-12/caption-pop.ogg", "role": "caption", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "keyword-tick", "file": "sfx/template-12/keyword-tick.ogg", "role": "keyword", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "focus-swish", "file": "sfx/template-12/focus-swish.ogg", "role": "radial-focus", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "end-confirm", "file": "sfx/template-12/end-confirm.ogg", "role": "ending", "source": "A080 自用IP剪辑高级感常用音效"}
+  ],
+  "rule": "Template 12 may only select assets in its own font, music and SFX namespaces. Cross-template runtime fallback is forbidden."
+}

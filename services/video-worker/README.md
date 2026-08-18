@@ -39,7 +39,7 @@
 templates-v2/<template-id>/template.json
 ```
 
-当前 `clean-green` 已在本地升级为 Template V19 独立模板；云端仍保持原版本，待明确确认部署后再同步。其余旧模板仍兼容运行，可逐个通过蒸馏工具升级。
+当前正式模板库只包含 `template-9`、`template-10`、`template-11`、`template-12` 四套用户确认定版的独立模板包。
 
 模板注册表位于 `template-registry.json`。部署后网页通过 `/v1/templates` 自动读取模板，
 不再依赖前端硬编码。若把注册表上传到腾讯云 COS，可配置：
@@ -50,8 +50,8 @@ VIDEO_TEMPLATE_REGISTRY_CACHE_SECONDS=300
 ```
 
 服务每 5 分钟刷新一次；远端不可用时自动保留最近一次成功结果，并回退到部署包内的
-`clean-green`。该模板从 5 首 CC0 完整背景音乐中按标题和口播内容匹配，并携带模板专属
-标题、字幕、转场、音效和导出质量规则；禁止跨模板素材兜底。
+`template-9`。四套模板分别携带自己的标题、字幕、转场、音效、背景音乐和导出质量规则，
+禁止跨模板素材兜底。
 
 ## 本地启动
 
@@ -81,7 +81,7 @@ http://127.0.0.1:8790/health
 
 ## 腾讯云部署
 
-当前正式目录包含原有 4 套网感模板与新增 8 套模板，共 12 套。生产发布由
+当前正式目录只包含模板9、10、11、12，共 4 套。生产发布由
 `.github/workflows/deploy-production.yml` 将 Python 服务、模板配置、Remotion 渲染器、
 字体、背景音乐和音效合并为一个原子运行包，避免网页目录与实际成片服务版本不一致。
 
@@ -118,8 +118,8 @@ TENCENT_ASR_ENGINE_TYPE=16k_zh_en
 ```text
 GET /video-worker/health
 GET /video-worker/v1/templates
-GET /video-worker/v1/templates/clean-green
+GET /video-worker/v1/templates/template-9
 GET /video-worker/v1/template-registry
 ```
 
-健康检查中的 `template_v2_count` 必须大于 0；本地模板列表中的 `clean-green.version` 应为 `19`。
+健康检查中的 `template_v2_count` 必须等于 4；模板列表只能返回 `template-9` 至 `template-12`。

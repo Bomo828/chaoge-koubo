@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "template_id": "template-12",
+  "transitions": [],
+  "dedicated_effects": [
+    {"style": "radial-spotlight", "trigger": "single-contiguous-example-step-cluster", "duration_seconds": [3.2, 4.5], "radius_percent": 31, "position": [50, 52], "edge": "soft"}
+  ]
+}

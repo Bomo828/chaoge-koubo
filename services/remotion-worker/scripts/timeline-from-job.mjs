@@ -79,13 +79,13 @@ const timeline = {
   bgmFile: "music/simple_loop.ogg",
   bgmVolume: 0.035,
   sfxCues: [
-    {start: 0.08, file: "sfx/light-luxury-local/swish01.ogg", volume: 0.2, playbackRate: 0.96},
+    {start: 0.08, file: "sfx/template-9/semantic-pop.wav", volume: 0.2, playbackRate: 0.96},
     ...styledCaptions.filter((_, index) => index > 0 && index % 4 === 0).slice(0, 4).map((caption, index) => ({
       start: Number(caption.start),
-      file: `sfx/light-luxury-local/${index % 2 ? "taphigh01" : "click-up01"}.ogg`,
+      file: `sfx/template-9/${index % 2 ? "semantic-water-drop.wav" : "semantic-click.wav"}`,
       volume: 0.11,
     })),
-    {start: Math.max(0, duration - .72), file: "sfx/light-luxury-local/bell02.ogg", volume: 0.17},
+    {start: Math.max(0, duration - .72), file: "sfx/template-9/semantic-bell.wav", volume: 0.17},
   ],
   duration,
   fps: 30,

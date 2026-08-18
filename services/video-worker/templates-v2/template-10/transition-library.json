@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "template_id": "template-10",
+  "policy": "semantic-only",
+  "minimum_gap_seconds": 7.0,
+  "maximum_effects_per_minute": 4,
+  "transitions": [
+    {"id":"editorial-cut","duration":0.18,"intensity":0.10,"nodes":["pain_reversal"]},
+    {"id":"drift-left","duration":0.22,"intensity":0.08,"nodes":["brand_entity","example_step"]},
+    {"id":"soft-flash","duration":0.18,"intensity":0.08,"nodes":["cta"]}
+  ],
+  "forbidden": ["continuous-zoom", "random-transition", "transition-on-every-caption"]
+}

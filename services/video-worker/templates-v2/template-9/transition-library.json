@@ -1,0 +1,10 @@
+{
+  "schema_version": 2,
+  "template_id": "template-9",
+  "items": [
+    {"style": "editorial-cut", "duration": 0.18, "intensity": 0.1, "nodes": ["pain_reversal"]},
+    {"style": "editorial-wipe", "duration": 0.2, "intensity": 0.08, "nodes": ["core_viewpoint"]},
+    {"style": "soft-flash", "duration": 0.18, "intensity": 0.08, "nodes": ["cta"]}
+  ],
+  "rule": "取消规律性软推近；只在反差、核心观点、行动号召或真实场景变化时使用低强度编辑切换。"
+}

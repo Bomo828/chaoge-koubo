@@ -106,14 +106,14 @@ const DEMO_ACCOUNT: MarketAccount = {
 const PAGE_LOADED_AT = Date.now();
 
 const DEMO_VIDEOS: MarketVideo[] = [
-  { id: "v1", title: "门店短视频开场，前三秒一定要说清这件事", cover: "/template-covers/viral-pulse-cover-v23.jpg", published: "今天 11:26", duration: "00:38", plays: 286_000, likes: 18_600, comments: 1_238, shares: 3_409, collects: 7_611, growth: 42, recent: true },
-  { id: "v2", title: "同样的产品，为什么别人的画面更有成交感", cover: "/template-covers/template-2-cover-v23.jpg", published: "昨天 19:42", duration: "00:52", plays: 168_000, likes: 9_842, comments: 684, shares: 1_932, collects: 5_107, growth: 31, recent: true },
-  { id: "v3", title: "把一个卖点拆成三条内容，账号就有连续性", cover: "/template-covers/template-3-cover-v23.jpg", published: "08月12日", duration: "01:06", plays: 92_400, likes: 6_218, comments: 510, shares: 862, collects: 3_287, growth: 18 },
-  { id: "v4", title: "本地生活账号常用的四种镜头推进方式", cover: "/template-covers/template-4-cover-v23.jpg", published: "08月11日", duration: "00:47", plays: 73_800, likes: 4_903, comments: 327, shares: 716, collects: 2_845, growth: 14 },
-  { id: "v5", title: "知识口播不枯燥，字幕应该承担什么任务", cover: "/template-covers/template-5-cover-v23.jpg", published: "08月09日", duration: "00:59", plays: 121_000, likes: 8_426, comments: 598, shares: 1_207, collects: 4_921, growth: 26 },
-  { id: "v6", title: "用户不是不感兴趣，而是你进入观点太慢", cover: "/template-covers/template-6-cover-v23.jpg", published: "08月07日", duration: "00:44", plays: 64_200, likes: 3_788, comments: 261, shares: 554, collects: 2_034, growth: 9 },
-  { id: "v7", title: "一条视频只有一个重点，表达反而更有力量", cover: "/template-covers/template-7-cover-v23.jpg", published: "08月05日", duration: "00:36", plays: 87_600, likes: 5_512, comments: 404, shares: 909, collects: 2_986, growth: 12 },
-  { id: "v8", title: "复盘短视频时，先别急着只看播放量", cover: "/template-covers/template-8-cover-v23.jpg", published: "08月03日", duration: "01:12", plays: 156_000, likes: 10_284, comments: 782, shares: 1_486, collects: 5_632, growth: 22 },
+  { id: "v1", title: "门店短视频开场，前三秒一定要说清这件事", cover: "/template-covers/template-9.jpg", published: "今天 11:26", duration: "00:38", plays: 286_000, likes: 18_600, comments: 1_238, shares: 3_409, collects: 7_611, growth: 42, recent: true },
+  { id: "v2", title: "同样的产品，为什么别人的画面更有成交感", cover: "/template-covers/template-10.jpg", published: "昨天 19:42", duration: "00:52", plays: 168_000, likes: 9_842, comments: 684, shares: 1_932, collects: 5_107, growth: 31, recent: true },
+  { id: "v3", title: "把一个卖点拆成三条内容，账号就有连续性", cover: "/template-covers/template-11.jpg", published: "08月12日", duration: "01:06", plays: 92_400, likes: 6_218, comments: 510, shares: 862, collects: 3_287, growth: 18 },
+  { id: "v4", title: "本地生活账号常用的四种镜头推进方式", cover: "/template-covers/template-12.jpg", published: "08月11日", duration: "00:47", plays: 73_800, likes: 4_903, comments: 327, shares: 716, collects: 2_845, growth: 14 },
+  { id: "v5", title: "知识口播不枯燥，字幕应该承担什么任务", cover: "/template-covers/template-9.jpg", published: "08月09日", duration: "00:59", plays: 121_000, likes: 8_426, comments: 598, shares: 1_207, collects: 4_921, growth: 26 },
+  { id: "v6", title: "用户不是不感兴趣，而是你进入观点太慢", cover: "/template-covers/template-10.jpg", published: "08月07日", duration: "00:44", plays: 64_200, likes: 3_788, comments: 261, shares: 554, collects: 2_034, growth: 9 },
+  { id: "v7", title: "一条视频只有一个重点，表达反而更有力量", cover: "/template-covers/template-11.jpg", published: "08月05日", duration: "00:36", plays: 87_600, likes: 5_512, comments: 404, shares: 909, collects: 2_986, growth: 12 },
+  { id: "v8", title: "复盘短视频时，先别急着只看播放量", cover: "/template-covers/template-12.jpg", published: "08月03日", duration: "01:12", plays: 156_000, likes: 10_284, comments: 782, shares: 1_486, collects: 5_632, growth: 22 },
 ];
 
 const TREND = [38, 44, 41, 53, 61, 58, 76, 83, 79, 92, 88, 100];

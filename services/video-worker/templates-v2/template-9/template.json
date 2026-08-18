@@ -1,0 +1,239 @@
+{
+  "version": 22,
+  "package_contract_version": 3,
+  "id": "template-9",
+  "name": "红白双语",
+  "status": "approved-local",
+  "approved_style_version": "V22",
+  "approved_at": "2026-08-18T00:00:00+08:00",
+  "approval_note": "用户确认：模板9、10、11定版了。模板9以V22锁定。",
+  "previous_approval": {"version": 20, "style_version": "V14", "date": "2026-08-17", "status": "approved-local"},
+  "approval_scope": "full-local-template-package",
+  "style_lock": true,
+  "package_mode": "isolated",
+  "renderer_key": "template-9-red-white-narrative-v1",
+  "fallback_policy": "forbid-cross-template",
+  "release_checklist_file": "acceptance-checklist.md",
+  "reference_url": "用户参考口播｜仅提炼工程规律，不复制私有素材",
+  "material_scope": "template-9-owned-2026-08-16",
+  "canvas": {
+    "aspect_ratio": "9:16",
+    "width": 1080,
+    "height": 1920,
+    "fit": "cover",
+    "maximum_upscale": 2
+  },
+  "cover": {
+    "mode": "first-usable-content-frame",
+    "preferred_time_seconds": 0.8,
+    "reject_black_frame": true,
+    "include_title": true,
+    "include_caption": false,
+    "actual_first_frame": true,
+    "standalone_export": true,
+    "width": 1080,
+    "height": 1920,
+    "format": "jpg"
+  },
+  "opening": {
+    "min_seconds": 1.2,
+    "max_seconds": 23.6,
+    "title_mode": "persistent",
+    "fixed_decorative_text": false,
+    "title_content_policy": "confirmed-title-only",
+    "title_animation": "fade-scale",
+    "safe_top_px": 118,
+    "title_font_size_px": 72,
+    "title_line_gap_px": 7,
+    "sfx": "soft-open"
+  },
+  "body": {
+    "caption_min_chars": 3,
+    "caption_max_chars": 7,
+    "caption_line_max_chars": 7,
+    "caption_max_seconds": 2.0,
+    "pause_split_seconds": 0.42,
+    "word_timing": true,
+    "word_highlight": true,
+    "bilingual": true,
+    "caption_safe_inset": 72,
+    "caption_max_width": 850,
+    "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_pool": [
+      {"style": "editorial-cut", "duration": 0.18, "intensity": 0.1, "roles": ["reversal"], "nodes": ["pain_reversal"]},
+      {"style": "editorial-wipe", "duration": 0.2, "intensity": 0.08, "roles": ["conclusion"], "nodes": ["core_viewpoint"]},
+      {"style": "soft-flash", "duration": 0.18, "intensity": 0.08, "roles": ["cta"], "nodes": ["cta"]}
+    ],
+    "rhythm_interval_seconds": 7,
+    "minimum_transition_gap_seconds": 7,
+    "scene_threshold": 0.31,
+    "maximum_effects_per_minute": 4,
+    "camera_motion": "semantic-step-cut-with-brief-wide-reset",
+    "camera_scale_min": 1.0,
+    "camera_scale_max": 1.17,
+    "camera_reset_seconds": 0.12
+  },
+  "content_director": {
+    "mode": "ai-grounded-whole-video-director",
+    "single_request_per_video": true,
+    "source_text_policy": "confirmed-caption-only",
+    "timing_policy": "immutable",
+    "fallback": "local-semantic-director",
+    "maximum_captions_per_block": 3,
+    "nodes": [
+      "hook",
+      "pain_reversal",
+      "core_viewpoint",
+      "number_benefit",
+      "example_step",
+      "brand_entity",
+      "cta",
+      "supporting"
+    ]
+  },
+  "ending": {
+    "min_seconds": 0.6,
+    "max_seconds": 1,
+    "mode": "soft-fade"
+  },
+  "style": {
+    "font_name": "Noto Serif SC",
+    "font_roles": {
+      "title": "Noto Serif SC",
+      "body": "Noto Serif SC",
+      "keyword": "Noto Serif SC Black",
+      "quote": "LXGW WenKai",
+      "brush_accent": "Ma Shan Zheng",
+      "latin_number": "Oswald"
+    },
+    "primary": "&H00F9FDFF",
+    "accent": "&H0038259F",
+    "outline": "&H00120819",
+    "shadow": "&H70000000",
+    "title_size_ratio": 0.058,
+    "subtitle_size_ratio": 0.0415,
+    "title_y_ratio": 0.0615,
+    "subtitle_y_ratio": 0.56,
+    "title_animation": "fade-scale",
+    "subtitle_animation": "whole-phrase-fade-rise",
+    "caption_mode": "kinetic-studio-series",
+    "caption_visual_lock": "reference-geometry-bilingual-v14",
+    "keyword_color": "#a52b26"
+  },
+  "audio": {
+    "preserve_source": true,
+    "speech_gain": 1,
+    "music": {
+      "enabled": true,
+      "mode": "template-owned-content-matched-pool",
+      "pool_id": "template-9-speech-safe-v2",
+      "track_id": "calm-piano-003",
+      "file": "music/template-9/calm-piano-003.mp3",
+      "volume": 0.115,
+      "fade_in_seconds": 0.9,
+      "fade_out_seconds": 0.9,
+      "loop": false,
+      "playback_mode": "single-pass",
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "calm-piano-003",
+          "file": "music/template-9/calm-piano-003.mp3",
+          "weight": 1,
+          "volume": 0.115,
+          "moods": ["平稳", "叙事", "知识"],
+          "dominant_nodes": ["supporting", "core_viewpoint", "example_step"],
+          "match_keywords": ["职场", "技能", "方法", "课程", "学习", "培训", "知识"]
+        },
+        {
+          "id": "mellow-puzzler",
+          "file": "music/template-9/mellow-puzzler.mp3",
+          "weight": 1,
+          "volume": 0.12,
+          "moods": ["思考", "明朗", "科技"],
+          "dominant_nodes": ["number_benefit", "example_step"],
+          "match_keywords": ["AI", "工具", "效率", "教程", "步骤", "数字", "数据"]
+        },
+        {
+          "id": "corporate-soft",
+          "file": "music/template-9/corporate-soft.mp3",
+          "weight": 1,
+          "volume": 0.115,
+          "moods": ["专业", "温和", "可信"],
+          "dominant_nodes": ["brand_entity", "core_viewpoint"],
+          "match_keywords": ["AI", "效率", "课程", "职场", "培训", "工具", "基础认知", "工作", "文案", "图片", "资料", "沟通", "执行", "竞争力", "企业", "公司", "品牌", "团队", "服务", "商务", "客户"]
+        },
+        {
+          "id": "perfect-picture-no-drums",
+          "file": "music/template-9/perfect-picture-no-drums.mp3",
+          "weight": 1,
+          "volume": 0.11,
+          "moods": ["轻松", "愉悦", "生活感"],
+          "dominant_nodes": ["supporting", "cta"],
+          "match_keywords": ["案例", "体验", "空间", "环境", "作品", "分享", "门店", "生活"]
+        }
+      ]
+    },
+    "sfx_gain": 0.26,
+    "sfx": {
+      "mode": "template-owned-semantic-pool",
+      "selection_policy": "node-pool-stable-rotation-v3",
+      "sparse_semantic_only": false,
+      "minimum_gap_seconds": 1.85,
+      "maximum_hits_per_minute": 14,
+      "opening_pool": [
+        "sfx/template-9/semantic-pop.wav",
+        "sfx/template-9/soft-pop.wav"
+      ],
+      "hook_pool": [
+        "sfx/template-9/semantic-pop.wav",
+        "sfx/template-9/soft-blip.wav"
+      ],
+      "reversal_pool": ["sfx/template-9/semantic-water-drop.wav"],
+      "conclusion_pool": [
+        "sfx/template-9/semantic-water-drop.wav",
+        "sfx/template-9/soft-blip.wav"
+      ],
+      "number_pool": ["sfx/template-9/semantic-bell.wav"],
+      "step_pool": [
+        "sfx/template-9/semantic-click.wav",
+        "sfx/template-9/semantic-water-drop.wav"
+      ],
+      "cta_pool": [
+        "sfx/template-9/semantic-bell.wav",
+        "sfx/template-9/soft-pop-echo.wav"
+      ],
+      "accent_pool": ["sfx/template-9/semantic-water-drop.wav"],
+      "transition_pool": ["sfx/template-9/soft-swish.wav"],
+      "ending_pool": ["sfx/template-9/soft-pop-echo.wav"],
+      "level_map": {
+        "sfx/template-9/semantic-pop.wav": 0.22,
+        "sfx/template-9/semantic-water-drop.wav": 0.19,
+        "sfx/template-9/semantic-click.wav": 0.18,
+        "sfx/template-9/semantic-bell.wav": 0.17,
+        "sfx/template-9/soft-pop.wav": 0.20,
+        "sfx/template-9/soft-blip.wav": 0.18,
+        "sfx/template-9/soft-swish.wav": 0.17,
+        "sfx/template-9/soft-pop-echo.wav": 0.18
+      }
+    }
+  },
+  "quality": {
+    "video_codec": "h264",
+    "crf": 10,
+    "fps": 30,
+    "render_concurrency": 1
+  },
+  "quality_gate": {
+    "frame_analysis": "every-decoded-frame",
+    "caption_text_similarity_min": 0.94,
+    "caption_text_coverage_min": 0.95,
+    "speech_time_coverage_min": 0.94,
+    "decoded_frame_match_required": true,
+    "maximum_corrupt_frames": 0,
+    "first_frame_content_required": true,
+    "standalone_cover_required": true,
+    "cross_template_fallback_allowed": false,
+    "minimum_test_videos": 2
+  }
+}

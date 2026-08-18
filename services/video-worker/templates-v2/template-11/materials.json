@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "template_id": "template-11",
+  "ownership": "template-exclusive",
+  "fonts": [
+    {"id": "template11-sans", "file": "fonts/template-11/NotoSansSC-Variable.ttf", "role": "title-caption-cjk", "source": "Noto Sans SC"}
+  ],
+  "music": [],
+  "sfx": [
+    {"id": "opening-soft-pop", "file": "sfx/template-11/opening-soft-pop.wav", "role": "opening", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "keyword-water-drop", "file": "sfx/template-11/keyword-water-drop.wav", "role": "keyword", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "ending-soft-blip", "file": "sfx/template-11/ending-soft-blip.wav", "role": "ending", "source": "A080 自用IP剪辑高级感常用音效"}
+  ],
+  "rule": "Template 11 may only use its own font and SFX namespace. The reference contains no continuous BGM, so music remains disabled."
+}
