@@ -314,6 +314,12 @@ def refresh_remote_template_registry(force: bool = False) -> None:
 DEFAULT_TEMPLATE_VALUES: dict[str, Any] = {
     "outline": "&H70000000",
     "shadow": "&H90000000",
+    # Isolated v2 packages render their visible typography in Remotion, but
+    # the worker still writes an ASS fallback before starting that renderer.
+    # Keep the fallback geometry complete so a compact templates.json entry
+    # cannot fail a valid job with a missing legacy-only field.
+    "panel": "&H00000000",
+    "align": "center",
     "boxed": True,
     "title_persistent": False,
     "title_size_ratio": 0.075,
