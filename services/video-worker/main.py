@@ -3622,6 +3622,14 @@ def process_job(job_id: str) -> None:
                 if highlight_source not in {"", "not-required"}
                 else keyword_source
             )
+        highlighted_caption_count = sum(
+            bool(str(item.get("keyword") or "").strip())
+            for item in caption_segments
+        )
+        ai_highlighted_caption_count = sum(
+            str(item.get("keywordOrigin") or "") == "ai"
+            for item in caption_segments
+        )
         output_size = render_dimensions(metadata, current_template)
         scene_changes = detect_scene_changes(
             source,
@@ -3734,6 +3742,8 @@ def process_job(job_id: str) -> None:
             captions=caption_segments,
             caption_source=caption_source,
             highlight_source=highlight_source,
+            highlighted_caption_count=highlighted_caption_count,
+            ai_highlighted_caption_count=ai_highlighted_caption_count,
             caption_completeness=caption_completeness,
             word_count=len(words),
             scene_changes=scene_changes,
@@ -4094,6 +4104,8 @@ def health() -> dict[str, Any]:
         "ffprobe": shutil.which("ffprobe") or "",
         "video_analysis_model": AI_VIDEO_MODEL,
         "video_analysis_enabled": bool(AI_API_KEY and AI_VIDEO_MODEL and PUBLIC_BASE_URL),
+        "content_ai_model": AI_TITLE_MODEL,
+        "content_ai_enabled": bool(AI_API_KEY),
         "transcription_primary": "tencent-flash-asr" if tencent_flash_asr_enabled() else "unavailable",
         "transcription_fallback_enabled": False,
         "tencent_flash_asr_enabled": tencent_flash_asr_enabled(),

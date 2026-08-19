@@ -213,9 +213,16 @@ def build_review(worker, label: str) -> dict[str, object]:
         source_timeline.get("captions") or [],
         review_beats.get(label) or [],
     )
+    transcript = "。".join(str(item.get("text") or "").strip() for item in directed_source)
+    fallback_title = str(source_timeline.get("title") or "")
+    title, title_source = worker.ai_title_from_transcript(
+        transcript,
+        fallback_title,
+        worker.template_profile("template-9"),
+    )
     captions, director_source = worker.ai_direct_template9_captions(
         directed_source,
-        str(source_timeline.get("title") or ""),
+        title,
         worker.template_profile("template-9").get("content_director"),
     )
     review_translations = {
@@ -269,13 +276,17 @@ def build_review(worker, label: str) -> dict[str, object]:
         "打扎实", "练熟", "咨询", "竞争力", "提问", "生成", "沟通", "岗位", "课程", "工作",
         "培训", "技能", "效率", "了解", "先来", "AI",
     )
-    for caption in captions:
-        text = str(caption.get("text") or "")
-        matched_keyword = next((keyword for keyword in keyword_priority if keyword in text), "")
-        if matched_keyword:
-            caption["keyword"] = matched_keyword
-        elif len(text) <= 4:
-            caption["keyword"] = text
+    captions, keyword_source = worker.ai_select_caption_highlights(captions, title)
+    if not keyword_source.startswith("ai-highlight:"):
+        for caption in captions:
+            text = str(caption.get("text") or "")
+            matched_keyword = next((keyword for keyword in keyword_priority if keyword in text), "")
+            if matched_keyword:
+                caption["keyword"] = matched_keyword
+                caption["keywordOrigin"] = "review-fallback"
+            elif len(text) <= 4:
+                caption["keyword"] = text
+                caption["keywordOrigin"] = "review-fallback"
     duration = float(source_timeline.get("duration") or 1.0)
     blocks: list[list[dict[str, object]]] = []
     for caption in captions:
@@ -331,7 +342,7 @@ def build_review(worker, label: str) -> dict[str, object]:
     profile = worker.template_profile("template-9")
     selected_bgm = worker.select_content_music(
         profile.get("bgm_tracks") or [],
-        str(source_timeline.get("title") or ""),
+        title,
         captions,
         f"template9-local:{label}:{duration:.3f}",
     ) or {}
@@ -341,7 +352,7 @@ def build_review(worker, label: str) -> dict[str, object]:
         duration,
         captions,
         [float(item["start"]) for item in transition_cues],
-        str(source_timeline.get("title") or ""),
+        title,
     )
     theme = worker.remotion_theme("template-9")
     theme.update({"titleVariant": "primary", "headlinePersistent": True})
@@ -356,7 +367,7 @@ def build_review(worker, label: str) -> dict[str, object]:
         "sfxCues": sfx_cues,
         "duration": round(duration, 3),
         "fps": 30,
-        "title": str(source_timeline.get("title") or ""),
+        "title": title,
         "merchantName": "",
         "coverTime": 0.8,
         "captions": captions,
@@ -370,6 +381,10 @@ def build_review(worker, label: str) -> dict[str, object]:
     report = {
         "template": "红白双语",
         "director": director_source,
+        "title_source": title_source,
+        "keyword_source": keyword_source,
+        "highlighted_captions": sum(bool(str(item.get("keyword") or "").strip()) for item in captions),
+        "ai_highlighted_captions": sum(str(item.get("keywordOrigin") or "") == "ai" for item in captions),
         "caption_count": len(captions),
         "semantic_blocks": len(blocks),
         "camera_cues": len(camera_cues),

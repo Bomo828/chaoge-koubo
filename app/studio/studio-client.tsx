@@ -2001,11 +2001,14 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralTemplates, setViralTemplates] = useState<ViralTemplateSpec[]>([]);
   const [viralTemplatesLoading, setViralTemplatesLoading] = useState(true);
   const [viralTemplatesError, setViralTemplatesError] = useState("");
-  const [viralSourceResolution, setViralSourceResolution] = useState("1080 × 1920");
+  const [, setViralSourceResolution] = useState("1080 × 1920");
   const [viralTitle, setViralTitle] = useState("");
-  const [viralSubtitle, setViralSubtitle] = useState("");
+  const [, setViralSubtitle] = useState("");
   const [viralCaptions, setViralCaptions] = useState<ViralCaption[]>([]);
   const [viralCaptionsConfirmed, setViralCaptionsConfirmed] = useState(false);
+  const [viralTranscriptDialogOpen, setViralTranscriptDialogOpen] = useState(false);
+  const [viralReviewTitle, setViralReviewTitle] = useState("");
+  const [viralReviewCaptions, setViralReviewCaptions] = useState<ViralCaption[]>([]);
   const [viralImportPreparing, setViralImportPreparing] = useState(false);
   const [viralTranscriptBusy, setViralTranscriptBusy] = useState(false);
   const [viralTranscriptProgress, setViralTranscriptProgress] = useState(0);
@@ -2013,10 +2016,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralProcessStarted, setViralProcessStarted] = useState(false);
   const [viralIncludeSfx, setViralIncludeSfx] = useState(true);
   const [viralIncludeBgm, setViralIncludeBgm] = useState(true);
-  const [viralAnalysisSummary, setViralAnalysisSummary] = useState("");
-  const [viralAnalysisMode, setViralAnalysisMode] = useState<"ai" | "local" | "">("");
-  const [viralProcessingEngine, setViralProcessingEngine] = useState<"server" | "browser" | "">("");
-  const [viralRenderer, setViralRenderer] = useState("");
+  const [, setViralAnalysisSummary] = useState("");
+  const [, setViralAnalysisMode] = useState<"ai" | "local" | "">("");
+  const [, setViralProcessingEngine] = useState<"server" | "browser" | "">("");
+  const [, setViralRenderer] = useState("");
   const [viralCoverUrl, setViralCoverUrl] = useState("");
   const [viralProcessBusy, setViralProcessBusy] = useState(false);
   const [viralFailed, setViralFailed] = useState(false);
@@ -2024,9 +2027,41 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralStage, setViralStage] = useState("");
   const [viralError, setViralError] = useState("");
   const [viralResultUrl, setViralResultUrl] = useState("");
-  const [viralResultBlob, setViralResultBlob] = useState<Blob | null>(null);
+  const [, setViralResultBlob] = useState<Blob | null>(null);
   const [viralDownloadUrl, setViralDownloadUrl] = useState("");
-  const [viralSaved, setViralSaved] = useState(false);
+  const [, setViralSaved] = useState(false);
+
+  useEffect(() => {
+    if (!viralTranscriptDialogOpen) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setViralTranscriptDialogOpen(false);
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [viralTranscriptDialogOpen]);
+
+  function openViralTranscriptReview() {
+    setViralReviewTitle(viralTitle);
+    setViralReviewCaptions(viralCaptions.map((caption) => ({ ...caption })));
+    setViralTranscriptDialogOpen(true);
+  }
+
+  function confirmViralTranscriptReview() {
+    const title = viralReviewTitle.trim();
+    const captions = viralReviewCaptions.map((caption) => ({ ...caption, text: caption.text.trim() }));
+    if (!title || !captions.length || captions.some((caption) => !caption.text)) return;
+    setViralTitle(title);
+    setViralCaptions(captions);
+    setViralSubtitle(captions.map((caption) => caption.text).join(" / ").slice(0, 120));
+    setViralCaptionsConfirmed(true);
+    setViralTranscriptError("");
+    setViralTranscriptDialogOpen(false);
+  }
 
   function openVideoWorkspace(nextWorkspace: VideoWorkspace) {
     try {
@@ -2850,6 +2885,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setViralSubtitle("");
     setViralCaptions([]);
     setViralCaptionsConfirmed(false);
+    setViralTranscriptDialogOpen(false);
+    setViralReviewTitle("");
+    setViralReviewCaptions([]);
     setViralAnalysisSummary("");
     setViralAnalysisMode("");
     setViralProcessingEngine("");
@@ -3080,7 +3118,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       const localEnglishTitle = transcriptLanguage === "en"
         ? sentenceCaptions.find((caption) => caption.text.trim().split(/\s+/).length >= 3)?.text.replace(/[.!?]+$/g, "") || "English Video Highlights"
         : "口播内容提炼";
-      setViralTitle(languageMatchedTitle || localEnglishTitle);
+      const resolvedTitle = languageMatchedTitle || localEnglishTitle;
+      setViralTitle(resolvedTitle);
+      setViralReviewTitle(resolvedTitle);
+      setViralReviewCaptions(sentenceCaptions.map((caption) => ({ ...caption })));
+      setViralTranscriptDialogOpen(true);
       setViralAnalysisMode("ai");
       setViralAnalysisSummary(`${aiSummary} 已整理为 ${sentenceCaptions.length} 条字幕短句${compatibilityMode ? "；当前云端旧版已由兼容通道完成识别" : ""}。修改后将按当前文本生成字幕。`);
       setViralTranscriptProgress(100);
@@ -4678,32 +4720,12 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           <section className="viral-source-transcript">
             <header>
               <i>02</i><span><b>核对标题与口播</b></span>
-              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `正在核对 · ${viralTranscriptProgress}%` : "✦ 开始核对文案"}</button>
+              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => viralCaptions.length ? openViralTranscriptReview() : void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `AI 正在排版 · ${viralTranscriptProgress}%` : viralCaptions.length ? "查看并修改文案" : "AI 识别并排版"}</button>
             </header>
-            {viralCaptions.length ? <>
-              <label className="viral-confirm-title">
-                <span><b>标题文案</b><small>AI 根据完整口播提炼，可手动修改</small></span>
-                <input type="text" maxLength={viralSpeechLanguage(viralCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralTitle} aria-label="标题文案" onChange={(event) => {
-                  setViralCaptionsConfirmed(false);
-                  setViralTitle(event.target.value);
-                }} />
-                <em>{viralTitle.trim().length}/{viralSpeechLanguage(viralCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em>
-              </label>
-              <div className="viral-source-transcript-list">{viralCaptions.map((caption, index) => <label key={`${caption.start}-${index}`}>
-                <span>{viralTimestamp(caption.start)}–{viralTimestamp(caption.end)}</span>
-                <input type="text" value={caption.text} aria-label={`第${index + 1}段口播文案`} onChange={(event) => {
-                  setViralCaptionsConfirmed(false);
-                  setViralCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item));
-                }} />
-              </label>)}</div>
-              <div className={`viral-transcript-confirm ${viralCaptionsConfirmed ? "is-confirmed" : ""}`}>
-                <span>{viralCaptionsConfirmed ? "标题与口播已确认，模板将直接使用当前内容" : "请同时核对标题和分段口播，确认后才可应用模板"}</span>
-                <button type="button" disabled={viralProcessBusy || !viralTitle.trim() || viralCaptions.some((caption) => !caption.text.trim())} onClick={() => {
-                  setViralCaptionsConfirmed(true);
-                  setViralTranscriptError("");
-                }}>{viralCaptionsConfirmed ? "✓ 已确认标题与口播" : "确认标题与口播"}</button>
-              </div>
-            </> : null}
+            {viralCaptions.length ? <div className={`viral-transcript-status ${viralCaptionsConfirmed ? "is-confirmed" : ""}`}>
+              <span><b>{viralCaptionsConfirmed ? "标题与字幕已确认" : "AI 排版已完成，等待确认"}</b><small>{viralTitle || `${viralCaptions.length} 段字幕`}</small></span>
+              <button type="button" onClick={openViralTranscriptReview}>{viralCaptionsConfirmed ? "修改" : "确认"}</button>
+            </div> : null}
             {viralTranscriptError ? <div className="video-agent-error viral-transcript-error" role="alert">{viralTranscriptError}</div> : null}
           </section>
         </section>
@@ -4740,12 +4762,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <strong>{template.name}</strong>
             </button>)}
           </div>
-          {viralAnalysisSummary ? <p className="viral-analysis-summary">{viralAnalysisSummary}</p> : null}
           <div className="viral-process-bar">
             <span>保留原片声音</span>
             <label><input type="checkbox" checked={viralIncludeSfx} onChange={(event) => setViralIncludeSfx(event.target.checked)} />添加音效</label>
             <label><input type="checkbox" checked={viralIncludeBgm} onChange={(event) => setViralIncludeBgm(event.target.checked)} />添加背景音乐</label>
-            <div><small>{viralCaptionsConfirmed ? `标题与 ${viralCaptions.length} 段口播已确认；模板将直接使用` : "请先核对并确认标题与口播"}</small><button type="button" disabled={!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length || viralProcessBusy || viralTranscriptBusy} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : "一键应用模板 · 28积分"}</button></div>
+            <div><button type="button" disabled={!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length || viralProcessBusy || viralTranscriptBusy} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : "一键应用模板 · 28积分"}</button></div>
           </div>
         </section>
       </div>
@@ -4757,11 +4778,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         <div className="viral-progress-track"><i style={{ width: `${viralProgress}%` }} /></div>
         <div className="viral-result-grid">
           <div className="viral-result-video">{viralResultUrl ? <video src={viralResultUrl} poster={viralCoverUrl || undefined} controls playsInline preload="metadata" /> : <div><b>{viralProgress}%</b><span>{viralStage || "等待开始"}</span></div>}</div>
-          <div className="viral-result-info">
-            <small>当前方案</small>
-            <h3>{templates.find((template) => template.id === viralTemplate)?.name}</h3>
-            <dl><div><dt>标题</dt><dd>{viralTitle || "真实体验"}</dd></div><div><dt>字幕</dt><dd>{viralCaptions.length ? `${viralCaptions.length} 段自动字幕` : viralSubtitle || "等待提取原片内容"}</dd></div><div><dt>处理引擎</dt><dd>{viralRenderer === "remotion-vertical-v1" ? "9:16 智能包装引擎" : viralProcessingEngine === "server" ? "兼容渲染通道 + Faster-Whisper" : viralProcessingEngine === "browser" ? "浏览器演示通道" : "等待检测"}</dd></div><div><dt>分析</dt><dd>{viralProcessingEngine === "server" ? "原片语音识别与真实时间轴" : viralAnalysisMode === "local" ? "本地模板备用模式 · 不扣AI分析积分" : viralAnalysisMode === "ai" ? "AI主通道或备用通道" : "等待分析"}</dd></div><div><dt>模板</dt><dd>{selectedViralTemplate.titleEffect} · {selectedViralTemplate.subtitleEffect} · {selectedViralTemplate.transitionLabel}</dd></div><div><dt>声音</dt><dd>保留原片声音 · {viralIncludeBgm ? "添加背景音乐" : "不添加背景音乐"} · {viralIncludeSfx ? selectedViralTemplate.sfxLabel : "不添加音效"}</dd></div><div><dt>画面</dt><dd>9:16 竖版 · {viralSourceResolution} · 首帧封面</dd></div><div><dt>资产</dt><dd>{viralSaved ? "已保存到会员资产" : viralResultUrl ? "本地成片可下载" : viralFailed ? "没有生成资产" : "等待生成"}</dd></div></dl>
-            {viralStage ? <p>{viralStage}</p> : null}
+          <div className="viral-result-controls">
             {viralError ? <div className="video-agent-error" role="alert">{viralError}</div> : null}
             <div className="viral-result-actions">
               {viralResultUrl ? <a
@@ -4775,6 +4792,30 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           </div>
         </div>
       </section> : null}
+      {viralTranscriptDialogOpen ? <div className="viral-transcript-dialog-backdrop" role="presentation" onMouseDown={(event) => { if (event.currentTarget === event.target) setViralTranscriptDialogOpen(false); }}>
+        <section className="viral-transcript-dialog" role="dialog" aria-modal="true" aria-labelledby="viral-transcript-dialog-title">
+          <header>
+            <h2 id="viral-transcript-dialog-title">确认标题与字幕</h2>
+            <button type="button" aria-label="关闭文案确认弹窗" onClick={() => setViralTranscriptDialogOpen(false)}>×</button>
+          </header>
+          <div className="viral-transcript-dialog-body">
+            <label className="viral-dialog-title-field">
+              <span>视频标题</span>
+              <div><input autoFocus type="text" maxLength={viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralReviewTitle} onChange={(event) => setViralReviewTitle(event.target.value)} /><em>{viralReviewTitle.trim().length}/{viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em></div>
+            </label>
+            <div className="viral-dialog-caption-list" aria-label="AI 排版字幕">
+              {viralReviewCaptions.map((caption, index) => <label key={`${caption.start}-${index}`}>
+                <span>{viralTimestamp(caption.start)}–{viralTimestamp(caption.end)}</span>
+                <input type="text" value={caption.text} aria-label={`第${index + 1}段字幕`} onChange={(event) => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item))} />
+              </label>)}
+            </div>
+          </div>
+          <footer>
+            <button type="button" onClick={() => setViralTranscriptDialogOpen(false)}>稍后确认</button>
+            <button type="button" disabled={!viralReviewTitle.trim() || !viralReviewCaptions.length || viralReviewCaptions.some((caption) => !caption.text.trim())} onClick={confirmViralTranscriptReview}>确认并使用</button>
+          </footer>
+        </section>
+      </div> : null}
     </section>;
   }
 

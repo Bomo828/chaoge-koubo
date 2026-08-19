@@ -36,7 +36,17 @@ const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chro
 const browserExecutable = process.env.REMOTION_BROWSER_EXECUTABLE || (existsSync(systemChrome) ? systemChrome : null);
 const fps = Number(timeline.fps) || 30;
 const durationInFrames = Math.max(1, Math.ceil((Number(timeline.duration) || 1) * fps));
-const supersample = Math.min(2, Math.max(1, Number(process.env.REMOTION_SUPERSAMPLE || 2)));
+const renderMode = (process.env.REMOTION_RENDER_MODE || "web-standard").trim().toLowerCase();
+const highQualityMaster = ["master", "high-quality", "quality-master"].includes(renderMode);
+const defaultSupersample = highQualityMaster ? 2 : 1;
+const defaultConcurrency = highQualityMaster ? 1 : 2;
+const defaultCrf = highQualityMaster ? 10 : 17;
+const allowedPresets = new Set(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]);
+const requestedPreset = (process.env.REMOTION_X264_PRESET || (highQualityMaster ? "slow" : "medium")).trim().toLowerCase();
+const x264Preset = allowedPresets.has(requestedPreset) ? requestedPreset : "medium";
+const supersample = Math.min(2, Math.max(1, Number(process.env.REMOTION_SUPERSAMPLE || defaultSupersample)));
+const renderConcurrency = Math.max(1, Number(process.env.REMOTION_CONCURRENCY || defaultConcurrency));
+const renderCrf = Math.min(22, Math.max(8, Number(process.env.REMOTION_CRF || defaultCrf)));
 const outputWidth = 1080;
 const outputHeight = 1920;
 const bundledUrl = await bundle({
@@ -71,17 +81,15 @@ await renderMedia({
   inputProps: {timeline},
   browserExecutable,
   logLevel: process.env.REMOTION_LOG_LEVEL || "info",
-  // OffthreadVideo can produce partially decoded frames when several Chrome
-  // workers seek the same mobile MP4 concurrently. Default to one renderer
-  // for deterministic frame-by-frame output; operators may raise it after a
-  // clean validation render.
-  concurrency: Math.max(1, Number(process.env.REMOTION_CONCURRENCY || 1)),
-  // High-contrast Chinese glyphs and white outlines need a substantially
-  // cleaner master than ordinary talking-head footage. Render at 2x and let
-  // the stitcher downsample with Lanczos for stable edge antialiasing.
+  // Web-standard uses two render workers to shorten queue time on ordinary
+  // CPU servers. Operators can switch back to one for problematic source
+  // videos without changing the visible template package.
+  concurrency: renderConcurrency,
+  // Web-standard renders the final 1080x1920 frame directly. The optional
+  // master profile retains 2x supersampling for offline review exports.
   scale: supersample,
-  crf: Math.min(22, Math.max(8, Number(process.env.REMOTION_CRF || 10))),
-  x264Preset: "slow",
+  crf: renderCrf,
+  x264Preset,
   audioBitrate: process.env.REMOTION_AUDIO_BITRATE || "160k",
   pixelFormat: "yuv420p",
   colorSpace: "bt709",
@@ -99,6 +107,7 @@ await renderMedia({
       "-colorspace", "bt709",
       "-color_primaries", "bt709",
       "-color_trc", "bt709",
+      "-movflags", "+faststart",
       output,
     ];
   },
@@ -110,7 +119,21 @@ await renderMedia({
 // the Python worker can continue to cover extraction and mark the job done.
 await new Promise((resolve, reject) => {
   process.stdout.write(
-    JSON.stringify({ok: true, output: outputPath, durationInFrames}),
+    JSON.stringify({
+      ok: true,
+      output: outputPath,
+      durationInFrames,
+      renderProfile: {
+        mode: renderMode,
+        width: outputWidth,
+        height: outputHeight,
+        scale: supersample,
+        concurrency: renderConcurrency,
+        crf: renderCrf,
+        x264Preset,
+        faststart: true,
+      },
+    }),
     (error) => error ? reject(error) : resolve(),
   );
 });

@@ -102,6 +102,11 @@ Nginx 配置参考 `nginx-video-worker.conf.example`，常驻服务参考
 
 ```text
 VIDEO_WORKER_CONCURRENCY=1
+REMOTION_RENDER_MODE=web-standard
+REMOTION_SUPERSAMPLE=1
+REMOTION_CONCURRENCY=2
+REMOTION_CRF=17
+REMOTION_X264_PRESET=medium
 LK888_API_BASE_URL=https://api.lk888.ai
 LK888_API_KEY=你的开放平台密钥
 VIDEO_WORKER_TITLE_MODEL=gpt-5.5
@@ -110,6 +115,11 @@ TENCENT_CLOUD_SECRET_ID=你的腾讯云 SecretId
 TENCENT_CLOUD_SECRET_KEY=你的腾讯云 SecretKey
 TENCENT_ASR_ENGINE_TYPE=16k_zh_en
 ```
+
+`web-standard` 是网页端默认高清模式：直接输出 1080×1920 H.264 MP4，使用
+`medium / CRF 17` 和 MP4 faststart，以减少渲染时间并提高网页首帧加载速度。
+需要离线母版时可临时设置 `REMOTION_RENDER_MODE=quality-master`；母版模式默认恢复
+2 倍超采样、单路渲染和慢速编码，不建议用于普通会员网页任务。
 
 上线前应为媒体访问增加会员鉴权或短时签名；当前本地版本只用于开发测试。
 
