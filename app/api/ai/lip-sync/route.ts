@@ -7,7 +7,6 @@ import {
   uploadLipSyncMedia,
 } from "../../../../lib/chanjing";
 import { lipSyncPoints, wavDurationSeconds } from "../../../../lib/chanjing-pricing";
-import { saveMemberAsset } from "../../../../lib/member-assets";
 import {
   getWallet,
   getReservedAiPoints,
@@ -23,39 +22,6 @@ const MAX_AUDIO_BYTES = 30 * 1024 * 1024;
 function safeFileName(name: string, fallback: string) {
   const cleaned = name.replace(/[^\p{L}\p{N}._-]+/gu, "_").slice(-120);
   return cleaned || fallback;
-}
-
-function assetId(value: string) {
-  let hash = 2166136261;
-  for (let index = 0; index < value.length; index += 1) {
-    hash ^= value.charCodeAt(index);
-    hash = Math.imul(hash, 16777619);
-  }
-  return `lip_${(hash >>> 0).toString(36)}_${value.length.toString(36)}`;
-}
-
-async function archiveVideo(member: NonNullable<Awaited<ReturnType<typeof getMemberSession>>>, input: {
-  url: string;
-  taskId: string;
-  projectName: string;
-}) {
-  if (!input.url) return { videoUrl: "", saved: false };
-  try {
-    const id = assetId(input.taskId);
-    await saveMemberAsset(member, {
-      id,
-      projectName: input.projectName,
-      kind: "video",
-      name: "对口型成片",
-      sourceUrl: input.url,
-      sourceTaskId: `chanjing_${input.taskId}`,
-      createdAt: Date.now(),
-    });
-    return { videoUrl: `/api/member/assets/${encodeURIComponent(id)}`, saved: true };
-  } catch (error) {
-    console.error("Archive lip-sync video failed", error);
-    return { videoUrl: input.url, saved: false };
-  }
 }
 
 export async function POST(request: Request) {
@@ -145,15 +111,11 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const taskId = url.searchParams.get("task_id") || "";
   const requestId = url.searchParams.get("request_id") || "";
-  const projectName = (url.searchParams.get("project_name") || "对口型视频").slice(0, 80);
   if (!taskId) return Response.json({ error: "缺少对口型任务编号。" }, { status: 400 });
 
   try {
     const task = await getLipSyncTask(taskId);
     const resultUrl = task.videoUrl || task.previewUrl;
-    const archived = task.state === "success" && resultUrl
-      ? await archiveVideo(member, { url: resultUrl, taskId, projectName })
-      : { videoUrl: "", saved: false };
     const actualPoints = task.isFinal && requestId && task.state === "success"
       ? getReservedAiPoints(member, requestId)
       : 0;
@@ -162,8 +124,12 @@ export async function GET(request: Request) {
       : await getWallet(member);
     return Response.json({
       ...task,
-      videoUrl: archived.videoUrl || task.videoUrl || task.previewUrl,
-      saved: archived.saved,
+      // Return the provider media URL immediately. Archiving the complete file
+      // is intentionally decoupled so the player and one-click viral editor do
+      // not wait for a second full video transfer through the web server.
+      videoUrl: resultUrl,
+      saved: false,
+      archivePending: task.state === "success" && Boolean(resultUrl),
       requestId: requestId || null,
       actualPoints: task.isFinal ? actualPoints : null,
       wallet,

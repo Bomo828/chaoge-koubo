@@ -164,18 +164,33 @@ export async function listMemberAssets(member: MemberSession) {
   return rows.map(mapRow);
 }
 
-export async function getMemberAsset(member: MemberSession, id: string) {
+export async function getMemberAsset(member: MemberSession, id: string, rangeHeader = "") {
   const source = getActiveAssetRow(member.id, id);
   if (!source) return null;
   const row = mapRow(source);
   const filename = absoluteObjectPath(row.object_key);
   if (!existsSync(filename)) return null;
   const stat = statSync(filename);
+  const match = /^bytes=(\d*)-(\d*)$/i.exec(rangeHeader.trim());
+  let range: { start: number; end: number; total: number } | null = null;
+  if (match && stat.size > 0) {
+    const requestedStart = match[1] ? Number(match[1]) : Number.NaN;
+    const requestedEnd = match[2] ? Number(match[2]) : Number.NaN;
+    if (Number.isFinite(requestedStart)) {
+      const start = Math.max(0, Math.min(stat.size - 1, requestedStart));
+      const end = Number.isFinite(requestedEnd) ? Math.max(start, Math.min(stat.size - 1, requestedEnd)) : stat.size - 1;
+      range = { start, end, total: stat.size };
+    } else if (Number.isFinite(requestedEnd) && requestedEnd > 0) {
+      const length = Math.min(stat.size, requestedEnd);
+      range = { start: stat.size - length, end: stat.size - 1, total: stat.size };
+    }
+  }
   return {
     row,
     object: {
-      body: Readable.toWeb(createReadStream(filename)) as ReadableStream<Uint8Array>,
-      size: stat.size,
+      body: Readable.toWeb(createReadStream(filename, range ? { start: range.start, end: range.end } : undefined)) as ReadableStream<Uint8Array>,
+      size: range ? range.end - range.start + 1 : stat.size,
+      range,
       httpMetadata: { contentType: row.content_type },
     },
   };

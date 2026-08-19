@@ -5,11 +5,13 @@ import hashlib
 import hmac
 import json
 import http.client
+import ipaddress
 import math
 import os
 import random
 import re
 import shutil
+import socket
 import struct
 import subprocess
 import sys
@@ -537,9 +539,9 @@ def semantic_caption_plan(
             node = "hook"
         elif any(marker in text for marker in ("但是", "不过", "其实", "相反", "没想到", "结果却", "真正", "而是", "不是", "痛点", "难", "不会", "不知道", "担心", "问题")):
             node = "pain_reversal"
-        elif re.search(r"\d|\d+(?:\.\d+)?[%折元万+]|[一二三四五六七八九十百千万]+个|第[一二三四五六七八九十]", text) or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "实用", "帮你", "打扎实", "练熟", "竞争力")):
+        elif re.search(r"\d|\d+(?:\.\d+)?[%折元万+]|[一二三四五六七八九十百千万]+(?:个|类|项|种)|第[一二三四五六七八九十]", text) or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "实用", "帮你", "打扎实", "练熟", "竞争力")):
             node = "number_benefit"
-        elif any(marker in text for marker in ("比如", "例如", "举个例子", "第一", "第二", "第三", "首先", "其次", "最后一步", "步骤", "怎么做", "如何")):
+        elif any(marker in text for marker in ("比如", "例如", "举个例子", "第一", "第二", "第三", "首先", "其次", "下一步", "最后一步", "步骤", "怎么做", "如何")):
             node = "example_step"
         elif any(marker in text for marker in ("老师", "品牌", "公司", "门店", "产品", "钟智联", "我们是", "我是", "叫做", "型号", "AI课程")):
             node = "brand_entity"
@@ -572,7 +574,8 @@ def semantic_caption_plan(
         caption["effectLevel"] = effect_level
         caption["materialRoute"] = route
         caption["role"] = "focus" if node not in {"supporting", "brand_entity"} else "anchor"
-        caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
+        if not caption.get("keywordLocked"):
+            caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
     step_number = 0
     for caption in planned:
         if caption.get("contentNode") == "example_step" and caption.get("animation") == "step-card":
@@ -599,7 +602,12 @@ def finalize_template10_director_plan(captions: list[dict[str, Any]]) -> list[di
     for index, caption in enumerate(prepared):
         text = re.sub(r"\s+", "", str(caption.get("text") or ""))
         node = str(caption.get("contentNode") or "supporting")
-        keyword = safe_director_keyword(text, str(caption.get("keyword") or kinetic_keyword(text)))
+        keyword_locked = bool(caption.get("keywordLocked"))
+        keyword = (
+            str(caption.get("keyword") or "")
+            if keyword_locked
+            else safe_director_keyword(text, str(caption.get("keyword") or kinetic_keyword(text)))
+        )
         start = float(caption.get("start") or 0.0)
         strong = node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"}
         use_callout = bool(
@@ -613,6 +621,7 @@ def finalize_template10_director_plan(captions: list[dict[str, Any]]) -> list[di
             callout_count += 1
         caption.update({
             "keyword": keyword,
+            "keywordLocked": keyword_locked,
             "role": "focus" if strong else "anchor",
             "emphasis": "strong" if strong else "normal",
             "layout": "center",
@@ -655,6 +664,70 @@ def kinetic_keyword(text: str) -> str:
     return compact[start:start + length]
 
 
+LOCAL_KEYWORD_CANDIDATES = (
+    "效率提升", "岗位技能", "职场技能", "实用技能", "核心观点", "关键步骤", "解决问题",
+    "人工智能", "数字化", "竞争力", "转化率", "获客", "成交", "利润", "成本",
+    "效率", "提升", "增长", "收益", "优惠", "免费", "方法", "步骤", "重点",
+    "结论", "价值", "专业", "真实", "服务", "品牌", "产品", "客户", "课程",
+    "培训", "技能", "岗位", "基础", "实用", "咨询", "预约", "联系", "关注",
+    "模板生成", "从哪开始", "下一步", "中智联", "钟智联", "开始", "生成", "改写",
+    "检查", "资料", "文案",
+    "图片", "视频", "工具", "AI",
+)
+
+KEYWORD_STOPWORDS = {
+    "这个", "那个", "这些", "那些", "然后", "就是", "我们", "大家", "自己",
+    "一个", "一些", "可以", "可能", "其实", "所以", "但是", "因为", "如果",
+    "以及", "还是", "已经", "现在", "进行", "通过", "需要", "觉得", "感觉",
+}
+
+
+def grounded_local_keyword(text: str, content_node: str = "supporting") -> str:
+    """Return only a complete, grounded phrase; never slice the sentence midpoint."""
+    compact = re.sub(r"[\s，。！？；：、,.!?;:]", "", text)
+    if not compact:
+        return ""
+    number = re.search(
+        r"(?:(?:提升|增长|节省|降低|超过|达到)?\d+(?:\.\d+)?(?:%|％|折|元|万|倍|个|类|步|天|小时|分钟|项|种)|第[一二三四五六七八九十]+|[一二三四五六七八九十百千万]+(?:个|类|步|项|种))",
+        compact,
+    )
+    if number and re.search(r"\d", number.group(0)):
+        return number.group(0)
+    for candidate in LOCAL_KEYWORD_CANDIDATES:
+        if candidate in compact:
+            return candidate
+    if number and content_node in {"number_benefit", "example_step"}:
+        return number.group(0)
+    if (
+        content_node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "brand_entity", "cta"}
+        and 2 <= len(compact) <= 4
+        and compact not in KEYWORD_STOPWORDS
+    ):
+        return compact
+    return ""
+
+
+def validated_ai_keyword(text: str, keyword: str, content_node: str = "supporting") -> str:
+    """Accept only an exact, informative span from the confirmed caption."""
+    compact = re.sub(r"[\s，。！？；：、,.!?;:]", "", text)
+    selected = re.sub(r"[\s，。！？；：、,.!?;:]", "", keyword)
+    if not selected:
+        return ""
+    if selected not in compact or len(selected) > 8:
+        return ""
+    if len(selected) == 1 and not selected.isdigit():
+        return ""
+    if selected in KEYWORD_STOPWORDS:
+        return ""
+    if selected[0] in "的了呢吗吧啊把被和与或就都也很在从" or selected[-1] in "的了呢吗吧啊着过和与或":
+        return ""
+    if len(selected) > 6 and content_node != "brand_entity":
+        return ""
+    if selected == compact and len(compact) > 5 and content_node != "brand_entity":
+        return ""
+    return selected
+
+
 def safe_director_keyword(text: str, keyword: str) -> str:
     """Keep AI emphasis visually selective instead of painting a whole line.
 
@@ -679,6 +752,7 @@ def safe_director_keyword(text: str, keyword: str) -> str:
 
 def ai_select_caption_highlights(
     captions: list[dict[str, Any]],
+    title: str = "",
 ) -> tuple[list[dict[str, Any]], str]:
     """Select one grounded emphasis phrase for every confirmed caption beat.
 
@@ -689,22 +763,36 @@ def ai_select_caption_highlights(
     """
     prepared = [dict(item) for item in captions]
     for item in prepared:
-        item["keyword"] = kinetic_keyword(str(item.get("text") or ""))
+        item["keyword"] = grounded_local_keyword(
+            str(item.get("text") or ""),
+            str(item.get("contentNode") or "supporting"),
+        )
+        item["keywordLocked"] = True
     if not AI_API_KEY or not prepared:
-        return prepared, "local-keyword"
+        return prepared, "grounded-local-keyword"
 
     source = [
-        {"id": index, "text": str(item.get("text") or "").strip()}
+        {
+            "id": index,
+            "text": str(item.get("text") or "").strip(),
+            "content_node": str(item.get("contentNode") or "supporting"),
+            "semantic_role": str(item.get("semanticRole") or "steady"),
+        }
         for index, item in enumerate(prepared)
     ]
-    prompt = f"""你是短视频字幕动态强调词策划。请针对每一段已由用户核对确认的口播字幕，选择一个最值得使用模板强调色和加粗动效的连续词组。
+    prompt = f"""你是短视频字幕语义导演。请先理解整条口播的标题、上下文和内容节点，再判断每段是否需要提亮关键词。
+标题：{title}
 要求：
-1. 每段必须单独判断，优先选择核心观点、利益点、动作词、数字结果、反差词或结论词。
+1. 只提亮真正承载信息的完整词组：核心观点、利益点、动作结果、数字、反差、品牌/产品名或行动号召。
 2. keyword 必须是该段 text 中原样连续出现的文字，不能改写、补字或创造新词。
-3. 每段只选一个，通常2到6个中文字；短句确有必要时可以1到8个字。
-4. 不要选择“这个、那个、然后、就是、我们、大家”等无信息量词语。
-5. id、数量和顺序必须与输入完全一致。
-6. 只返回JSON：{{"items":[{{"id":0,"keyword":"原文中的词组"}}]}}。
+3. 通常选择2到5个字，品牌/产品名最多8个字；超过5字的普通句子禁止整句提亮，必须收缩到核心词组。
+4. 禁止截取没有完整含义的半截词，例如“板生成”“升办公”；也不要把“不知道从哪开始”“模板生成检查”这种完整长句整句变色，应分别提取“从哪开始”“模板生成”一类核心短语。
+5. 不要选择“这个、那个、然后、就是、我们、大家”等无信息量词语。
+6. 普通过渡句、语气句、信息量不足的句子应返回空字符串，不要为了有颜色而强行提亮；整条视频建议只有约40%至65%的字幕出现提亮词。
+7. 相邻字幕不要重复提亮同一个泛化词；品牌名、产品名确需连续强调时除外。
+8. confidence 为0到1；只有你确信这是完整语义词组时才应高于0.62。
+9. id、数量和顺序必须与输入完全一致。
+10. 只返回JSON：{{"items":[{{"id":0,"keyword":"原文中的词组或空字符串","confidence":0.86,"category":"benefit/action/number/contrast/entity/cta/none"}}]}}。
 
 已确认口播字幕：
 {json.dumps(source, ensure_ascii=False)}"""
@@ -733,20 +821,48 @@ def ai_select_caption_highlights(
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         parsed = json.loads(cleaned)
         values = parsed.get("items") if isinstance(parsed, dict) else None
-        if not isinstance(values, list) or len(values) != len(prepared):
-            raise ValueError("标黄词数量不一致")
+        if not isinstance(values, list):
+            raise ValueError("标黄词结果格式无效")
+        values_by_id = {
+            int(value.get("id")): value
+            for value in values
+            if isinstance(value, dict) and str(value.get("id", "")).lstrip("-").isdigit()
+        }
+        selected_count = 0
+        maximum_highlights = max(1, math.ceil(len(prepared) * 0.65))
+        previous_keyword = ""
         for index, item in enumerate(prepared):
-            value = values[index] if isinstance(values[index], dict) else {}
-            if int(value.get("id", -1)) != index:
-                raise ValueError("标黄词顺序不一致")
+            value = values_by_id.get(index, {})
             text = re.sub(r"\s+", "", str(item.get("text") or ""))
-            keyword = re.sub(r"[\s，。！？；：、,.!?;:]", "", str(value.get("keyword") or ""))
-            if not keyword or len(keyword) > 8 or keyword not in text:
-                raise ValueError("标黄词不在对应原文中")
+            node = str(item.get("contentNode") or "supporting")
+            raw_keyword = str(value.get("keyword") or "")
+            raw_confidence = value.get("confidence")
+            confidence = max(
+                0.0,
+                min(1.0, float(raw_confidence if raw_confidence is not None else (0.75 if raw_keyword else 0.0))),
+            )
+            keyword = validated_ai_keyword(text, raw_keyword, node)
+            keyword_origin = "ai"
+            if raw_keyword and not keyword:
+                keyword = grounded_local_keyword(text, node)
+                keyword_origin = "grounded-local-repair"
+            if confidence < 0.62:
+                keyword = ""
+            if keyword and selected_count >= maximum_highlights and node == "supporting":
+                keyword = ""
+            if keyword and keyword == previous_keyword and node not in {"brand_entity", "number_benefit"}:
+                keyword = ""
+            if keyword:
+                selected_count += 1
+                previous_keyword = keyword
             item["keyword"] = keyword
+            item["keywordLocked"] = True
+            item["keywordCategory"] = str(value.get("category") or "")[:24]
+            item["keywordConfidence"] = round(confidence, 3)
+            item["keywordOrigin"] = keyword_origin if keyword else "none"
         return prepared, f"ai-highlight:{AI_TITLE_MODEL}"
     except (urllib.error.URLError, http.client.RemoteDisconnected, ConnectionError, TimeoutError, OSError, json.JSONDecodeError, ValueError, TypeError):
-        return prepared, "local-keyword-fallback"
+        return prepared, "grounded-local-keyword-fallback"
 
 
 def finalize_template9_director_plan(
@@ -941,7 +1057,8 @@ def build_remotion_timeline(
     if caption_mode in {"kinetic-red-white", "kinetic-yellow-white", "kinetic-mint-white", "kinetic-bold-yellow-white"} or bool(current_template.get("word_highlight")):
         for caption in usable_captions:
             text = str(caption.get("text") or "").strip()
-            caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
+            if not caption.get("keywordLocked"):
+                caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
     if template_id == "clean-green":
         for index, caption in enumerate(usable_captions):
             text = str(caption.get("text") or "").strip()
@@ -1240,6 +1357,83 @@ def write_job(job_id: str, **updates: Any) -> dict[str, Any]:
 
 def media_url(job_id: str, name: str) -> str:
     return f"/media/{job_id}/{name}"
+
+
+def validate_remote_video_url(value: str) -> str:
+    """Allow cloud media URLs while rejecting credentials and private-network SSRF."""
+    candidate = str(value or "").strip()
+    if len(candidate) > 4_000:
+        raise ValueError("视频来源地址过长。")
+    parsed = urllib.parse.urlparse(candidate)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise ValueError("视频来源地址无效。")
+    if parsed.username or parsed.password:
+        raise ValueError("视频来源地址不能包含账号信息。")
+    try:
+        addresses = {
+            result[4][0]
+            for result in socket.getaddrinfo(parsed.hostname, parsed.port or (443 if parsed.scheme == "https" else 80), type=socket.SOCK_STREAM)
+        }
+    except socket.gaierror as error:
+        raise ValueError("视频来源域名暂时无法解析。") from error
+    if not addresses:
+        raise ValueError("视频来源域名暂时无法解析。")
+    for address in addresses:
+        ip = ipaddress.ip_address(address)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+            raise ValueError("视频来源地址不能指向内部网络。")
+    return candidate
+
+
+class SafeVideoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, request, fp, code, msg, headers, new_url):  # type: ignore[no-untyped-def]
+        validate_remote_video_url(new_url)
+        return super().redirect_request(request, fp, code, msg, headers, new_url)
+
+
+def download_remote_video(source_url: str, destination: Path) -> int:
+    safe_url = validate_remote_video_url(source_url)
+    request = urllib.request.Request(
+        safe_url,
+        headers={
+            "Accept": "video/*,application/octet-stream;q=0.8,*/*;q=0.2",
+            "User-Agent": "merchant-video-worker/1.0",
+        },
+    )
+    opener = urllib.request.build_opener(SafeVideoRedirectHandler())
+    size = 0
+    try:
+        with opener.open(request, timeout=45) as response, destination.open("wb") as target:
+            validate_remote_video_url(response.geturl())
+            declared_size = int(response.headers.get("content-length") or 0)
+            if declared_size > MAX_UPLOAD_BYTES:
+                raise RuntimeError("原片超过当前允许的上传大小。")
+            while chunk := response.read(1024 * 1024):
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise RuntimeError("原片超过当前允许的上传大小。")
+                target.write(chunk)
+    except (urllib.error.URLError, TimeoutError) as error:
+        destination.unlink(missing_ok=True)
+        raise RuntimeError("云端原片读取失败，请重新进入一键网感。") from error
+    if size <= 0:
+        destination.unlink(missing_ok=True)
+        raise RuntimeError("云端原片文件为空。")
+    return size
+
+
+def ensure_job_source(job_id: str, job: dict[str, Any]) -> Path:
+    folder = job_dir(job_id)
+    source = folder / str(job.get("source_name") or "source.mp4")
+    if source.is_file() and source.stat().st_size > 0:
+        return source
+    remote_source_url = str(job.get("remote_source_url") or "").strip()
+    if not remote_source_url:
+        raise RuntimeError("任务没有可用的原片。")
+    write_job(job_id, state="running", stage="download", progress=3, message="正在从云端读取对口型成片…")
+    size = download_remote_video(remote_source_url, source)
+    write_job(job_id, source_size=size, message="云端原片已就绪，正在读取内容…")
+    return source
 
 
 def require_template_admin(request: Request) -> None:
@@ -3301,13 +3495,13 @@ def build_template_video_graph(
 def process_job(job_id: str) -> None:
     folder = job_dir(job_id)
     job = read_job(job_id)
-    source = folder / job["source_name"]
     audio = folder / "speech.wav"
     cover = folder / "cover.jpg"
     subtitle_file = folder / "captions.ass"
     sfx_file = folder / "opening.wav"
     output = folder / "output.mp4"
     try:
+        source = ensure_job_source(job_id, job)
         write_job(job_id, state="running", stage="probe", progress=4, message="正在读取原片信息…")
         metadata = probe_video(source)
         if metadata["duration"] <= 0 or metadata["width"] <= 0 or metadata["height"] <= 0:
@@ -3419,6 +3613,14 @@ def process_job(job_id: str) -> None:
                 caption_segments,
                 title,
                 current_template.get("content_director"),
+            )
+        if template_id in {"template-9", "template-10", "template-11", "template-12"}:
+            write_job(job_id, stage="director", progress=49, message="AI 正在结合整条口播判断需要提亮的完整关键词…")
+            caption_segments, keyword_source = ai_select_caption_highlights(caption_segments, title)
+            highlight_source = (
+                f"{highlight_source}+{keyword_source}"
+                if highlight_source not in {"", "not-required"}
+                else keyword_source
             )
         output_size = render_dimensions(metadata, current_template)
         scene_changes = detect_scene_changes(
@@ -3636,9 +3838,9 @@ def process_job(job_id: str) -> None:
 def process_transcription_job(job_id: str) -> None:
     folder = job_dir(job_id)
     job = read_job(job_id)
-    source = folder / job["source_name"]
     audio = folder / "speech.wav"
     try:
+        source = ensure_job_source(job_id, job)
         write_job(job_id, state="running", stage="probe", progress=5, message="正在读取原片声音与画面信息…")
         metadata = probe_video(source)
         if metadata["duration"] <= 0 or not metadata["has_audio"]:
@@ -4034,35 +4236,47 @@ def get_template_learning_job(request: Request, job_id: str) -> dict[str, Any]:
 @app.post("/v1/transcriptions")
 async def create_transcription_job(
     request: Request,
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
+    source_url: str = Form(""),
+    source_name: str = Form(""),
     template_id: str = Form("template-9"),
     merchant_json: str = Form("{}"),
 ) -> dict[str, Any]:
     refresh_remote_template_registry()
-    content_type = (video.content_type or "").lower()
-    if not content_type.startswith("video/"):
+    remote_source_url = source_url.strip()
+    if video is None and not remote_source_url:
+        raise HTTPException(status_code=400, detail="请上传视频文件或提供云端视频地址。")
+    content_type = (video.content_type or "").lower() if video else ""
+    if video is not None and not content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="请上传视频文件。")
+    if remote_source_url:
+        try:
+            remote_source_url = validate_remote_video_url(remote_source_url)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
     if template_id not in TEMPLATES and template_id not in TEMPLATE_PACKAGES:
         raise HTTPException(status_code=400, detail="网感模板无效。")
     job_id = uuid.uuid4().hex
     folder = job_dir(job_id)
     folder.mkdir(parents=True, exist_ok=False)
-    suffix = Path(video.filename or "source.mp4").suffix.lower()
+    filename_hint = (video.filename if video else source_name) or urllib.parse.urlparse(remote_source_url).path or "source.mp4"
+    suffix = Path(filename_hint).suffix.lower()
     if suffix not in {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}:
         suffix = ".mp4"
-    source_name = f"source{suffix}"
-    source = folder / source_name
+    stored_source_name = f"source{suffix}"
+    source = folder / stored_source_name
     size = 0
-    try:
-        with source.open("wb") as target:
-            while chunk := await video.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="原片超过当前允许的上传大小。")
-                target.write(chunk)
-    except Exception:
-        shutil.rmtree(folder, ignore_errors=True)
-        raise
+    if video is not None:
+        try:
+            with source.open("wb") as target:
+                while chunk := await video.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail="原片超过当前允许的上传大小。")
+                    target.write(chunk)
+        except Exception:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise
     try:
         merchant = json.loads(merchant_json)
     except json.JSONDecodeError:
@@ -4070,18 +4284,19 @@ async def create_transcription_job(
     now = int(time.time() * 1000)
     request_base_url = str(request.base_url).rstrip("/")
     public_base_url = PUBLIC_BASE_URL or request_base_url
-    source_url = f"{public_base_url}/media/{job_id}/{source_name}"
+    public_source_url = remote_source_url or f"{public_base_url}/media/{job_id}/{stored_source_name}"
     job = {
         "id": job_id,
         "kind": "transcription",
         "state": "queued",
         "stage": "queued",
         "progress": 1,
-        "message": "原片已接收，等待提取口播文案…",
+        "message": "云端原片地址已接收，等待后台读取…" if remote_source_url else "原片已接收，等待提取口播文案…",
         "template_id": template_id,
         "merchant": merchant if isinstance(merchant, dict) else {},
-        "source_name": source_name,
-        "source_url": source_url,
+        "source_name": stored_source_name,
+        "source_url": public_source_url,
+        "remote_source_url": remote_source_url,
         "source_size": size,
         "created_at": now,
         "updated_at": now,
@@ -4138,7 +4353,9 @@ async def create_douyin_transcription_job(request: Request) -> dict[str, Any]:
 @app.post("/v1/jobs")
 async def create_job(
     request: Request,
-    video: UploadFile = File(...),
+    video: UploadFile | None = File(None),
+    source_url: str = Form(""),
+    source_name: str = Form(""),
     template_id: str = Form("template-9"),
     title: str = Form(""),
     merchant_json: str = Form("{}"),
@@ -4147,30 +4364,40 @@ async def create_job(
     include_bgm: str = Form("false"),
 ) -> dict[str, Any]:
     refresh_remote_template_registry()
-    content_type = (video.content_type or "").lower()
-    if not content_type.startswith("video/"):
+    remote_source_url = source_url.strip()
+    if video is None and not remote_source_url:
+        raise HTTPException(status_code=400, detail="请上传视频文件或提供云端视频地址。")
+    content_type = (video.content_type or "").lower() if video else ""
+    if video is not None and not content_type.startswith("video/"):
         raise HTTPException(status_code=400, detail="请上传视频文件。")
+    if remote_source_url:
+        try:
+            remote_source_url = validate_remote_video_url(remote_source_url)
+        except ValueError as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
     if template_id not in TEMPLATES and template_id not in TEMPLATE_PACKAGES:
         raise HTTPException(status_code=400, detail="网感模板无效。")
     job_id = uuid.uuid4().hex
     folder = job_dir(job_id)
     folder.mkdir(parents=True, exist_ok=False)
-    suffix = Path(video.filename or "source.mp4").suffix.lower()
+    filename_hint = (video.filename if video else source_name) or urllib.parse.urlparse(remote_source_url).path or "source.mp4"
+    suffix = Path(filename_hint).suffix.lower()
     if suffix not in {".mp4", ".mov", ".m4v", ".webm", ".avi", ".mkv"}:
         suffix = ".mp4"
-    source_name = f"source{suffix}"
-    source = folder / source_name
+    stored_source_name = f"source{suffix}"
+    source = folder / stored_source_name
     size = 0
-    try:
-        with source.open("wb") as target:
-            while chunk := await video.read(1024 * 1024):
-                size += len(chunk)
-                if size > MAX_UPLOAD_BYTES:
-                    raise HTTPException(status_code=413, detail="原片超过当前允许的上传大小。")
-                target.write(chunk)
-    except Exception:
-        shutil.rmtree(folder, ignore_errors=True)
-        raise
+    if video is not None:
+        try:
+            with source.open("wb") as target:
+                while chunk := await video.read(1024 * 1024):
+                    size += len(chunk)
+                    if size > MAX_UPLOAD_BYTES:
+                        raise HTTPException(status_code=413, detail="原片超过当前允许的上传大小。")
+                    target.write(chunk)
+        except Exception:
+            shutil.rmtree(folder, ignore_errors=True)
+            raise
     try:
         merchant = json.loads(merchant_json)
     except json.JSONDecodeError:
@@ -4185,14 +4412,15 @@ async def create_job(
         "state": "queued",
         "stage": "queued",
         "progress": 1,
-        "message": "原片已接收，等待后台处理…",
+        "message": "云端原片地址已接收，等待后台读取…" if remote_source_url else "原片已接收，等待后台处理…",
         "template_id": template_id,
         "title": title.strip()[:40],
         "merchant": merchant if isinstance(merchant, dict) else {},
         "edited_captions": edited_captions if isinstance(edited_captions, list) else [],
         "include_sfx": form_boolean(include_sfx, True),
         "include_bgm": form_boolean(include_bgm, False),
-        "source_name": source_name,
+        "source_name": stored_source_name,
+        "remote_source_url": remote_source_url,
         "source_size": size,
         "created_at": now,
         "updated_at": now,

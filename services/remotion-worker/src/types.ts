@@ -13,6 +13,9 @@ export type CaptionCue = {
   translation?: string;
   words?: CaptionWord[];
   keyword?: string;
+  keywordLocked?: boolean;
+  keywordCategory?: string;
+  keywordConfidence?: number;
   contentNode?: "hook" | "pain_reversal" | "core_viewpoint" | "number_benefit" | "example_step" | "brand_entity" | "cta" | "supporting";
   effectLevel?: "normal" | "subtle";
   stepNumber?: number;

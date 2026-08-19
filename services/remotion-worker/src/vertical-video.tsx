@@ -88,6 +88,19 @@ const fallbackKeyword = (text: string) => {
   return compact.slice(Math.max(0, Math.floor((compact.length - length) / 2)), Math.max(0, Math.floor((compact.length - length) / 2)) + length);
 };
 
+const compactCaptionText = (text: string) => text
+  .replace(/[\s，。！？；：、,.!?;:]/g, "")
+  .trim();
+
+const resolvedKeyword = (caption: CaptionCue, compact: string) => {
+  if (caption.keyword && compact.includes(caption.keyword)) return caption.keyword;
+  // The AI director may explicitly decide that a transition or filler sentence
+  // should stay visually quiet. Do not manufacture a midpoint fragment after
+  // that decision has been locked by the video worker.
+  if (caption.keywordLocked) return "";
+  return fallbackKeyword(compact);
+};
+
 const splitTwoRowCaption = (text: string, keyword: string) => {
   const characters = Array.from(text);
   if (characters.length <= 4) return [text];
@@ -100,8 +113,8 @@ const splitTwoRowCaption = (text: string, keyword: string) => {
 };
 
 const kineticGroups = (caption: CaptionCue) => {
-  const compact = caption.text.replace(/\s+/g, "").trim();
-  const keyword = caption.keyword && compact.includes(caption.keyword) ? caption.keyword : fallbackKeyword(compact);
+  const compact = compactCaptionText(caption.text);
+  const keyword = resolvedKeyword(caption, compact);
   const before = keyword ? compact.slice(0, compact.indexOf(keyword)) : "";
   const after = keyword ? compact.slice(compact.indexOf(keyword) + keyword.length) : "";
   const groups = [before, keyword, after].filter(Boolean);
@@ -388,8 +401,8 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const durationFrames = Math.max(1, secondsToFrames((caption.displayEnd ?? caption.end) - caption.start, fps));
-  const compact = caption.text.replace(/\s+/g, "").trim();
-  const keyword = caption.keyword && compact.includes(caption.keyword) ? caption.keyword : fallbackKeyword(compact);
+  const compact = compactCaptionText(caption.text);
+  const keyword = resolvedKeyword(caption, compact);
   const keywordStart = keyword ? compact.indexOf(keyword) : -1;
   const lines = splitCaptionLines(compact, Math.max(6, Math.min(9, timeline.theme.captionLineMaxChars ?? 8)));
   const enter = spring({frame, fps, config: {damping: style.id === 4 ? 11 : 18, stiffness: style.id === 4 ? 280 : 180, mass: .58}});
@@ -461,7 +474,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
     const captionLines = lines;
     const baseFontSize = caption.emphasis === "strong" || caption.role === "focus" ? 76 : 72;
     const svgHeight = captionLines.length * 89 + 12;
-    const calloutText = keyword || compact.slice(0, 6);
+    const calloutText = keyword || (caption.keywordLocked ? "" : compact.slice(0, 6));
     const captionOffset = Math.round((1 - enter) * 13);
     return <>
       {caption.sectionEmphasis && calloutText ? <div style={{position: "absolute", top: 92, left: 40, right: 40, zIndex: 4, textAlign: "center", opacity: fadeOut * enter * .72, transform: `translateY(${(1 - enter) * 16}px)`, color: "rgba(255,255,255,.88)", fontFamily: brushFontFamily, fontSize: Math.max(94, 146 - Math.max(0, Array.from(calloutText).length - 3) * 13), lineHeight: 1, fontWeight: 600, letterSpacing: 4, WebkitTextStroke: "2.2px rgba(16,12,9,.45)", paintOrder: "stroke fill", textShadow: "0 6px 13px rgba(0,0,0,.30)"}}>{calloutText}</div> : null}
@@ -1507,8 +1520,8 @@ const ViralPulseSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeline
   const frame = useCurrentFrame();
   const {fps} = useVideoConfig();
   const durationFrames = Math.max(1, secondsToFrames((caption.displayEnd ?? caption.end) - caption.start, fps));
-  const compact = caption.text.replace(/\s+/g, "").trim();
-  const keyword = caption.keyword && compact.includes(caption.keyword) ? caption.keyword : fallbackKeyword(compact);
+  const compact = compactCaptionText(caption.text);
+  const keyword = resolvedKeyword(caption, compact);
   const keywordStart = keyword ? compact.indexOf(keyword) : -1;
   const role = caption.semanticRole ?? "steady";
   const node = caption.contentNode ?? "supporting";

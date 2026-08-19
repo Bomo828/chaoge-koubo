@@ -37,7 +37,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       },
     });
   }
-  const asset = await getMemberAsset(member, id);
+  const asset = await getMemberAsset(member, id, request.headers.get("range") || "");
   if (!asset) return Response.json({ error: "没有找到这个会员资产。" }, { status: 404 });
   const download = new URL(request.url).searchParams.get("download") === "1";
   const filename = filenameWithExtension(asset.row.name, asset.row.content_type);
@@ -46,10 +46,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
     "Cache-Control": "private, max-age=3600",
     "X-Content-Type-Options": "nosniff",
+    "Accept-Ranges": "bytes",
   });
   const size = asset.object.size || asset.row.size_bytes;
   if (size) headers.set("Content-Length", String(size));
+  if (asset.object.range) {
+    headers.set("Content-Range", `bytes ${asset.object.range.start}-${asset.object.range.end}/${asset.object.range.total}`);
+  }
   return new Response(asset.object.body, {
+    status: asset.object.range ? 206 : 200,
     headers,
   });
 }

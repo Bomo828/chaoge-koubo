@@ -113,6 +113,11 @@ function normalizeViralCaptionsForReview(captions: ViralCaption[]) {
     .filter((caption) => caption.text));
 }
 
+function viralTitleFromKnownScript(value: string) {
+  const firstSentence = value.trim().split(/[。！？!?\n]/, 1)[0]?.replace(/\s+/g, "") || "";
+  return firstSentence.slice(0, 16) || "口播重点";
+}
+
 type ViralWorkerJob = {
   id: string;
   state: "queued" | "running" | "success" | "failed";
@@ -1964,6 +1969,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [speechAudioReady, setSpeechAudioReady] = useState(false);
   const [speechAudioUrl, setSpeechAudioUrl] = useState("");
   const [speechAudioDuration, setSpeechAudioDuration] = useState(0);
+  const [speechCaptions, setSpeechCaptions] = useState<ViralCaption[]>([]);
   const [scriptRewriteBusy, setScriptRewriteBusy] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false);
   const [speechError, setSpeechError] = useState("");
@@ -2624,6 +2630,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
   async function generateSpeechAudio() {
     if (!selectedVoice || !script.trim() || speechBusy) return;
+    setSpeechCaptions([]);
     const selectedVoiceRecord = savedVoices.find((item) => item.voiceId === selectedVoice);
     const containsChinese = /[\u3400-\u9fff]/.test(script);
     const containsEnglish = /[A-Za-z]/.test(script);
@@ -2665,6 +2672,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         isFinal?: boolean;
         audioUrl?: string;
         duration?: number;
+        captions?: ViralCaption[];
         estimatedPoints?: number;
         wallet?: { points?: number };
       };
@@ -2691,6 +2699,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       if (data.state === "failed" || !data.audioUrl) throw new Error(data.error || "口播音频生成失败，请重新提交。");
       setSpeechAudioUrl(data.audioUrl);
       setSpeechAudioDuration(Math.max(0, Number(data.duration) || 0));
+      setSpeechCaptions(Array.isArray(data.captions) ? normalizeViralCaptionsForReview(data.captions) : []);
       setSpeechAudioReady(true);
       window.dispatchEvent(new CustomEvent("member-assets-updated"));
     } catch (error) {
@@ -2766,8 +2775,25 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       if (!data.isFinal) throw new Error("对口型任务仍在处理中，请稍后重新进入会员资产查看。");
       if (data.state !== "success" || !data.videoUrl) throw new Error(data.error || "对口型视频生成失败，本次积分已自动退回。");
       setLipSyncProgress(100);
+      // The provider URL is playable as soon as the task finishes. Do not wait
+      // for the whole MP4 to be copied through the application server first.
       setLipSyncResultUrl(data.videoUrl);
-      window.dispatchEvent(new CustomEvent("member-assets-updated"));
+      const completedTaskId = data.taskId || "";
+      void fetch("/api/member/assets", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: stableAssetId(`lip-sync|${completedTaskId || data.videoUrl}`),
+          projectName: "对口型视频",
+          kind: "video",
+          name: "对口型成片",
+          sourceUrl: data.videoUrl,
+          sourceTaskId: completedTaskId ? `chanjing_${completedTaskId}` : "",
+          createdAt: Date.now(),
+        }),
+      }).then((archiveResponse) => {
+        if (archiveResponse.ok) window.dispatchEvent(new CustomEvent("member-assets-updated"));
+      }).catch(() => undefined);
     } catch (error) {
       setLipSyncError(error instanceof Error ? error.message : "对口型视频生成失败，请稍后重试。");
     } finally {
@@ -2778,18 +2804,19 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   function openLipSyncResultInViralEditor() {
     if (!lipSyncResultUrl || lipSyncBusy) return;
     const sourceName = "对口型成片.mp4";
+    const confirmedCaptions = normalizeViralCaptionsForReview(speechCaptions);
     openVideoWorkspace("viral-edit");
     setViralFiles([sourceName]);
     setViralSourceFile(null);
     setViralVideoPreviewUrl(lipSyncResultUrl);
     setViralSourceResolution(`${lipVideoSize.width} × ${lipVideoSize.height}`);
     setViralAnalyzed(true);
-    setViralTitle("");
-    setViralSubtitle("");
-    setViralCaptions([]);
-    setViralCaptionsConfirmed(false);
-    setViralAnalysisSummary("");
-    setViralAnalysisMode("");
+    setViralTitle(viralTitleFromKnownScript(script));
+    setViralSubtitle(confirmedCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
+    setViralCaptions(confirmedCaptions);
+    setViralCaptionsConfirmed(Boolean(confirmedCaptions.length));
+    setViralAnalysisSummary(confirmedCaptions.length ? "已复用对口型口播的原始字幕时间轴，无需再次识别整条视频。" : "");
+    setViralAnalysisMode(confirmedCaptions.length ? "ai" : "");
     setViralProcessingEngine("");
     setViralRenderer("");
     setViralCoverUrl("");
@@ -2799,6 +2826,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setViralStage("");
     setViralError("");
     setViralTranscriptError("");
+    setViralTranscriptProgress(confirmedCaptions.length ? 100 : 0);
     setViralProcessStarted(false);
     setViralResultUrl("");
     setViralResultBlob(null);
@@ -2905,10 +2933,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       // browser timeout, which previously produced a false "not connected"
       // error. The transcription request below is the authoritative check and
       // returns the worker's actual error when it cannot accept the video.
-      const sourceFile = await workerSourceFile();
-      const createForm = (renderFallback = false) => {
+      const createForm = async (renderFallback = false) => {
         const form = new FormData();
-        form.append("video", sourceFile, sourceFile.name);
+        await appendWorkerSource(form);
         form.append("template_id", viralTemplate);
         if (renderFallback) form.append("title", "");
         return form;
@@ -2916,7 +2943,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       let compatibilityMode = false;
       let createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/transcriptions`, {
         method: "POST",
-        body: createForm(),
+        body: await createForm(),
       });
       // 旧版云端服务还没有独立口播接口。先兼容已有的任务接口取得
       // 真实语音时间轴，之后仍统一交给站内大模型校对和整句整理。
@@ -2925,7 +2952,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         setViralTranscriptProgress(8);
         createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {
           method: "POST",
-          body: createForm(true),
+          body: await createForm(true),
         });
       }
       const createText = await createResponse.text().catch(() => "");
@@ -3396,6 +3423,20 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return new File([blob], viralFiles[0] || "source.mp4", { type: contentType });
   }
 
+  async function appendWorkerSource(form: FormData) {
+    if (!viralSourceFile && /^https?:\/\//i.test(viralVideoPreviewUrl)) {
+      const source = new URL(viralVideoPreviewUrl);
+      const protectedMemberAsset = source.origin === window.location.origin && source.pathname.startsWith("/api/member/assets/");
+      if (!protectedMemberAsset) {
+        form.append("source_url", source.toString());
+        form.append("source_name", viralFiles[0] || "source.mp4");
+        return;
+      }
+    }
+    const sourceFile = await workerSourceFile();
+    form.append("video", sourceFile, sourceFile.name);
+  }
+
   async function analyzeViralSourceForTemplate(requestId: string) {
     const source = document.createElement("video");
     source.crossOrigin = "anonymous";
@@ -3486,10 +3527,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setViralAnalysisMode("ai");
 
       setViralProgress(12);
-      setViralStage("原片内容已读取，正在上传并按模板规则重新编排…");
-      const sourceFile = await workerSourceFile();
+      setViralStage("原片内容已读取，正在按模板规则重新编排…");
       const form = new FormData();
-      form.append("video", sourceFile, sourceFile.name);
+      await appendWorkerSource(form);
       form.append("template_id", viralTemplate);
       form.append("title", generatedTitle);
       form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
