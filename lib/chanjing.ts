@@ -1,3 +1,5 @@
+import { getChanjingConfig } from "./server/ai-credentials";
+
 const DEFAULT_BASE_URL = "https://open-api.chanjing.cc";
 
 export class ChanjingError extends Error {
@@ -11,7 +13,7 @@ export class ChanjingError extends Error {
 }
 
 type JsonRecord = Record<string, unknown>;
-let tokenCache: { value: string; expiresAt: number } | null = null;
+let tokenCache: { value: string; expiresAt: number; configKey: string } | null = null;
 
 export type ChanjingCommonVoice = {
   voiceId: string;
@@ -35,9 +37,10 @@ function upstreamMessage(payload: JsonRecord, status: number) {
 }
 
 function config() {
-  const appId = process.env.CHANJING_APP_ID;
-  const secretKey = process.env.CHANJING_SECRET_KEY;
-  const baseUrl = (process.env.CHANJING_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
+  const stored = getChanjingConfig();
+  const appId = stored.appId;
+  const secretKey = stored.secretKey;
+  const baseUrl = (stored.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
   if (!appId || !secretKey) {
     throw new ChanjingError("蝉镜服务尚未配置，请在服务端设置 CHANJING_APP_ID 和 CHANJING_SECRET_KEY。", 503);
   }
@@ -61,7 +64,8 @@ async function parseResponse(response: Response) {
 
 async function getAccessToken(forceRefresh = false) {
   const { appId, secretKey, baseUrl } = config();
-  if (!forceRefresh && tokenCache && Date.now() < tokenCache.expiresAt) return tokenCache.value;
+  const configKey = `${baseUrl}\u0000${appId}\u0000${secretKey}`;
+  if (!forceRefresh && tokenCache && tokenCache.configKey === configKey && Date.now() < tokenCache.expiresAt) return tokenCache.value;
   const response = await fetch(`${baseUrl}/open/v1/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -72,7 +76,7 @@ async function getAccessToken(forceRefresh = false) {
   const data = payload.data && typeof payload.data === "object" ? payload.data as JsonRecord : {};
   const token = typeof data.access_token === "string" ? data.access_token : "";
   if (!token) throw new ChanjingError("蝉镜接口没有返回 access_token。");
-  tokenCache = { value: token, expiresAt: Date.now() + 23 * 60 * 60 * 1000 };
+  tokenCache = { value: token, expiresAt: Date.now() + 23 * 60 * 60 * 1000, configKey };
   return token;
 }
 

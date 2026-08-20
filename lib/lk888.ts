@@ -1,3 +1,5 @@
+import { getLk888Config } from "./server/ai-credentials";
+
 const DEFAULT_BASE_URL = "https://api.lk888.ai";
 
 export class AiProviderError extends Error {
@@ -11,8 +13,9 @@ export class AiProviderError extends Error {
 }
 
 function providerConfig() {
-  const apiKey = process.env.LK888_API_KEY;
-  const baseUrl = (process.env.LK888_API_BASE_URL || DEFAULT_BASE_URL).replace(/\/$/, "");
+  const configured = getLk888Config();
+  const apiKey = configured.apiKey;
+  const baseUrl = (configured.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
 
   if (!apiKey) {
     throw new AiProviderError("AI 服务尚未配置，请先设置 LK888_API_KEY。", 503);

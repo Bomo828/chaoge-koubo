@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { MemberSession } from "../member-session";
 import type { AdminTemplate, AdminUser } from "../../lib/server/admin-data";
 import type { ClonedVoiceRecord } from "../../lib/server/cloned-voices";
@@ -18,6 +18,17 @@ type AiServiceStatus = {
   sufficient: boolean;
   message: string;
   secretHint: string;
+  baseUrl?: string;
+  credentialSource?: "admin" | "environment" | "none";
+  credentialUpdatedAt?: number | null;
+};
+
+type AiCredentialEditor = {
+  providerId: "lk888" | "chanjing";
+  apiKey: string;
+  appId: string;
+  secretKey: string;
+  baseUrl: string;
 };
 
 type TemplateForm = {
@@ -81,10 +92,26 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   const [learning, setLearning] = useState(false);
   const [aiStatuses, setAiStatuses] = useState<AiServiceStatus[]>([]);
   const [checkingAi, setCheckingAi] = useState(false);
+  const [credentialEditor, setCredentialEditor] = useState<AiCredentialEditor | null>(null);
+  const [credentialBusy, setCredentialBusy] = useState<"test" | "save" | null>(null);
+  const [credentialMessage, setCredentialMessage] = useState("");
+  const [credentialError, setCredentialError] = useState(false);
+  const credentialKeyRef = useRef<HTMLInputElement>(null);
   const [memberForm, setMemberForm] = useState<MemberForm | null>(null);
 
   const publishedCount = useMemo(() => templates.filter((item) => item.status === "published").length, [templates]);
   const enabledFeatureCount = settings.features.filter((item) => item.enabled).length;
+  const credentialEditorOpen = credentialEditor !== null;
+
+  useEffect(() => {
+    if (!credentialEditorOpen) return;
+    credentialKeyRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && !credentialBusy) setCredentialEditor(null);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [credentialEditorOpen, credentialBusy]);
 
   async function api<T>(url: string, init?: RequestInit) {
     const response = await fetch(url, init);
@@ -125,16 +152,68 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
     setSettings((current) => ({ ...current, features: current.features.filter((entry) => entry.id !== id) }));
   }
 
-  async function refreshAiStatus() {
+  async function refreshAiStatus(announce = true) {
     setCheckingAi(true);
     setMessage("");
     try {
       const data = await api<{ services: AiServiceStatus[] }>("/api/admin/ai-status", { cache: "no-store" });
       setAiStatuses(data.services);
-      setMessage("AI 服务状态和余额已经刷新。");
+      if (announce) setMessage("AI 服务状态和余额已经刷新。");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "AI 服务检查失败。");
     } finally { setCheckingAi(false); }
+  }
+
+  function openCredentialEditor(providerId: "lk888" | "chanjing") {
+    const status = aiStatuses.find((item) => item.id === providerId);
+    setCredentialEditor({
+      providerId,
+      apiKey: "",
+      appId: "",
+      secretKey: "",
+      baseUrl: status?.baseUrl || (providerId === "lk888" ? "https://api.lk888.ai" : "https://open-api.chanjing.cc"),
+    });
+    setCredentialMessage("");
+    setCredentialError(false);
+  }
+
+  async function testCredential() {
+    if (!credentialEditor) return;
+    setCredentialBusy("test");
+    setCredentialMessage("");
+    setCredentialError(false);
+    try {
+      const data = await api<{ balance: number | null; unit: string }>("/api/admin/provider-credentials", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentialEditor),
+      });
+      setCredentialMessage(data.balance === null ? "连接成功，可以保存。" : `连接成功，当前余额 ${data.balance.toFixed(4)} ${data.unit}。`);
+    } catch (error) {
+      setCredentialError(true);
+      setCredentialMessage(error instanceof Error ? error.message : "接口连接失败，请检查地址和 Key。");
+    } finally { setCredentialBusy(null); }
+  }
+
+  async function saveCredential() {
+    if (!credentialEditor) return;
+    setCredentialBusy("save");
+    setCredentialMessage("正在验证新接口，验证通过后自动保存…");
+    setCredentialError(false);
+    try {
+      await api<{ credential: { configured: boolean } }>("/api/admin/provider-credentials", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(credentialEditor),
+      });
+      setCredentialEditor(null);
+      setCredentialMessage("");
+      setMessage(`${credentialEditor.providerId === "lk888" ? "开放 AI 平台" : "蝉镜数字人"}接口已更新，相关功能将立即使用新配置。`);
+      await refreshAiStatus(false);
+    } catch (error) {
+      setCredentialError(true);
+      setCredentialMessage(error instanceof Error ? error.message : "接口凭证保存失败，原配置未变更。");
+    } finally { setCredentialBusy(null); }
   }
 
   async function uploadPreview(file: File) {
@@ -366,10 +445,29 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           <header><h2>AI 接口与余额</h2><button className="admin-add" disabled={checkingAi} onClick={() => void refreshAiStatus()}>{checkingAi ? "正在检测…" : "↻ 刷新实时状态"}</button></header>
           <div className="admin-ai-grid">{settings.aiProviders.map((provider) => {
             const status = aiStatuses.find((item) => item.id === provider.id);
-            return <article key={provider.id} className={status ? status.sufficient ? "is-ok" : "is-warning" : ""}><header><i>{provider.id === "lk888" ? "AI" : provider.id === "chanjing" ? "声" : "视"}</i><div><b>{provider.name}</b><span>{provider.purpose}</span></div><em>{status ? status.connected ? "已连接" : "异常" : "待检测"}</em></header><div className="ai-balance"><small>实时余额 / 状态</small><b>{status?.balance === null || status?.balance === undefined ? status?.unit || "—" : `${status.balance.toFixed(4)} ${status.unit}`}</b><span>{status?.message || "点击刷新读取状态"}</span></div><label><span>余额预警阈值</span><input type="number" min="0" value={provider.lowBalanceThreshold} onChange={(event) => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, lowBalanceThreshold: Number(event.target.value) } : item) }))} /></label><button className={`admin-switch ${provider.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, enabled: !item.enabled } : item) }))}>{provider.enabled ? "服务启用" : "服务停用"}</button><footer>{status?.secretHint || "密钥状态尚未读取"}</footer></article>;
+            const configurableId = provider.id === "lk888" || provider.id === "chanjing" ? provider.id : null;
+            return <article key={provider.id} className={status ? status.sufficient ? "is-ok" : "is-warning" : ""}>
+              <header><i>{provider.id === "lk888" ? "AI" : provider.id === "chanjing" ? "声" : "视"}</i><div><b>{provider.name}</b><span>{provider.purpose}</span></div><em>{status ? status.connected ? "已连接" : "异常" : "待检测"}</em></header>
+              <div className="ai-balance"><small>实时余额 / 状态</small><b>{status?.balance === null || status?.balance === undefined ? status?.unit || "—" : `${status.balance.toFixed(4)} ${status.unit}`}</b><span>{status?.message || "点击刷新读取状态"}</span></div>
+              <label><span>余额预警阈值</span><input type="number" min="0" value={provider.lowBalanceThreshold} onChange={(event) => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, lowBalanceThreshold: Number(event.target.value) } : item) }))} /></label>
+              <button className={`admin-switch ${provider.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, enabled: !item.enabled } : item) }))}>{provider.enabled ? "服务启用" : "服务停用"}</button>
+              <footer className="admin-provider-credential"><div><small>{configurableId ? "接口凭证" : "服务地址"}</small><b>{status?.secretHint || "配置状态尚未读取"}</b></div>{configurableId && member.role === "super_admin" ? <button type="button" onClick={() => openCredentialEditor(configurableId)}>配置接口</button> : configurableId ? <span>仅平台管理员可配置</span> : null}</footer>
+            </article>;
           })}</div>
-          <footer className="admin-savebar"><span>停用状态与阈值保存到平台配置；密钥更新在服务器部署环境完成。</span><button disabled={busy} onClick={() => void saveSettings(settings, "AI 服务开关和余额阈值已保存。")}>{busy ? "正在保存…" : "保存 AI 服务设置"}</button></footer>
+          <footer className="admin-savebar"><span>每项服务独立配置接口凭证；这里保存服务开关与余额预警阈值。</span><button disabled={busy} onClick={() => void saveSettings(settings, "AI 服务开关和余额阈值已保存。")}>{busy ? "正在保存…" : "保存 AI 服务设置"}</button></footer>
         </section>
+        {credentialEditor ? <div className="admin-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !credentialBusy) setCredentialEditor(null); }}>
+          <section className="admin-credential-dialog" role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
+            <header><div><h2 id="credential-dialog-title">配置{credentialEditor.providerId === "lk888" ? "开放 AI 平台" : "蝉镜数字人"}</h2><p>新配置验证成功后才会替换当前配置</p></div><button type="button" aria-label="关闭" disabled={Boolean(credentialBusy)} onClick={() => setCredentialEditor(null)}>×</button></header>
+            <label><span>接口地址</span><input type="url" maxLength={500} value={credentialEditor.baseUrl} onChange={(event) => setCredentialEditor({ ...credentialEditor, baseUrl: event.target.value })} placeholder="https://api.example.com" /></label>
+            {credentialEditor.providerId === "lk888" ? <label><span>API Key</span><input ref={credentialKeyRef} type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.apiKey} onChange={(event) => setCredentialEditor({ ...credentialEditor, apiKey: event.target.value })} placeholder="留空表示继续使用当前 Key" /></label> : <>
+              <label><span>AppID</span><input ref={credentialKeyRef} type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.appId} onChange={(event) => setCredentialEditor({ ...credentialEditor, appId: event.target.value })} placeholder="留空表示继续使用当前 AppID" /></label>
+              <label><span>Secret Key</span><input type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.secretKey} onChange={(event) => setCredentialEditor({ ...credentialEditor, secretKey: event.target.value })} placeholder="留空表示继续使用当前密钥" /></label>
+            </>}
+            <div className={`admin-credential-feedback ${credentialError ? "is-error" : ""}`} role="status">{credentialMessage || "凭证只在服务端加密保存，页面不会显示完整内容。"}</div>
+            <footer><button type="button" className="admin-dialog-secondary" disabled={Boolean(credentialBusy)} onClick={() => void testCredential()}>{credentialBusy === "test" ? "正在测试…" : "测试连接"}</button><button type="button" className="admin-dialog-primary" disabled={Boolean(credentialBusy)} onClick={() => void saveCredential()}>{credentialBusy === "save" ? "正在验证并保存…" : "验证并保存"}</button></footer>
+          </section>
+        </div> : null}
       </> : tab === "voices" ? <section className="admin-list admin-voice-section">
         <header><h2>会员克隆声音</h2><span>{voices.length} 个声音模型</span></header>
         {voices.length ? <div className="admin-voice-list">{voices.map((voice) => <article key={voice.id}>
