@@ -1,9 +1,8 @@
 import { getMemberSession } from "../../../../../member-session";
 import { isAdmin } from "../../../../../../lib/server/auth";
+import { videoWorkerUpstreamUrl } from "../../../../../../lib/server/video-worker";
 
 export const runtime = "nodejs";
-
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
 
 export async function GET(_: Request, context: { params: Promise<{ id: string }> }) {
   const member = await getMemberSession();
@@ -12,7 +11,7 @@ export async function GET(_: Request, context: { params: Promise<{ id: string }>
   if (!token) return Response.json({ error: "服务器尚未配置模板学习管理密钥。" }, { status: 503 });
   const { id } = await context.params;
   if (!/^[a-f0-9]{32}$/i.test(id)) return Response.json({ error: "模板学习任务编号无效。" }, { status: 400 });
-  const base = (process.env.NEXT_PUBLIC_VIDEO_WORKER_URL || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
+  const base = videoWorkerUpstreamUrl();
   try {
     const response = await fetch(`${base}/v1/template-learning/jobs/${id}`, {
       headers: { "x-video-worker-admin-token": token }, cache: "no-store",

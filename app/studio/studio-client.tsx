@@ -173,9 +173,19 @@ type ViralTemplateSpec = {
   titleTiming?: "persistent" | "opening";
   effectCadence?: "opening" | "periodic" | "rhythm";
   version?: number;
+  updatedAt?: number;
   source?: string;
   description?: string;
 };
+
+const TEMPLATE_LIBRARY_UPDATE_KEY = "merchant-studio:template-library-updated";
+
+function revisionedTemplateMediaUrl(value: string | undefined, updatedAt?: number) {
+  if (!value) return "";
+  if (!updatedAt || !value.startsWith("/")) return value;
+  const separator = value.includes("?") ? "&" : "?";
+  return `${value}${separator}template_updated_at=${encodeURIComponent(String(updatedAt))}`;
+}
 
 const VIRAL_TEMPLATES: ViralTemplateSpec[] = [
   { id: "template-9", name: "红白双语", previewUrl: "", coverUrl: "/template-covers/template-9.jpg", accent: "#9f2538", titleColor: "#fffdf9", panel: "transparent", align: "center", titleEffect: "红白双排常驻标题", subtitleEffect: "红白双语字幕 · 关键词语义强调", transition: "fade", transitionLabel: "语义节点触发编辑式切换", sfx: "soft", sfxLabel: "模板9独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 22 },
@@ -196,13 +206,9 @@ function videoWorkerBaseUrl() {
   return `${window.location.origin}/video-worker`;
 }
 
-const DEFAULT_VIDEO_WORKER_PUBLIC_URL = "https://api.chaogeai.top/video-worker";
-
 function resolveVideoWorkerUrl(path: string) {
   if (/^https?:\/\//i.test(path)) return path;
-  const configured = process.env.NEXT_PUBLIC_VIDEO_WORKER_URL?.trim().replace(/\/+$/, "");
-  const localPreview = typeof window !== "undefined" && ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  const baseUrl = configured || (localPreview ? videoWorkerBaseUrl() : DEFAULT_VIDEO_WORKER_PUBLIC_URL);
+  const baseUrl = videoWorkerBaseUrl();
   return path.startsWith("/") ? `${baseUrl}${path}` : new URL(path, `${baseUrl}/`).toString();
 }
 
@@ -2110,12 +2116,15 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           const allowedTransitions = new Set<ViralTemplateSpec["transition"]>(["fade", "flash", "zoom", "slide", "hard-cut-punch"]);
           const sfxKey = typeof config.sfxKey === "string" ? config.sfxKey : typeof item.sfx_key === "string" ? item.sfx_key : fallback.sfx;
           const allowedSfx = new Set<ViralTemplateSpec["sfx"]>(["soft", "click", "bright", "impact", "wood"]);
+          const updatedAt = typeof item.updatedAt === "number" ? item.updatedAt : typeof item.updated_at === "number" ? item.updated_at : undefined;
+          const previewUrl = typeof item.previewUrl === "string" && item.previewUrl ? item.previewUrl : typeof item.preview_url === "string" && item.preview_url ? item.preview_url : fallback.previewUrl;
+          const coverUrl = typeof item.coverUrl === "string" && item.coverUrl ? item.coverUrl : typeof item.cover_url === "string" && item.cover_url ? item.cover_url : fallback.coverUrl;
           return [{
             ...fallback,
             id,
             name: typeof item.name === "string" && item.name.trim() ? item.name : fallback.name,
-            previewUrl: typeof item.previewUrl === "string" && item.previewUrl ? item.previewUrl : typeof item.preview_url === "string" && item.preview_url ? item.preview_url : fallback.previewUrl,
-            coverUrl: typeof item.coverUrl === "string" && item.coverUrl ? item.coverUrl : typeof item.cover_url === "string" && item.cover_url ? item.cover_url : fallback.coverUrl,
+            previewUrl: revisionedTemplateMediaUrl(previewUrl, updatedAt),
+            coverUrl: revisionedTemplateMediaUrl(coverUrl, updatedAt),
             accent: typeof config.accent === "string" ? config.accent : typeof item.accent === "string" ? item.accent : fallback.accent,
             titleColor: typeof config.titleColor === "string" ? config.titleColor : typeof item.title_color === "string" ? item.title_color : fallback.titleColor,
             panel: typeof config.panel === "string" ? config.panel : typeof item.panel === "string" ? item.panel : fallback.panel,
@@ -2126,6 +2135,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             sfx: allowedSfx.has(sfxKey as ViralTemplateSpec["sfx"]) ? sfxKey as ViralTemplateSpec["sfx"] : fallback.sfx,
             sfxLabel: typeof config.sfxLabel === "string" ? config.sfxLabel : typeof item.sfx_label === "string" ? item.sfx_label : fallback.sfxLabel,
             version: typeof item.version === "number" ? item.version : fallback.version,
+            updatedAt,
             source: "admin-catalog",
             description: typeof item.description === "string" ? item.description : fallback.description,
           } satisfies ViralTemplateSpec];
@@ -2148,14 +2158,22 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     void loadTemplates();
     const interval = window.setInterval(() => void loadTemplates(), 10_000);
     const refreshOnFocus = () => void loadTemplates();
+    const refreshOnStorage = (event: StorageEvent) => {
+      if (event.key === TEMPLATE_LIBRARY_UPDATE_KEY) void loadTemplates();
+    };
+    const templateChannel = typeof BroadcastChannel === "undefined" ? null : new BroadcastChannel(TEMPLATE_LIBRARY_UPDATE_KEY);
+    if (templateChannel) templateChannel.onmessage = () => void loadTemplates();
     window.addEventListener("focus", refreshOnFocus);
+    window.addEventListener("storage", refreshOnStorage);
     document.addEventListener("visibilitychange", refreshOnFocus);
     return () => {
       disposed = true;
       controller.abort();
       window.clearInterval(interval);
       window.removeEventListener("focus", refreshOnFocus);
+      window.removeEventListener("storage", refreshOnStorage);
       document.removeEventListener("visibilitychange", refreshOnFocus);
+      templateChannel?.close();
     };
   }, []);
 
@@ -2975,6 +2993,9 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         const form = new FormData();
         await appendWorkerSource(form);
         form.append("template_id", viralTemplate);
+        // Interactive review only needs the precise ASR timeline here. Title,
+        // correction and semantic layout are completed once by the app below.
+        form.append("fast_mode", "1");
         if (renderFallback) form.append("title", "");
         return form;
       };
@@ -3015,7 +3036,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       const deadline = Date.now() + 5 * 60 * 1000;
       while (job.state !== "success" && job.state !== "failed") {
         if (Date.now() > deadline) throw new Error("口播文案提取超过5分钟，任务仍可在后台继续，请稍后重新查看。");
-        await new Promise((resolve) => window.setTimeout(resolve, 1_500));
+        await new Promise((resolve) => window.setTimeout(resolve, 750));
         const statusResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs/${job.id}`, { cache: "no-store" });
         const statusData = await statusResponse.json().catch(() => null) as ViralWorkerJob | { detail?: string } | null;
         if (!statusResponse.ok || !statusData || !("id" in statusData)) {
@@ -3040,40 +3061,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       const directVideoAi = [
         "direct-video-multimodal",
       ].includes(job.analysis_mode || "");
-      let frames: string[] = [];
-      let sourceDuration = Math.max(1, Number(job.metadata?.duration) || 60);
-      if (!directVideoAi) {
-        const source = document.createElement("video");
-        source.crossOrigin = "anonymous";
-        source.src = viralSourceFile ? URL.createObjectURL(viralSourceFile) : viralVideoPreviewUrl;
-        source.preload = "auto";
-        source.playsInline = true;
-        source.muted = true;
-        source.style.position = "fixed";
-        source.style.left = "-99999px";
-        source.style.width = "1px";
-        document.body.appendChild(source);
-        try {
-          await new Promise<void>((resolve, reject) => {
-            const timeout = window.setTimeout(() => reject(new Error("读取视频画面超时。")), 12_000);
-            source.onloadedmetadata = () => {
-              window.clearTimeout(timeout);
-              resolve();
-            };
-            source.onerror = () => {
-              window.clearTimeout(timeout);
-              reject(new Error("读取视频画面失败。"));
-            };
-          });
-          sourceDuration = source.duration || sourceDuration;
-          frames = (await extractViralKeyframes(source)).frames.slice(0, 5);
-        } catch {
-          frames = [];
-        } finally {
-          source.remove();
-          if (viralSourceFile && source.src.startsWith("blob:")) URL.revokeObjectURL(source.src);
-        }
-      }
+      const frames: string[] = [];
+      const sourceDuration = Math.max(1, Number(job.metadata?.duration) || 60);
 
       // Title generation, phrase segmentation and timestamp alignment all
       // finish as part of "核对标题与口播". Applying a template later must
@@ -4740,12 +4729,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             {!viralTemplatesLoading && !viralTemplatesError && !templates.length ? <p className="viral-template-state">管理员暂未上架网感模板。</p> : null}
             {templates.map((template) => <button type="button" key={template.id} className={`viral-template-card ${viralTemplate === template.id ? "selected" : ""}`} aria-pressed={viralTemplate === template.id} aria-label={`选择${template.name}模板`} onClick={() => setViralTemplate(template.id)}>
               <span className={`template-thumb template-${template.id}`}>
-                {template.coverUrl ? <img src={template.coverUrl} alt={`${template.name}模板封面`} loading="lazy" /> : <video
-                  src={template.previewUrl || viralVideoPreviewUrl}
+                {template.previewUrl ? <video
+                  key={`${template.id}-${template.previewUrl}`}
+                  src={template.previewUrl}
                   muted
                   loop
                   playsInline
-                  preload="metadata"
+                  preload="auto"
                   autoPlay={viralTemplate === template.id}
                   onMouseEnter={(event) => {
                     const video = event.currentTarget;
@@ -4756,7 +4746,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
                     });
                   }}
                   onMouseLeave={(event) => { if (viralTemplate !== template.id) event.currentTarget.pause(); }}
-                />}
+                /> : template.coverUrl ? <img src={template.coverUrl} alt={`${template.name}模板封面`} loading="lazy" /> : <video src={viralVideoPreviewUrl} muted playsInline preload="metadata" />}
                 {viralTemplate === template.id ? <i>已选</i> : null}
               </span>
               <strong>{template.name}</strong>
@@ -4819,7 +4809,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     </section>;
   }
 
-  return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => openVideoWorkspace("material")}>开始制作 →</button></article><article className="ai-director-mode"><i>◆</i><h3>AI成片</h3><button type="button" onClick={() => openVideoWorkspace("ai-director")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => openVideoWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => openVideoWorkspace("viral-edit")}>开始制作 →</button></article></div></>;
+  return <><ToolHeading title="短视频制作" /><div className="video-modes"><article><i>▶</i><h3>素材智能成片</h3><button type="button" onClick={() => openVideoWorkspace("material")}>开始制作 →</button></article><article className="ai-director-mode"><i>◆</i><h3>AI成片</h3><button type="button" onClick={() => openVideoWorkspace("ai-director")}>开始制作 →</button></article><article><i>●</i><h3>对口型视频</h3><button type="button" onClick={() => openVideoWorkspace("lip-sync")}>开始制作 →</button></article><article><i>✦</i><h3>一键网感剪辑</h3><button type="button" onClick={() => openVideoWorkspace("viral-edit")}>开始制作 →</button></article><article><i>▣</i><h3>AI超级剪辑</h3><button type="button" onClick={() => window.location.assign("/ai-explainer/index.html")}>开始制作 →</button></article></div></>;
 }
 
 function formatAssetTime(value: number) {

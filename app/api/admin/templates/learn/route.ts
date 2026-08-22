@@ -1,12 +1,11 @@
 import { getMemberSession } from "../../../../member-session";
 import { isAdmin } from "../../../../../lib/server/auth";
+import { videoWorkerUpstreamUrl } from "../../../../../lib/server/video-worker";
 
 export const runtime = "nodejs";
 
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
-
 function workerBase() {
-  return (process.env.NEXT_PUBLIC_VIDEO_WORKER_URL || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
+  return videoWorkerUpstreamUrl();
 }
 
 function adminToken() {

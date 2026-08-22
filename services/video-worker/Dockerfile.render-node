@@ -1,0 +1,37 @@
+FROM node:22.14.0-bookworm-slim
+
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium \
+    REMOTION_RUNTIME_DIR=/var/lib/merchant-studio/remotion \
+    HF_HOME=/var/lib/merchant-studio/cache/huggingface
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+      ca-certificates \
+      chromium \
+      ffmpeg \
+      fonts-noto-cjk \
+      python3 \
+      python3-pip \
+      python3-venv \
+      tini \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /opt/merchant-studio
+COPY video-worker /opt/merchant-studio/video-worker
+COPY remotion-worker /opt/merchant-studio/remotion-worker
+
+RUN python3 -m venv /opt/merchant-studio/video-worker/.venv \
+    && /opt/merchant-studio/video-worker/.venv/bin/pip install --no-cache-dir --upgrade pip wheel \
+    && /opt/merchant-studio/video-worker/.venv/bin/pip install --no-cache-dir -r /opt/merchant-studio/video-worker/requirements.txt \
+    && corepack enable \
+    && COREPACK_ENABLE_DOWNLOAD_PROMPT=0 corepack prepare pnpm@11.18.0 --activate \
+    && cd /opt/merchant-studio/remotion-worker \
+    && pnpm install --prod --frozen-lockfile \
+    && mkdir -p /var/lib/merchant-studio/video /var/lib/merchant-studio/remotion /var/lib/merchant-studio/cache
+
+EXPOSE 8790
+ENTRYPOINT ["/usr/bin/tini", "--"]
+CMD ["/opt/merchant-studio/video-worker/.venv/bin/uvicorn", "main:app", "--app-dir", "/opt/merchant-studio/video-worker", "--host", "0.0.0.0", "--port", "8790"]

@@ -98,15 +98,15 @@ chmod +x install-ubuntu.sh
 Nginx 配置参考 `nginx-video-worker.conf.example`，常驻服务参考
 `video-worker.service.example`。
 
-环境变量参考 `.env.example`。普通 4 核 8GB CPU 服务器先使用：
+环境变量参考 `.env.example`。专用 8 核 16GB 渲染服务器使用：
 
 ```text
 VIDEO_WORKER_CONCURRENCY=1
 REMOTION_RENDER_MODE=web-standard
 REMOTION_SUPERSAMPLE=1
-REMOTION_CONCURRENCY=2
-REMOTION_CRF=17
-REMOTION_X264_PRESET=medium
+REMOTION_CONCURRENCY=4
+REMOTION_CRF=18
+REMOTION_X264_PRESET=fast
 LK888_API_BASE_URL=https://api.lk888.ai
 LK888_API_KEY=你的开放平台密钥
 VIDEO_WORKER_TITLE_MODEL=gpt-5.5
@@ -117,11 +117,17 @@ TENCENT_ASR_ENGINE_TYPE=16k_zh_en
 ```
 
 `web-standard` 是网页端默认高清模式：直接输出 1080×1920 H.264 MP4，使用
-`medium / CRF 17` 和 MP4 faststart，以减少渲染时间并提高网页首帧加载速度。
+`fast / CRF 18`、4 路帧渲染和 MP4 faststart，以减少渲染时间并提高网页首帧加载速度。
 需要离线母版时可临时设置 `REMOTION_RENDER_MODE=quality-master`；母版模式默认恢复
 2 倍超采样、单路渲染和慢速编码，不建议用于普通会员网页任务。
 
 上线前应为媒体访问增加会员鉴权或短时签名；当前本地版本只用于开发测试。
+
+### TencentOS 3.3 渲染节点
+
+TencentOS 3.3 自带 glibc 2.28，不能直接运行当前 Remotion 合成器。该系统必须使用
+`Dockerfile.render-node` 在 Debian Bookworm 容器内运行，避免健康检查正常但实际渲染时
+因 glibc 版本不足失败。Ubuntu 22.04/24.04 可以继续使用宿主机部署脚本。
 
 部署后可用下面两个地址确认模板运行状态：
 

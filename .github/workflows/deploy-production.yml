@@ -83,6 +83,7 @@ jobs:
           install -d -m 700 "$HOME/.ssh"
           printf '%s\n' "$DEPLOY_PRIVATE_KEY" > "$HOME/.ssh/tencent_deploy"
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          cat deploy/render-node/known_hosts >> "$HOME/.ssh/known_hosts"
           chmod 600 "$HOME/.ssh/tencent_deploy" "$HOME/.ssh/known_hosts"
 
       - name: Upload and activate release
@@ -107,9 +108,9 @@ jobs:
 
       - name: Deploy video worker when changed
         env:
-          DEPLOY_HOST: ${{ secrets.TENCENT_SSH_HOST }}
-          DEPLOY_PORT: ${{ secrets.TENCENT_SSH_PORT }}
-          DEPLOY_USER: ${{ secrets.TENCENT_SSH_USER }}
+          DEPLOY_HOST: 129.204.151.78
+          DEPLOY_PORT: "22"
+          DEPLOY_USER: merchantdeploy
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail

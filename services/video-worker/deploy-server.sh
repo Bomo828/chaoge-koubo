@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Non-interactive sudo sessions on Ubuntu may omit administrative paths.
+export PATH="/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:${PATH:-}"
+
 if [ "$(id -u)" -eq 0 ]; then
   SUDO=""
 else
@@ -20,6 +23,7 @@ REMOTION_INSTALL_DIR="/opt/merchant-studio/remotion-worker"
 DATA_DIR="/var/lib/merchant-studio/video"
 REMOTION_RUNTIME_DIR="/var/lib/merchant-studio/remotion"
 SERVICE_USER="merchant-studio"
+PYTHON_BIN="python3"
 EXISTING_AI_KEY=""
 EXISTING_TEMPLATE_REGISTRY_URL=""
 EXISTING_ADMIN_TOKEN=""
@@ -41,11 +45,17 @@ fi
 if command -v apt-get >/dev/null 2>&1; then
   $SUDO apt-get update
   $SUDO env DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    ca-certificates \
+    curl \
     ffmpeg \
     fonts-noto-cjk \
+    nginx \
+    openssl \
     python3 \
     python3-pip \
-    python3-venv
+    python3-venv \
+    rsync \
+    xz-utils
 elif command -v dnf >/dev/null 2>&1; then
   # OpenCloudOS images may already carry an RPM Fusion FFmpeg build that
   # conflicts with the distribution package. Avoid reinstalling a working
@@ -53,11 +63,8 @@ elif command -v dnf >/dev/null 2>&1; then
   if ! command -v ffmpeg >/dev/null 2>&1; then
     $SUDO dnf install -y ffmpeg
   fi
-  if ! command -v python3 >/dev/null 2>&1; then
-    $SUDO dnf install -y python3
-  fi
-  if ! python3 -m pip --version >/dev/null 2>&1; then
-    $SUDO dnf install -y python3-pip
+  if ! command -v python3.12 >/dev/null 2>&1; then
+    $SUDO dnf install -y python3.12 python3.12-pip
   fi
 
   # Font packages differ across RPM distributions. They improve Chinese
@@ -69,6 +76,25 @@ elif command -v dnf >/dev/null 2>&1; then
 else
   echo "Unsupported Linux distribution: apt-get or dnf is required." >&2
   exit 1
+fi
+
+if command -v python3.12 >/dev/null 2>&1; then
+  PYTHON_BIN="python3.12"
+fi
+
+REMOTION_BROWSER_EXECUTABLE_VALUE="${REMOTION_BROWSER_EXECUTABLE:-}"
+if [ -z "$REMOTION_BROWSER_EXECUTABLE_VALUE" ]; then
+  for browser_candidate in \
+    /usr/bin/google-chrome-stable \
+    /usr/bin/google-chrome \
+    /usr/bin/chromium \
+    /usr/bin/chromium-browser \
+    /usr/lib64/chromium-browser/headless_shell; do
+    if [ -x "$browser_candidate" ]; then
+      REMOTION_BROWSER_EXECUTABLE_VALUE="$browser_candidate"
+      break
+    fi
+  done
 fi
 
 if ! id "$SERVICE_USER" >/dev/null 2>&1; then
@@ -88,7 +114,7 @@ if [ -n "$AUTHORING_SKILL_SOURCE" ]; then
   $SUDO rm -rf "$INSTALL_DIR/authoring-skill"
   $SUDO cp -R "$AUTHORING_SKILL_SOURCE" "$INSTALL_DIR/authoring-skill"
 fi
-$SUDO python3 -m venv "$INSTALL_DIR/.venv"
+$SUDO "$PYTHON_BIN" -m venv "$INSTALL_DIR/.venv"
 $SUDO "$INSTALL_DIR/.venv/bin/python" -m pip install --upgrade pip wheel
 $SUDO "$INSTALL_DIR/.venv/bin/python" -m pip install -r "$INSTALL_DIR/requirements.txt"
 
@@ -115,6 +141,12 @@ if [ -f "$REMOTION_INSTALL_DIR/package.json" ]; then
   $SUDO chown -R "$SERVICE_USER:$SERVICE_USER" \
     "$REMOTION_INSTALL_DIR/node_modules/.cache" \
     "$REMOTION_INSTALL_DIR/node_modules/.remotion"
+  # Keep the renderer available at both supported layouts. The first cloud
+  # bootstrap uses the sibling directory; later atomic GitHub releases carry
+  # it inside the video worker release.
+  if [ ! -e "$INSTALL_DIR/remotion-worker" ]; then
+    $SUDO ln -s "$REMOTION_INSTALL_DIR" "$INSTALL_DIR/remotion-worker"
+  fi
 fi
 
 $SUDO tee "$INSTALL_DIR/.env" >/dev/null <<EOF
@@ -124,8 +156,8 @@ VIDEO_WORKER_CONCURRENCY=1
 VIDEO_WORKER_TRANSCRIPTION_CONCURRENCY=1
 VIDEO_WORKER_CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://127.0.0.1:3000,http://127.0.0.1:3001,https://chaogeai.top,https://www.chaogeai.top,https://api.chaogeai.top
 VIDEO_WORKER_PUBLIC_BASE_URL=https://api.chaogeai.top/video-worker
-VIDEO_WORKER_X264_PRESET=medium
-VIDEO_WORKER_CRF=20
+VIDEO_WORKER_X264_PRESET=fast
+VIDEO_WORKER_CRF=18
 LK888_API_BASE_URL=https://api.lk888.ai
 LK888_API_KEY=$EXISTING_AI_KEY
 VIDEO_WORKER_TITLE_MODEL=gpt-5.5
@@ -137,18 +169,33 @@ TENCENT_ASR_ENGINE_TYPE=16k_zh_en
 TENCENT_ASR_TIMEOUT_SECONDS=90
 VIDEO_WORKER_RENDERER=remotion
 REMOTION_RUNTIME_DIR=/var/lib/merchant-studio/remotion
+REMOTION_BROWSER_EXECUTABLE=$REMOTION_BROWSER_EXECUTABLE_VALUE
 REMOTION_RENDER_MODE=web-standard
 REMOTION_SUPERSAMPLE=1
-REMOTION_CONCURRENCY=2
-REMOTION_CRF=17
-REMOTION_X264_PRESET=medium
+REMOTION_CONCURRENCY=4
+REMOTION_CRF=18
+REMOTION_X264_PRESET=fast
 VIDEO_TEMPLATE_REGISTRY_URL=$EXISTING_TEMPLATE_REGISTRY_URL
 VIDEO_TEMPLATE_REGISTRY_CACHE_SECONDS=300
 VIDEO_WORKER_ADMIN_TOKEN=$EXISTING_ADMIN_TOKEN
 EOF
 
-$SUDO chown -R "$SERVICE_USER:$SERVICE_USER" /var/lib/merchant-studio
+$SUDO mkdir -p \
+  /var/lib/merchant-studio/video \
+  /var/lib/merchant-studio/remotion \
+  /var/lib/merchant-studio/cache \
+  /var/lib/merchant-studio/.cache
+$SUDO chown -R "$SERVICE_USER:$SERVICE_USER" \
+  /var/lib/merchant-studio/video \
+  /var/lib/merchant-studio/remotion \
+  /var/lib/merchant-studio/cache \
+  /var/lib/merchant-studio/.cache
+if [ -f /var/lib/merchant-studio/swapfile ]; then
+  $SUDO chown root:root /var/lib/merchant-studio/swapfile
+  $SUDO chmod 600 /var/lib/merchant-studio/swapfile
+fi
 $SUDO chmod -R a+rX "$INSTALL_DIR"
+$SUDO chmod -R a+rX "$REMOTION_INSTALL_DIR"
 
 $SUDO tee /etc/systemd/system/merchant-video-worker.service >/dev/null <<'EOF'
 [Unit]

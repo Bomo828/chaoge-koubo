@@ -1,0 +1,9 @@
+{
+  "title": "渲染服务器正式启用",
+  "merchant": {"name": "爆点实验室"},
+  "metadata": {"duration": 4},
+  "captions": [
+    {"start": 0, "end": 2, "text": "新服务器已经就绪"},
+    {"start": 2, "end": 4, "text": "网感渲染速度提升"}
+  ]
+}

@@ -49,8 +49,9 @@
   },
   "body": {
     "caption_min_chars": 3,
-    "caption_max_chars": 7,
+    "caption_max_chars": 14,
     "caption_line_max_chars": 7,
+    "caption_long_text_mode": "adaptive-two-line",
     "caption_max_seconds": 2.0,
     "pause_split_seconds": 0.42,
     "word_timing": true,

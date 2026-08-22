@@ -1,0 +1,18 @@
+[Unit]
+Description=Merchant Studio containerized render node
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=simple
+Environment=RENDER_IMAGE=merchant-video-worker:render-v1
+ExecStartPre=-/usr/bin/docker rm -f merchant-video-render-node
+ExecStart=/usr/bin/docker run --name merchant-video-render-node --network host --env-file /opt/merchant-studio/video-worker/.env -e REMOTION_BROWSER_EXECUTABLE=/usr/bin/chromium -v /var/lib/merchant-studio:/var/lib/merchant-studio ${RENDER_IMAGE}
+ExecStop=/usr/bin/docker stop -t 30 merchant-video-render-node
+Restart=always
+RestartSec=5
+TimeoutStartSec=0
+TimeoutStopSec=45
+
+[Install]
+WantedBy=multi-user.target

@@ -13,8 +13,9 @@ Environment=PORT=3100
 Environment=HOSTNAME=127.0.0.1
 Environment=APP_DATA_DIR=/opt/merchant-studio/web/.data
 Environment=ENABLE_DEMO_ACCOUNT=false
-Environment=NEXT_PUBLIC_VIDEO_WORKER_URL=https://api.chaogeai.top/video-worker
-Environment=VIDEO_WORKER_BASE_URL=https://api.chaogeai.top/video-worker
+Environment=NEXT_PUBLIC_VIDEO_WORKER_URL=/video-worker
+Environment=VIDEO_WORKER_UPSTREAM_URL=http://129.204.151.78/video-worker
+Environment=VIDEO_WORKER_BASE_URL=http://129.204.151.78/video-worker
 EnvironmentFile=-/opt/merchant-studio/web/.env.local
 ExecStart=/usr/bin/node /opt/merchant-studio/web/server.js
 Restart=always

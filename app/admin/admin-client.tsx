@@ -61,6 +61,8 @@ const emptyMember: MemberForm = {
   id: null, username: "", displayName: "", password: "", level: "basic", points: 0,
 };
 
+const TEMPLATE_LIBRARY_UPDATE_KEY = "merchant-studio:template-library-updated";
+
 const entryOptions: Array<{ value: PlatformFeature["entry"]; label: string }> = [
   { value: "overview", label: "创作首页" },
   { value: "design", label: "图片设计" }, { value: "video", label: "短视频" },
@@ -118,6 +120,18 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
     const data = await response.json().catch(() => ({})) as T & { error?: string };
     if (!response.ok) throw new Error(data.error || "操作失败，请稍后重试。");
     return data;
+  }
+
+  function notifyTemplateLibraryUpdated() {
+    const updatedAt = Date.now();
+    try {
+      window.localStorage.setItem(TEMPLATE_LIBRARY_UPDATE_KEY, String(updatedAt));
+      const channel = new BroadcastChannel(TEMPLATE_LIBRARY_UPDATE_KEY);
+      channel.postMessage({ type: "templates-updated", updatedAt });
+      channel.close();
+    } catch {
+      // The catalog still refreshes on page focus and by its polling fallback.
+    }
   }
 
   async function saveSettings(next = settings, success = "平台设置已保存，并同步到用户端。") {
@@ -278,6 +292,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
       setTemplates((current) => editingTemplate
         ? current.map((item) => item.id === data.item.id ? data.item : item)
         : [data.item, ...current]);
+      notifyTemplateLibraryUpdated();
       setTemplateForm(emptyTemplate); setTemplateVideoFile(null); setEditingTemplate(null);
       setMessage(templateForm.status === "published"
         ? "逐帧学习完成，模板已上架并同步到用户端。"
@@ -295,6 +310,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
         method: editingTemplate ? "PATCH" : "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(templateForm),
       });
       setTemplates((current) => editingTemplate ? current.map((item) => item.id === data.item.id ? data.item : item) : [data.item, ...current]);
+      notifyTemplateLibraryUpdated();
       setTemplateForm(emptyTemplate); setTemplateVideoFile(null); setLearningJob(null); setEditingTemplate(null);
       setMessage(editingTemplate ? "模板修改已保存。" : "新模板已添加，用户端模板库会立即同步。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "模板保存失败。"); }
@@ -313,7 +329,9 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
     if (!window.confirm(`确认删除模板“${item.name}”吗？`)) return;
     try {
       await api(`/api/admin/templates/${item.id}`, { method: "DELETE" });
-      setTemplates((current) => current.filter((entry) => entry.id !== item.id)); setMessage("模板已删除。");
+      setTemplates((current) => current.filter((entry) => entry.id !== item.id));
+      notifyTemplateLibraryUpdated();
+      setMessage("模板已删除。");
     } catch (error) { setMessage(error instanceof Error ? error.message : "模板删除失败。"); }
   }
 

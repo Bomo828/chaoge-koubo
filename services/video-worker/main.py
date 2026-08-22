@@ -1788,6 +1788,7 @@ def template_profile(template_id: str) -> dict[str, Any]:
         "title_force_two_lines": int(opening.get("title_lines") or 1) == 2,
         "caption_max_chars": body.get("caption_max_chars", profile["caption_max_chars"]),
         "caption_line_max_chars": body.get("caption_line_max_chars", body.get("caption_max_chars", profile["caption_max_chars"])),
+        "caption_long_text_mode": body.get("caption_long_text_mode", "single-line"),
         "caption_safe_inset": body.get("caption_safe_inset", 72),
         "caption_max_width": body.get("caption_max_width", 936),
         "caption_min_chars": body.get("caption_min_chars", 4),
@@ -1919,6 +1920,75 @@ def word_timed_caption_segments(
 
 def caption_plain_text(value: str) -> str:
     return re.sub(r"[^\u4e00-\u9fffA-Za-z0-9]", "", value).lower()
+
+
+def plan_adaptive_caption_lines(
+    captions: list[dict[str, Any]],
+    line_max_chars: int,
+) -> list[dict[str, Any]]:
+    """Keep short captions on one line and direct long captions into two semantic rows.
+
+    This is visual metadata only: confirmed wording, punctuation and timing remain
+    unchanged. Punctuation and common clause markers are preferred over a hard
+    midpoint, while the selected keyword is never split across rows.
+    """
+    maximum = max(4, int(line_max_chars or 8))
+    markers = (
+        "但是", "不过", "所以", "然后", "因为", "如果", "同时", "以及",
+        "而且", "而是", "就是", "可以", "需要", "通过", "这样", "比如",
+        "例如", "首先", "其次", "最后", "想要", "怎么", "如何", "为什么",
+    )
+    punctuation = "，,。！？!?；;：:、"
+    prepared: list[dict[str, Any]] = []
+    for raw in captions:
+        item = dict(raw)
+        text = re.sub(r"\s+", "", str(item.get("text") or "")).strip()
+        characters = list(text)
+        if len(characters) <= maximum:
+            item["captionLineMode"] = "single"
+            item["captionLines"] = [text] if text else []
+            prepared.append(item)
+            continue
+
+        midpoint = len(characters) / 2
+        minimum_side = max(2, min(4, len(characters) // 3))
+        candidates: set[int] = set()
+        for index, character in enumerate(characters[:-1], start=1):
+            if character in punctuation and minimum_side <= index <= len(characters) - minimum_side:
+                candidates.add(index)
+        for marker in markers:
+            cursor = text.find(marker)
+            while cursor >= 0:
+                before = cursor
+                after = cursor + len(marker)
+                if minimum_side <= before <= len(characters) - minimum_side:
+                    candidates.add(before)
+                if minimum_side <= after <= len(characters) - minimum_side:
+                    candidates.add(after)
+                cursor = text.find(marker, cursor + 1)
+
+        keyword = re.sub(r"\s+", "", str(item.get("keyword") or ""))
+        keyword_start = text.find(keyword) if keyword else -1
+        keyword_end = keyword_start + len(keyword) if keyword_start >= 0 else -1
+
+        def split_is_safe(position: int) -> bool:
+            return not (keyword_start >= 0 and keyword_start < position < keyword_end)
+
+        fallback_positions = range(minimum_side, len(characters) - minimum_side + 1)
+        valid_candidates = [position for position in candidates if split_is_safe(position)]
+        if not valid_candidates:
+            valid_candidates = [position for position in fallback_positions if split_is_safe(position)]
+        split_at = min(
+            valid_candidates or [max(1, min(len(characters) - 1, round(midpoint)))],
+            key=lambda position: (
+                max(0, position - maximum) + max(0, len(characters) - position - maximum),
+                abs(position - midpoint),
+            ),
+        )
+        item["captionLineMode"] = "two-line"
+        item["captionLines"] = [text[:split_at], text[split_at:]]
+        prepared.append(item)
+    return prepared
 
 
 def speech_language(value: str) -> str:
@@ -3622,6 +3692,11 @@ def process_job(job_id: str) -> None:
                 if highlight_source not in {"", "not-required"}
                 else keyword_source
             )
+            if current_template.get("caption_long_text_mode") == "adaptive-two-line":
+                caption_segments = plan_adaptive_caption_lines(
+                    caption_segments,
+                    int(current_template.get("caption_line_max_chars") or 8),
+                )
         highlighted_caption_count = sum(
             bool(str(item.get("keyword") or "").strip())
             for item in caption_segments
@@ -3872,6 +3947,37 @@ def process_transcription_job(job_id: str) -> None:
             metadata=metadata,
         )
         original_segments, asr_metadata = tencent_flash_asr(audio, merchant)
+        if bool(job.get("fast_mode", True)):
+            # The review screen performs one dedicated AI pass for correction,
+            # title generation and semantic layout. Return Tencent's precise
+            # sentence/word timeline now instead of repeating visual analysis
+            # and two additional language-model calls in the worker.
+            transcript = "。".join(
+                str(item.get("text") or "").strip()
+                for item in original_segments
+                if str(item.get("text") or "").strip()
+            )
+            write_job(
+                job_id,
+                state="success",
+                stage="complete",
+                progress=100,
+                message="语音时间轴已完成，正在进行智能断句…",
+                title="",
+                title_source="pending-app-semantic-layout",
+                transcript=transcript,
+                captions=original_segments,
+                caption_source="tencent-flash:raw-timeline",
+                caption_completeness=caption_completeness_report(original_segments, original_segments),
+                language=speech_language(transcript),
+                analysis_mode="tencent-flash-asr-fast",
+                analysis_summary="腾讯云极速语音识别已生成原始字词时间轴。",
+                asr_provider="tencent-flash",
+                asr_engine=asr_metadata.get("engine_type", TENCENT_ASR_ENGINE_TYPE),
+                asr_request_id=asr_metadata.get("request_id", ""),
+                metadata=metadata,
+            )
+            return
         write_job(
             job_id,
             stage="visual",
@@ -4253,6 +4359,7 @@ async def create_transcription_job(
     source_name: str = Form(""),
     template_id: str = Form("template-9"),
     merchant_json: str = Form("{}"),
+    fast_mode: str = Form("1"),
 ) -> dict[str, Any]:
     refresh_remote_template_registry()
     remote_source_url = source_url.strip()
@@ -4306,6 +4413,7 @@ async def create_transcription_job(
         "message": "云端原片地址已接收，等待后台读取…" if remote_source_url else "原片已接收，等待提取口播文案…",
         "template_id": template_id,
         "merchant": merchant if isinstance(merchant, dict) else {},
+        "fast_mode": str(fast_mode).strip().lower() not in {"0", "false", "no", "off"},
         "source_name": stored_source_name,
         "source_url": public_source_url,
         "remote_source_url": remote_source_url,

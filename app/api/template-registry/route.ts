@@ -31,5 +31,10 @@ export async function GET() {
         package: learnedTemplate,
       };
     }),
+  }, {
+    headers: {
+      "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+      "CDN-Cache-Control": "no-store",
+    },
   });
 }

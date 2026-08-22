@@ -13,7 +13,10 @@ type ProviderResponse = {
   output_text?: string;
 };
 
-const TRANSCRIPT_MODELS = ["gpt-5.5", "gpt-5.4-mini"] as const;
+// The transcript has already been produced by Tencent Flash ASR.  Use the
+// smaller model first for the lightweight correction/segmentation pass and
+// reserve the larger model for a single fallback attempt.
+const TRANSCRIPT_MODELS = ["gpt-5.4-mini", "gpt-5.5"] as const;
 
 function extractText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -190,7 +193,7 @@ function localSentenceCaptions(captions: Caption[]): Caption[] {
       current = null;
     }
   });
-  return splitCaptionPhrases(output);
+  return segmentViralCaptions(splitCaptionPhrases(output));
 }
 
 function textCoverage(source: string, result: string) {
@@ -257,7 +260,7 @@ function normalizedAiCaptions(value: unknown, source: Caption[], duration: numbe
   const resultText = captions.map((item) => item.text).join(joiner);
   const lengthRatio = plainText(resultText).length / Math.max(1, plainText(sourceText).length);
   if (lengthRatio < 0.72 || lengthRatio > 1.35 || textCoverage(sourceText, resultText) < 0.62) return [];
-  const segmented = sourceLanguage === "en" ? segmentViralCaptions(captions) : splitCaptionPhrases(captions);
+  const segmented = segmentViralCaptions(captions);
   if (sourceLanguage === "en") {
     const wordCounts = segmented.map((caption) => textUnits(caption.text));
     const singleWordRatio = wordCounts.filter((count) => count <= 1).length / Math.max(1, wordCounts.length);
@@ -291,11 +294,12 @@ export async function POST(request: Request) {
 要求：
 1. 保留原口播的全部有效信息，不总结、不缩写、不加入营销文案，不虚构原片没有说过的内容。
 2. 结合整段上下文和关键画面校正同音错字、品牌名、机构名、数字与明显漏字；不能确认时保留原词。
-3. 保持原口播语言。英文必须保留单词之间的空格，按完整单词、标点、真实停顿和语义从句分段，绝不能从单词中间截断；通常每条4到11个英文单词。中文通常每条4到15个中文字。持续时间一般为0.8到3.5秒。
+3. 保持原口播语言。英文必须保留单词之间的空格，按完整单词、标点、真实停顿和语义从句分段，绝不能从单词中间截断；通常每条4到11个英文单词。中文优先每条7到18个中文字，必须是可独立朗读的完整语义短句，不能机械照搬语音识别的碎片边界。持续时间一般为1.0到3.8秒。
 4. 每条只保留字幕文字，不带句末标点。start和end必须对应这段话真实出现的位置；时间递增、不重叠、不超过视频时长。
 5. 输出句子的纯文字按顺序拼接后，应与原始口播基本一致。
 6. 标题必须先理解完整口播的主题、对象和最终结论后再提炼，保持原语言，不能截取第一句，也不能把开头两段机械拼接。中文标题8到15字；英文标题3到12个单词。标题必须可以独立阅读，不能停在连接词或半句话处。
-7. 32秒口播通常应整理为10到18条短句，不能把多个句子合成一个长段。只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能"}]}。`;
+7. 避免残句：上一条不能停在“的、和、与、就、都、也、在、让、属于、无论”等未完成词语，下一条不能以“的、就、都、也、才、属于、想念的”等承接词开头。“也有让人一吃就想念的经典风味”“无论是早餐午餐还是下午茶”这类结构必须保持完整。
+8. 16秒口播通常整理为5到9条，32秒口播通常整理为9到16条；宁可一条稍长，也不要拆成莫名其妙的半句话。只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能"}]}。`;
     const content = [
       {
         type: "text",
@@ -303,55 +307,32 @@ export async function POST(request: Request) {
       },
       ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
     ];
-    const tokenBudget = Math.max(1600, Math.min(5000, plainText(sourceText).length * 8));
-    let endpoint: "chat-completions" | "responses" | "local" = "local";
+    const tokenBudget = Math.max(1200, Math.min(3000, plainText(sourceText).length * 6));
+    let endpoint: "chat-completions" | "local" = "local";
     let selectedModel: string = "local-segmentation";
     let response: ProviderResponse | null = null;
     for (const model of TRANSCRIPT_MODELS) {
       try {
-        response = await lk888Fetch<ProviderResponse>("/v1/responses", {
+        response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
           method: "POST",
-          signal: AbortSignal.timeout(55_000),
+          signal: AbortSignal.timeout(28_000),
           body: JSON.stringify({
             model,
-            instructions: system,
-            input: [{
-              role: "user",
-              content: content.map((part) => "image_url" in part
-                ? { type: "input_image", image_url: part.image_url.url }
-                : { type: "input_text", text: part.text }),
-            }],
             temperature: 0.05,
-            max_output_tokens: tokenBudget,
+            max_tokens: tokenBudget,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: system },
+              { role: "user", content },
+            ],
           }),
         });
-        if (!extractText(response)) throw new AiProviderError("主识别通道没有返回有效内容。", 502);
-        endpoint = "responses";
+        if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
+        endpoint = "chat-completions";
         selectedModel = model;
         break;
       } catch {
-        try {
-          response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
-            method: "POST",
-            signal: AbortSignal.timeout(55_000),
-            body: JSON.stringify({
-              model,
-              temperature: 0.05,
-              max_tokens: tokenBudget,
-              response_format: { type: "json_object" },
-              messages: [
-                { role: "system", content: system },
-                { role: "user", content },
-              ],
-            }),
-          });
-          if (!extractText(response)) throw new AiProviderError("备用识别通道没有返回有效内容。", 502);
-          endpoint = "chat-completions";
-          selectedModel = model;
-          break;
-        } catch {
-          response = null;
-        }
+        response = null;
       }
     }
     let parsed: Record<string, unknown> = {};

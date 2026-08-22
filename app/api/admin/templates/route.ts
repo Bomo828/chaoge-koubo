@@ -7,7 +7,10 @@ export const runtime = "nodejs";
 export async function GET() {
   const member = await getMemberSession();
   if (!isAdmin(member)) return Response.json({ error: "需要管理员权限。" }, { status: 403 });
-  return Response.json({ items: listTemplates({ includeDrafts: true }) });
+  return Response.json(
+    { items: listTemplates({ includeDrafts: true }) },
+    { headers: { "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0" } },
+  );
 }
 
 export async function POST(request: Request) {

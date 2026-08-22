@@ -196,9 +196,91 @@ function splitTimedCaption(caption: ViralCaptionSegment) {
   });
 }
 
+const CHINESE_DANGLING_END = /(?:的|地|得|和|与|及|或|而|但|却|就|都|也|还|再|又|把|被|让|给|向|从|在|到|为|对|比|像|是|有|要|想|能|会|可|可以|如果|因为|所以|无论|不管|不论|不仅|以及|还是)$/u;
+const CHINESE_DANGLING_START = /^(?:的|地|得|了|着|过|就|才|更|和|与|及|或|把|被|让|给|其中|以及|还是|想念的|属于)/u;
+const CHINESE_OPENING_CLAUSE = /^(?:无论|不管|不论|如果|只要|因为|虽然|不仅|不是|当|每当)/u;
+const CHINESE_CLAUSE_RESOLUTION = /^(?:都|也|就|才|所以|但是|而且|还是|便|那么|却)/u;
+const CHINESE_OPEN_PREDICATE = /^(?:想|想要|想吃|想喝|想找|想学|想看|想买|想了解|想体验|希望|需要)/u;
+const CHINESE_PARALLEL_ACTION = /^(?:来|点|选|加|买|吃|喝|看|学|做|试)/u;
+
+function mergeCaptionPair(left: ViralCaptionSegment, right: ViralCaptionSegment) {
+  return {
+    start: left.start,
+    end: Math.max(left.end, right.end),
+    text: `${normalizeSpeechText(left.text)}${normalizeSpeechText(right.text)}`,
+  };
+}
+
+/**
+ * Tencent ASR often returns fluent Chinese as several 5–8 character timing
+ * fragments.  A subtitle should follow meaning rather than those transport
+ * chunks, so join fragments that are visibly unfinished or form one short
+ * spoken phrase.  The original first/last timestamps are retained.
+ */
+export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
+  if (viralSpeechLanguage(captions.map((caption) => caption.text).join("")) !== "zh") return captions;
+  const merged: ViralCaptionSegment[] = [];
+  const maxUnits = 20;
+  const maxDuration = 3.9;
+  for (const raw of captions) {
+    const current = { ...raw, text: normalizeSpeechText(raw.text).replace(/^[，。！？；：、]+|[，。！？；：、]+$/gu, "") };
+    if (!current.text) continue;
+    const previous = merged[merged.length - 1];
+    if (!previous) {
+      merged.push(current);
+      continue;
+    }
+    const gap = Math.max(0, current.start - previous.end);
+    const previousUnits = unitCount(previous.text);
+    const currentUnits = unitCount(current.text);
+    const combinedUnits = previousUnits + currentUnits;
+    const combinedDuration = current.end - previous.start;
+    const unfinished = CHINESE_DANGLING_END.test(previous.text) || CHINESE_DANGLING_START.test(current.text);
+    const pairedClause = CHINESE_OPENING_CLAUSE.test(previous.text)
+      && (CHINESE_CLAUSE_RESOLUTION.test(current.text) || current.text.includes("还是"));
+    const openPredicate = CHINESE_OPEN_PREDICATE.test(previous.text) && previousUnits <= 9 && currentUnits <= 9;
+    const parallelAction = CHINESE_PARALLEL_ACTION.test(previous.text)
+      && CHINESE_PARALLEL_ACTION.test(current.text)
+      && previousUnits <= 7
+      && currentUnits <= 7;
+    const shouldJoin = gap <= 0.5
+      && combinedUnits <= maxUnits
+      && combinedDuration <= maxDuration
+      && (unfinished || pairedClause || (gap <= 0.22 && (openPredicate || parallelAction)));
+    if (shouldJoin) merged[merged.length - 1] = mergeCaptionPair(previous, current);
+    else merged.push(current);
+  }
+
+  // Remove isolated micro-captions left by recognition jitter. Prefer the
+  // closest neighbour without creating an overlong on-screen sentence.
+  for (let index = 0; index < merged.length; index += 1) {
+    const item = merged[index];
+    if (unitCount(item.text) >= 4) continue;
+    const previous = merged[index - 1];
+    const next = merged[index + 1];
+    const previousFits = previous
+      && item.start - previous.end <= 0.5
+      && unitCount(previous.text) + unitCount(item.text) <= maxUnits;
+    const nextFits = next
+      && next.start - item.end <= 0.5
+      && unitCount(item.text) + unitCount(next.text) <= maxUnits;
+    if (previousFits && (!nextFits || item.start - previous.end <= next.start - item.end)) {
+      merged[index - 1] = mergeCaptionPair(previous, item);
+      merged.splice(index, 1);
+      index -= 1;
+    } else if (nextFits) {
+      merged[index + 1] = mergeCaptionPair(item, next);
+      merged.splice(index, 1);
+      index -= 1;
+    }
+  }
+  return merged;
+}
+
 export function segmentViralCaptions(captions: ViralCaptionSegment[]) {
-  return mergeEnglishCaptionWords(repairEnglishWordFragments(captions))
+  const segmented = mergeEnglishCaptionWords(repairEnglishWordFragments(captions))
     .flatMap(splitTimedCaption)
     .filter((caption) => caption.text)
     .sort((left, right) => left.start - right.start);
+  return rebalanceChineseViralCaptions(segmented);
 }

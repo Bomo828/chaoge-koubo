@@ -170,6 +170,35 @@ const splitCaptionLines = (value: string, maxChars: number) => {
   return lines.filter(Boolean);
 };
 
+const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: number) => {
+  const directed = (caption.captionLines ?? [])
+    .map((line) => line.replace(/\s+/g, "").trim())
+    .filter(Boolean);
+  if (
+    caption.captionLineMode === "two-line"
+    && directed.length === 2
+    && directed.join("") === value
+  ) return directed;
+  if (value.length <= maxChars) return [value];
+
+  const characters = Array.from(value);
+  const keyword = (caption.keyword ?? "").replace(/\s+/g, "");
+  const keywordStart = keyword ? value.indexOf(keyword) : -1;
+  const keywordEnd = keywordStart >= 0 ? keywordStart + keyword.length : -1;
+  const midpoint = characters.length / 2;
+  const minimumSide = Math.max(2, Math.min(4, Math.floor(characters.length / 3)));
+  const positions = Array.from(
+    {length: Math.max(1, characters.length - minimumSide * 2 + 1)},
+    (_, index) => index + minimumSide,
+  ).filter((position) => !(keywordStart >= 0 && keywordStart < position && position < keywordEnd));
+  const splitAt = positions.sort((a, b) => {
+    const overflowA = Math.max(0, a - maxChars) + Math.max(0, characters.length - a - maxChars);
+    const overflowB = Math.max(0, b - maxChars) + Math.max(0, characters.length - b - maxChars);
+    return overflowA - overflowB || Math.abs(a - midpoint) - Math.abs(b - midpoint);
+  })[0] ?? Math.round(midpoint);
+  return [characters.slice(0, splitAt).join(""), characters.slice(splitAt).join("")].filter(Boolean);
+};
+
 type StudioStyle = {
   id: number;
   accent: string;
@@ -1021,7 +1050,7 @@ const KineticSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeline; i
     const compact = caption.text.replace(/\s+/g, "").trim();
     const keywordStart = keyword ? compact.indexOf(keyword) : -1;
     const lineMaxChars = Math.max(5, Math.min(8, timeline.theme.captionLineMaxChars ?? 8));
-    const captionLines = splitCaptionLines(compact, lineMaxChars);
+    const captionLines = adaptiveCaptionLines(caption, compact, lineMaxChars);
     const fadeOutStart = Math.max(4, durationFrames - 6);
     const opacity = durationFrames <= 8
       ? 1
@@ -1094,7 +1123,7 @@ const KineticSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeline; i
     const compact = caption.text.replace(/\s+/g, "").trim();
     const keywordStart = keyword ? compact.indexOf(keyword) : -1;
     const lineMaxChars = Math.max(5, Math.min(10, timeline.theme.captionLineMaxChars ?? 9));
-    const captionLines = splitCaptionLines(compact, lineMaxChars);
+    const captionLines = adaptiveCaptionLines(caption, compact, lineMaxChars);
     const durationFramesSafe = Math.max(1, durationFrames);
     const revealFrames = Math.max(6, Math.min(Math.round(fps * .62), durationFramesSafe - 2));
     const visibleCharacters = Math.ceil(interpolate(
@@ -1206,7 +1235,7 @@ const KineticSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeline; i
     const safeInset = timeline.theme.captionSafeInset ?? 96;
     const captionMaxWidth = timeline.theme.captionMaxWidth ?? 888;
     const lineMaxChars = timeline.theme.captionLineMaxChars ?? 8;
-    const captionLines = splitCaptionLines(compact, lineMaxChars);
+    const captionLines = adaptiveCaptionLines(caption, compact, lineMaxChars);
     return (
       <>
         {caption.sectionEmphasis && !timeline.theme.headlinePersistent ? (
@@ -1315,7 +1344,7 @@ const KineticSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeline; i
     const centered = pairIndex % 3 === 2;
     const keywordStart = keyword ? compact.indexOf(keyword) : -1;
     const lineMaxChars = Math.max(5, Math.min(9, timeline.theme.captionLineMaxChars ?? 8));
-    const captionLines = splitCaptionLines(compact, lineMaxChars);
+    const captionLines = adaptiveCaptionLines(caption, compact, lineMaxChars);
     const fadeOutStart = Math.max(8, durationFrames - 6);
     const opacity = interpolate(frame, [0, 4, fadeOutStart, durationFrames], [0, 1, 1, 0], {
       extrapolateLeft: "clamp",

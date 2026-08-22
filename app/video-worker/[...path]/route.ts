@@ -1,4 +1,4 @@
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
+import { videoWorkerUpstreamUrl } from "../../../lib/server/video-worker";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -6,9 +6,7 @@ export const dynamic = "force-dynamic";
 type RouteContext = { params: Promise<{ path: string[] }> };
 
 function upstreamBaseUrl() {
-  return (process.env.VIDEO_WORKER_UPSTREAM_URL
-    || process.env.NEXT_PUBLIC_VIDEO_WORKER_URL
-    || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
+  return videoWorkerUpstreamUrl();
 }
 
 async function relay(request: Request, context: RouteContext) {

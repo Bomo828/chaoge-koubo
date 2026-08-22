@@ -10,6 +10,8 @@ export type CaptionCue = {
   end: number;
   displayEnd?: number;
   text: string;
+  captionLineMode?: "single" | "two-line";
+  captionLines?: string[];
   translation?: string;
   words?: CaptionWord[];
   keyword?: string;

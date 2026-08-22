@@ -1,4 +1,5 @@
 import { getMemberSession } from "../../../member-session";
+import { videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
 
 const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
 
@@ -17,28 +18,34 @@ export async function GET(request: Request) {
 
   const requestUrl = new URL(request.url);
   const source = requestUrl.searchParams.get("source")?.trim() || "";
-  const configuredBase = (process.env.NEXT_PUBLIC_VIDEO_WORKER_URL || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
+  const upstreamBase = videoWorkerUpstreamUrl();
 
   let sourceUrl: URL;
-  let allowedBase: URL;
+  let upstreamUrl: URL;
   try {
     sourceUrl = new URL(source);
-    allowedBase = new URL(configuredBase);
+    const workerBase = new URL(upstreamBase);
+    const legacyBase = new URL(DEFAULT_VIDEO_WORKER_URL);
+    const sameOriginRelay = sourceUrl.origin === requestUrl.origin
+      && sourceUrl.pathname.startsWith("/video-worker/media/");
+    const directWorkerAsset = sourceUrl.origin === workerBase.origin
+      && sourceUrl.pathname.startsWith(`${workerBase.pathname.replace(/\/+$/, "")}/media/`);
+    const legacyWorkerAsset = sourceUrl.origin === legacyBase.origin
+      && sourceUrl.pathname.startsWith(`${legacyBase.pathname.replace(/\/+$/, "")}/media/`);
+    if (!sameOriginRelay && !directWorkerAsset && !legacyWorkerAsset) throw new Error("untrusted source");
+    if (!sourceUrl.pathname.endsWith("/output.mp4")) throw new Error("invalid asset");
+
+    if (sameOriginRelay) {
+      const relayPath = sourceUrl.pathname.slice("/video-worker".length);
+      upstreamUrl = new URL(`${upstreamBase}${relayPath}${sourceUrl.search}`);
+    } else {
+      upstreamUrl = sourceUrl;
+    }
   } catch {
     return Response.json({ error: "成片下载地址无效。" }, { status: 400 });
   }
 
-  const allowedPath = `${allowedBase.pathname.replace(/\/+$/, "")}/media/`;
-  if (
-    sourceUrl.protocol !== allowedBase.protocol
-    || sourceUrl.host !== allowedBase.host
-    || !sourceUrl.pathname.startsWith(allowedPath)
-    || !sourceUrl.pathname.endsWith("/output.mp4")
-  ) {
-    return Response.json({ error: "不允许下载这个地址。" }, { status: 400 });
-  }
-
-  const upstream = await fetch(sourceUrl, { cache: "no-store" });
+  const upstream = await fetch(upstreamUrl, { cache: "no-store" });
   if (!upstream.ok || !upstream.body) {
     return Response.json({ error: "成片文件暂时无法读取，请稍后重试。" }, { status: 502 });
   }

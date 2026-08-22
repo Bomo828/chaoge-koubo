@@ -1,11 +1,8 @@
 import { getMemberSession } from "../../../member-session";
-
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
+import { videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
 
 function workerBaseUrl() {
-  return (process.env.VIDEO_WORKER_BASE_URL
-    || process.env.NEXT_PUBLIC_VIDEO_WORKER_URL
-    || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
+  return videoWorkerUpstreamUrl();
 }
 
 function safeJobId(value: string | null) {

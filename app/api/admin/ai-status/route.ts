@@ -4,6 +4,7 @@ import { lk888Fetch } from "../../../../lib/lk888";
 import { getPlatformSettings } from "../../../../lib/server/platform-settings";
 import { getChanjingBalance } from "../../../../lib/chanjing";
 import { getChanjingCredentialSummary, getLk888CredentialSummary } from "../../../../lib/server/ai-credentials";
+import { videoWorkerPublicUrl, videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
 
 export const runtime = "nodejs";
 
@@ -32,7 +33,8 @@ export async function GET() {
   } catch (error) {
     chanjingError = error instanceof Error ? error.message : "连接失败";
   }
-  const workerUrl = process.env.NEXT_PUBLIC_VIDEO_WORKER_URL?.trim() || "";
+  const workerUrl = videoWorkerPublicUrl();
+  const workerUpstream = videoWorkerUpstreamUrl();
   return Response.json({
     checkedAt: Date.now(),
     services: [
@@ -76,8 +78,8 @@ export async function GET() {
         balance: null,
         unit: "服务状态",
         sufficient: Boolean(workerUrl),
-        message: workerUrl ? "已配置云端视频工作节点" : "尚未配置视频工作节点",
-        secretHint: workerUrl || "未配置 NEXT_PUBLIC_VIDEO_WORKER_URL",
+        message: workerUpstream ? "已配置独立视频渲染节点" : "尚未配置视频工作节点",
+        secretHint: workerUrl || "未配置视频工作节点入口",
       },
     ],
   });
