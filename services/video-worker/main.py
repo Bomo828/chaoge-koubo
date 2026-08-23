@@ -62,6 +62,14 @@ AI_API_BASE_URL = os.getenv("LK888_API_BASE_URL", "https://api.lk888.ai").rstrip
 AI_API_KEY = os.getenv("LK888_API_KEY", "").strip()
 AI_TITLE_MODEL = os.getenv("VIDEO_WORKER_TITLE_MODEL", "gpt-5.5")
 AI_VIDEO_MODEL = os.getenv("VIDEO_WORKER_VIDEO_ANALYSIS_MODEL", "gemini-3.5-flash").strip()
+HIGHLIGHT_AI_TIMEOUT_SECONDS = max(
+    15,
+    int(os.getenv("VIDEO_WORKER_HIGHLIGHT_AI_TIMEOUT_SECONDS", "75")),
+)
+HIGHLIGHT_AI_MAX_ATTEMPTS = max(
+    1,
+    min(3, int(os.getenv("VIDEO_WORKER_HIGHLIGHT_AI_MAX_ATTEMPTS", "2"))),
+)
 TENCENT_CLOUD_APP_ID = os.getenv("TENCENT_CLOUD_APP_ID", os.getenv("TENCENT_APP_ID", "")).strip()
 TENCENT_CLOUD_SECRET_ID = os.getenv(
     "TENCENT_CLOUD_SECRET_ID",
@@ -821,8 +829,26 @@ def ai_select_caption_highlights(
         method="POST",
     )
     try:
-        with urllib.request.urlopen(request, timeout=45) as response:
-            payload = json.loads(response.read().decode("utf-8"))
+        payload: dict[str, Any] | None = None
+        last_request_error: Exception | None = None
+        for attempt in range(HIGHLIGHT_AI_MAX_ATTEMPTS):
+            try:
+                with urllib.request.urlopen(request, timeout=HIGHLIGHT_AI_TIMEOUT_SECONDS) as response:
+                    payload = json.loads(response.read().decode("utf-8"))
+                break
+            except (
+                urllib.error.URLError,
+                http.client.RemoteDisconnected,
+                ConnectionError,
+                TimeoutError,
+                OSError,
+                json.JSONDecodeError,
+            ) as request_error:
+                last_request_error = request_error
+                if attempt + 1 < HIGHLIGHT_AI_MAX_ATTEMPTS:
+                    time.sleep(min(2.0, 0.5 * (2 ** attempt)))
+        if payload is None:
+            raise last_request_error or TimeoutError("字幕关键词 AI 请求未返回结果")
         raw = extract_provider_text(payload)
         cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
         parsed = json.loads(cleaned)
@@ -867,7 +893,12 @@ def ai_select_caption_highlights(
             item["keywordConfidence"] = round(confidence, 3)
             item["keywordOrigin"] = keyword_origin if keyword else "none"
         return prepared, f"ai-highlight:{AI_TITLE_MODEL}"
-    except (urllib.error.URLError, http.client.RemoteDisconnected, ConnectionError, TimeoutError, OSError, json.JSONDecodeError, ValueError, TypeError):
+    except (urllib.error.URLError, http.client.RemoteDisconnected, ConnectionError, TimeoutError, OSError, json.JSONDecodeError, ValueError, TypeError) as error:
+        print(
+            f"caption highlight fallback: {type(error).__name__}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
         return prepared, "grounded-local-keyword-fallback"
 
 

@@ -3,6 +3,7 @@ import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk
 import {
   getWallet,
   pointsErrorResponse,
+  refundAiPointsByRequest,
   reserveAiPoints,
   settleAiPointsByRequest,
 } from "../../../../lib/points";
@@ -214,7 +215,7 @@ export async function POST(request: Request) {
       return Response.json({
         requestId,
         points: 0,
-        wallet: await settleAiPointsByRequest(member, requestId, 0),
+        wallet: await refundAiPointsByRequest(member, requestId),
       });
     }
 
