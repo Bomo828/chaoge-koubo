@@ -1,4 +1,4 @@
-import {cp, mkdir, readFile} from "node:fs/promises";
+import {cp, mkdir, readFile, symlink} from "node:fs/promises";
 import {existsSync} from "node:fs";
 import path from "node:path";
 import process from "node:process";
@@ -28,8 +28,14 @@ process.chdir(runtimeDir);
 const builtInPublicDir = path.join(serviceDir, "public");
 for (const assetFolder of ["fonts", "music", "sfx", "licenses"]) {
   const source = path.join(builtInPublicDir, assetFolder);
-  if (existsSync(source)) {
-    await cp(source, path.join(manifestDir, assetFolder), {recursive: true, force: false});
+  const destination = path.join(manifestDir, assetFolder);
+  if (existsSync(source) && !existsSync(destination)) {
+    try {
+      await symlink(source, destination, "dir");
+    } catch (error) {
+      if (error?.code !== "EPERM" && error?.code !== "EACCES" && error?.code !== "ENOTSUP") throw error;
+      await cp(source, destination, {recursive: true, force: false});
+    }
   }
 }
 const systemChrome = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome";
