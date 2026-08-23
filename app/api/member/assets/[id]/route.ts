@@ -1,5 +1,5 @@
 import { getMemberSession } from "../../../../member-session";
-import { deleteMemberAsset, getMemberAsset, getMemberAssetCover } from "../../../../../lib/member-assets";
+import { deleteMemberAsset, getMemberAsset, getMemberAssetCover, getMemberAssetDirectUrl } from "../../../../../lib/member-assets";
 
 function filenameWithExtension(name: string, contentType: string) {
   if (/\.[a-z0-9]{2,5}$/i.test(name)) return name;
@@ -24,6 +24,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
   const { id } = await context.params;
   const cover = new URL(request.url).searchParams.get("cover") === "1";
+  const download = new URL(request.url).searchParams.get("download") === "1";
+  if (!download) {
+    const directUrl = getMemberAssetDirectUrl(member, id, cover);
+    if (directUrl) return Response.redirect(directUrl, 307);
+  }
   if (cover) {
     const image = await getMemberAssetCover(member, id);
     if (!image) return Response.json({ error: "没有找到这个视频封面。" }, { status: 404 });
@@ -39,7 +44,6 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   }
   const asset = await getMemberAsset(member, id, request.headers.get("range") || "");
   if (!asset) return Response.json({ error: "没有找到这个会员资产。" }, { status: 404 });
-  const download = new URL(request.url).searchParams.get("download") === "1";
   const filename = filenameWithExtension(asset.row.name, asset.row.content_type);
   const headers = new Headers({
     "Content-Type": asset.row.content_type,

@@ -4,6 +4,7 @@ import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import type { MemberSession } from "../app/member-session";
 import { getDatabase, parseJson, unixNow } from "./server/db";
+import { deleteCosObject, getCosObject, signedCosObjectUrl } from "./server/tencent-mps";
 
 export type MemberAssetRow = {
   id: string;
@@ -11,6 +12,7 @@ export type MemberAssetRow = {
   project_name: string;
   kind: "image" | "video" | "audio" | "voice";
   name: string;
+  storage_provider: "local" | "cos";
   object_key: string;
   content_type: string;
   size_bytes: number;
@@ -26,6 +28,7 @@ type AssetDbRow = {
   owner_id: string;
   kind: MemberAssetRow["kind"];
   name: string;
+  storage_provider: string;
   object_key: string;
   content_type: string;
   size_bytes: number;
@@ -69,6 +72,7 @@ function mapRow(row: AssetDbRow): MemberAssetRow {
     project_name: metadata.projectName || "未命名项目",
     kind: row.kind,
     name: row.name,
+    storage_provider: row.storage_provider === "cos" ? "cos" : "local",
     object_key: row.object_key,
     content_type: row.content_type,
     size_bytes: Number(row.size_bytes),
@@ -99,12 +103,13 @@ function extensionFor(contentType: string, kind: MemberAssetRow["kind"]) {
 
 function getAssetRow(memberId: string, id: string) {
   return getDatabase().prepare(`
-    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+    SELECT id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
     FROM assets WHERE id = ? AND owner_id = ? LIMIT 1
   `).get(id, memberId) as AssetDbRow | undefined;
 }
 
 function removeAssetFiles(row: AssetDbRow) {
+  if (row.storage_provider === "cos") return;
   const filename = absoluteObjectPath(row.object_key);
   if (existsSync(filename)) unlinkSync(filename);
   const asset = mapRow(row);
@@ -114,22 +119,28 @@ function removeAssetFiles(row: AssetDbRow) {
   }
 }
 
-export function purgeExpiredMemberAssets(memberId?: string) {
+export async function purgeExpiredMemberAssets(memberId?: string) {
   const now = unixNow();
   const database = getDatabase();
   const rows = (memberId
     ? database.prepare(`
-        SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+        SELECT id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
         FROM assets WHERE owner_id = ? AND expires_at IS NOT NULL AND expires_at <= ?
       `).all(memberId, now)
     : database.prepare(`
-        SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+        SELECT id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
         FROM assets WHERE expires_at IS NOT NULL AND expires_at <= ?
       `).all(now)) as AssetDbRow[];
 
   for (const row of rows) {
     try {
-      removeAssetFiles(row);
+      if (row.storage_provider === "cos") {
+        await deleteCosObject(row.object_key);
+        const asset = mapRow(row);
+        if (asset.cover_object_key) await deleteCosObject(asset.cover_object_key);
+      } else {
+        removeAssetFiles(row);
+      }
       database.prepare("DELETE FROM assets WHERE id = ? AND expires_at IS NOT NULL AND expires_at <= ?").run(row.id, now);
     } catch (error) {
       console.error(`Purge expired member asset failed: ${row.id}`, error);
@@ -154,9 +165,9 @@ function getActiveAssetRow(memberId: string, id: string) {
 }
 
 export async function listMemberAssets(member: MemberSession) {
-  purgeExpiredMemberAssets(member.id);
+  await purgeExpiredMemberAssets(member.id);
   const rows = getDatabase().prepare(`
-    SELECT id, owner_id, kind, name, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
+    SELECT id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, expires_at
     FROM assets
     WHERE owner_id = ? AND (expires_at IS NULL OR expires_at > ?)
     ORDER BY created_at DESC LIMIT 300
@@ -168,6 +179,25 @@ export async function getMemberAsset(member: MemberSession, id: string, rangeHea
   const source = getActiveAssetRow(member.id, id);
   if (!source) return null;
   const row = mapRow(source);
+  if (row.storage_provider === "cos") {
+    const response = await getCosObject(row.object_key, rangeHeader);
+    if (!response.ok || !response.body) return null;
+    const contentRange = response.headers.get("content-range") || "";
+    const rangeMatch = /^bytes\s+(\d+)-(\d+)\/(\d+)$/i.exec(contentRange);
+    const range = rangeMatch
+      ? { start: Number(rangeMatch[1]), end: Number(rangeMatch[2]), total: Number(rangeMatch[3]) }
+      : null;
+    const size = Number(response.headers.get("content-length") || 0) || (range ? range.end - range.start + 1 : row.size_bytes);
+    return {
+      row,
+      object: {
+        body: response.body,
+        size,
+        range,
+        httpMetadata: { contentType: response.headers.get("content-type") || row.content_type },
+      },
+    };
+  }
   const filename = absoluteObjectPath(row.object_key);
   if (!existsSync(filename)) return null;
   const stat = statSync(filename);
@@ -201,6 +231,15 @@ export async function getMemberAssetCover(member: MemberSession, id: string) {
   if (!source) return null;
   const row = mapRow(source);
   if (!row.cover_object_key) return null;
+  if (row.storage_provider === "cos") {
+    const response = await getCosObject(row.cover_object_key);
+    if (!response.ok || !response.body) return null;
+    return {
+      body: response.body,
+      size: Number(response.headers.get("content-length") || 0),
+      contentType: response.headers.get("content-type") || row.cover_content_type || "image/jpeg",
+    };
+  }
   const filename = absoluteObjectPath(row.cover_object_key);
   if (!existsSync(filename)) return null;
   const stat = statSync(filename);
@@ -216,6 +255,7 @@ function insertAsset(member: MemberSession, input: {
   projectName: string;
   kind: MemberAssetRow["kind"];
   name: string;
+  storageProvider?: "local" | "cos";
   objectKey: string;
   contentType: string;
   sizeBytes: number;
@@ -233,12 +273,13 @@ function insertAsset(member: MemberSession, input: {
   getDatabase().prepare(`
     INSERT OR IGNORE INTO assets
       (id, owner_id, kind, name, storage_provider, object_key, content_type, size_bytes, metadata_json, created_at, updated_at, expires_at)
-    VALUES (?, ?, ?, ?, 'local', ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     input.id,
     member.id,
     input.kind,
     input.name,
+    input.storageProvider || "local",
     input.objectKey,
     input.contentType,
     input.sizeBytes,
@@ -254,6 +295,35 @@ function insertAsset(member: MemberSession, input: {
   );
   const saved = getAssetRow(member.id, input.id);
   return saved ? mapRow(saved) : null;
+}
+
+export async function saveCosMemberAsset(member: MemberSession, input: {
+  id: string;
+  projectName: string;
+  kind: MemberAssetRow["kind"];
+  name: string;
+  objectKey: string;
+  contentType: string;
+  sizeBytes: number;
+  sourceTaskId?: string | null;
+  coverObjectKey?: string | null;
+  coverContentType?: string | null;
+  createdAt?: number;
+}) {
+  const existing = getActiveAssetRow(member.id, input.id);
+  if (existing) return mapRow(existing);
+  return insertAsset(member, {
+    ...input,
+    storageProvider: "cos",
+  });
+}
+
+export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover = false) {
+  const source = getActiveAssetRow(member.id, id);
+  if (!source || source.storage_provider !== "cos") return "";
+  const row = mapRow(source);
+  const objectKey = cover ? row.cover_object_key : row.object_key;
+  return objectKey ? signedCosObjectUrl(objectKey, 60 * 60) : "";
 }
 
 export async function saveMemberAsset(member: MemberSession, input: {
@@ -338,7 +408,13 @@ export async function saveUploadedMemberAsset(member: MemberSession, input: {
 export async function deleteMemberAsset(member: MemberSession, id: string) {
   const source = getAssetRow(member.id, id);
   if (!source) return false;
-  removeAssetFiles(source);
+  if (source.storage_provider === "cos") {
+    await deleteCosObject(source.object_key);
+    const asset = mapRow(source);
+    if (asset.cover_object_key) await deleteCosObject(asset.cover_object_key);
+  } else {
+    removeAssetFiles(source);
+  }
   const result = getDatabase().prepare("DELETE FROM assets WHERE id = ? AND owner_id = ?").run(id, member.id);
   return Number(result.changes) > 0;
 }

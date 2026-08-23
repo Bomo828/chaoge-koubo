@@ -73,9 +73,14 @@ TENCENT_CLOUD_SECRET_KEY = os.getenv(
 ).strip()
 TENCENT_ASR_ENGINE_TYPE = os.getenv("TENCENT_ASR_ENGINE_TYPE", "16k_zh_en").strip() or "16k_zh_en"
 TENCENT_ASR_TIMEOUT_SECONDS = max(15, int(os.getenv("TENCENT_ASR_TIMEOUT_SECONDS", "90")))
+TENCENT_MPS_COS_BUCKET = os.getenv("TENCENT_MPS_COS_BUCKET", "").strip()
+TENCENT_MPS_COS_REGION = os.getenv("TENCENT_MPS_COS_REGION", "ap-guangzhou").strip() or "ap-guangzhou"
+VIDEO_WORKER_COS_OUTPUT_PREFIX = os.getenv("VIDEO_WORKER_COS_OUTPUT_PREFIX", "video-worker/output").strip().strip("/") or "video-worker/output"
 PUBLIC_BASE_URL = os.getenv("VIDEO_WORKER_PUBLIC_BASE_URL", "").strip().rstrip("/")
 WORKERS = max(1, int(os.getenv("VIDEO_WORKER_CONCURRENCY", "1")))
 TRANSCRIPTION_WORKERS = max(1, int(os.getenv("VIDEO_WORKER_TRANSCRIPTION_CONCURRENCY", "1")))
+JOB_RETENTION_HOURS = max(1, int(os.getenv("VIDEO_WORKER_JOB_RETENTION_HOURS", "24")))
+CLEANUP_INTERVAL_SECONDS = max(300, int(os.getenv("VIDEO_WORKER_CLEANUP_INTERVAL_SECONDS", "1800")))
 CORS_ORIGINS = [
     origin.strip()
     for origin in os.getenv(
@@ -126,6 +131,7 @@ AUTHORING_SKILL_DIR = next(
     ROOT / "authoring-skill",
 )
 ADMIN_TOKEN = os.getenv("VIDEO_WORKER_ADMIN_TOKEN", "").strip()
+CLEANUP_STATE: dict[str, Any] = {"last_run_at": 0, "removed_jobs": 0, "last_error": ""}
 
 
 def load_templates() -> dict[str, dict[str, Any]]:
@@ -1348,7 +1354,17 @@ def read_job(job_id: str) -> dict[str, Any]:
 def write_job(job_id: str, **updates: Any) -> dict[str, Any]:
     path = job_file(job_id)
     current = json.loads(path.read_text("utf-8")) if path.exists() else {"id": job_id}
-    current.update(updates, updated_at=int(time.time() * 1000))
+    now = int(time.time() * 1000)
+    previous_stage = str(current.get("stage") or "")
+    next_stage = str(updates.get("stage") or previous_stage)
+    if next_stage and next_stage != previous_stage:
+        started_at = int(current.get("stage_started_at") or current.get("updated_at") or now)
+        timings = current.get("stage_timings") if isinstance(current.get("stage_timings"), dict) else {}
+        if previous_stage:
+            timings[previous_stage] = round(max(0, now - started_at) / 1000, 3)
+        current["stage_timings"] = timings
+        current["stage_started_at"] = now
+    current.update(updates, updated_at=now)
     temporary = path.with_suffix(".tmp")
     temporary.write_text(json.dumps(current, ensure_ascii=False, indent=2), "utf-8")
     temporary.replace(path)
@@ -1357,6 +1373,129 @@ def write_job(job_id: str, **updates: Any) -> dict[str, Any]:
 
 def media_url(job_id: str, name: str) -> str:
     return f"/media/{job_id}/{name}"
+
+
+def cos_configured() -> bool:
+    return bool(
+        TENCENT_CLOUD_SECRET_ID
+        and TENCENT_CLOUD_SECRET_KEY
+        and TENCENT_MPS_COS_BUCKET
+        and TENCENT_MPS_COS_REGION
+    )
+
+
+def cos_host() -> str:
+    return f"{TENCENT_MPS_COS_BUCKET}.cos.{TENCENT_MPS_COS_REGION}.myqcloud.com"
+
+
+def cos_path(object_key: str) -> str:
+    return "/" + "/".join(
+        urllib.parse.quote(part, safe="-_.~")
+        for part in str(object_key or "").lstrip("/").split("/")
+    )
+
+
+def cos_encode(value: str) -> str:
+    return urllib.parse.quote(str(value), safe="-_.~")
+
+
+def cos_authorization(method: str, pathname: str, headers: dict[str, str], expires_in: int = 3600) -> str:
+    if not cos_configured():
+        raise RuntimeError("腾讯云 COS 尚未配置。")
+    now = int(time.time())
+    key_time = f"{max(0, now - 60)};{now + max(300, expires_in)}"
+    normalized = sorted((key.lower(), value.strip()) for key, value in headers.items())
+    header_list = ";".join(key for key, _value in normalized)
+    http_headers = "&".join(f"{cos_encode(key)}={cos_encode(value)}" for key, value in normalized)
+    http_string = f"{method.lower()}\n{pathname}\n\n{http_headers}\n"
+    sign_key = hmac.new(TENCENT_CLOUD_SECRET_KEY.encode(), key_time.encode(), hashlib.sha1).hexdigest()
+    string_to_sign = f"sha1\n{key_time}\n{hashlib.sha1(http_string.encode()).hexdigest()}\n"
+    signature = hmac.new(sign_key.encode(), string_to_sign.encode(), hashlib.sha1).hexdigest()
+    return (
+        "q-sign-algorithm=sha1"
+        f"&q-ak={cos_encode(TENCENT_CLOUD_SECRET_ID)}"
+        f"&q-sign-time={key_time}"
+        f"&q-key-time={key_time}"
+        f"&q-header-list={header_list}"
+        "&q-url-param-list="
+        f"&q-signature={signature}"
+    )
+
+
+def signed_cos_url(object_key: str, expires_in: int = 7200) -> str:
+    host = cos_host()
+    pathname = cos_path(object_key)
+    return f"https://{host}{pathname}?{cos_authorization('GET', pathname, {'host': host}, expires_in)}"
+
+
+def upload_file_to_cos(source: Path, object_key: str, content_type: str) -> None:
+    if not source.is_file() or source.stat().st_size <= 0:
+        raise RuntimeError("待上传的云端文件不存在。")
+    digest = hashlib.md5()
+    with source.open("rb") as stream:
+        while chunk := stream.read(1024 * 1024):
+            digest.update(chunk)
+    content_md5 = base64.b64encode(digest.digest()).decode()
+    host = cos_host()
+    pathname = cos_path(object_key)
+    signed_headers = {"host": host, "content-md5": content_md5, "content-type": content_type}
+    connection = http.client.HTTPSConnection(host, timeout=600)
+    try:
+        connection.putrequest("PUT", pathname, skip_host=True, skip_accept_encoding=True)
+        connection.putheader("Host", host)
+        connection.putheader("Content-MD5", content_md5)
+        connection.putheader("Content-Type", content_type)
+        connection.putheader("Content-Length", str(source.stat().st_size))
+        connection.putheader("Authorization", cos_authorization("PUT", pathname, signed_headers, 3600))
+        connection.endheaders()
+        with source.open("rb") as stream:
+            while chunk := stream.read(1024 * 1024):
+                connection.send(chunk)
+        response = connection.getresponse()
+        detail = response.read(4096).decode("utf-8", "replace")
+        if response.status < 200 or response.status >= 300:
+            raise RuntimeError(f"上传腾讯云 COS 失败（{response.status}）：{detail[:240]}")
+    finally:
+        connection.close()
+
+
+def public_job(job: dict[str, Any]) -> dict[str, Any]:
+    result = {**job}
+    if cos_configured() and result.get("result_object_key"):
+        result["result_url"] = signed_cos_url(str(result["result_object_key"]), 2 * 60 * 60)
+    if cos_configured() and result.get("cover_object_key"):
+        result["cover_url"] = signed_cos_url(str(result["cover_object_key"]), 2 * 60 * 60)
+    return result
+
+
+def cleanup_old_jobs() -> int:
+    cutoff = time.time() - JOB_RETENTION_HOURS * 60 * 60
+    removed = 0
+    for candidate in DATA_DIR.iterdir():
+        if not candidate.is_dir():
+            continue
+        metadata_file = candidate / "job.json"
+        try:
+            job = json.loads(metadata_file.read_text("utf-8")) if metadata_file.exists() else {}
+            if str(job.get("state") or "") in {"queued", "running"}:
+                continue
+            timestamp = metadata_file.stat().st_mtime if metadata_file.exists() else candidate.stat().st_mtime
+            if timestamp < cutoff:
+                shutil.rmtree(candidate, ignore_errors=True)
+                removed += 1
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+    CLEANUP_STATE.update(last_run_at=int(time.time() * 1000), removed_jobs=removed, last_error="")
+    return removed
+
+
+def cleanup_loop() -> None:
+    while True:
+        try:
+            cleanup_old_jobs()
+        except Exception as error:
+            CLEANUP_STATE.update(last_run_at=int(time.time() * 1000), last_error=str(error))
+        time.sleep(CLEANUP_INTERVAL_SECONDS)
 
 
 def validate_remote_video_url(value: str) -> str:
@@ -3901,14 +4040,31 @@ def process_job(job_id: str) -> None:
             output_metadata["duration"],
             float(current_template.get("cover_time_seconds") or 0.8),
         )
+        result_object_key = ""
+        cover_object_key = ""
+        result_url = media_url(job_id, output.name)
+        cover_url = media_url(job_id, cover.name)
+        if cos_configured():
+            write_job(job_id, stage="upload", progress=96, message="成片已导出，正在写入腾讯云存储…")
+            date_path = time.strftime("%Y/%m/%d", time.localtime())
+            result_object_key = f"{VIDEO_WORKER_COS_OUTPUT_PREFIX}/{date_path}/{job_id}/output.mp4"
+            cover_object_key = f"{VIDEO_WORKER_COS_OUTPUT_PREFIX}/{date_path}/{job_id}/cover.jpg"
+            upload_file_to_cos(output, result_object_key, "video/mp4")
+            upload_file_to_cos(cover, cover_object_key, "image/jpeg")
+            result_url = signed_cos_url(result_object_key, 2 * 60 * 60)
+            cover_url = signed_cos_url(cover_object_key, 2 * 60 * 60)
         write_job(
             job_id,
             state="success",
             stage="complete",
             progress=100,
             message="处理完成，可预览或下载。",
-            result_url=media_url(job_id, output.name),
-            cover_url=media_url(job_id, cover.name),
+            result_url=result_url,
+            cover_url=cover_url,
+            result_object_key=result_object_key,
+            cover_object_key=cover_object_key,
+            result_size=output.stat().st_size,
+            cover_size=cover.stat().st_size,
         )
     except Exception as error:
         write_job(
@@ -4204,6 +4360,18 @@ def process_douyin_transcription_job(job_id: str) -> None:
 @app.get("/health")
 def health() -> dict[str, Any]:
     refresh_remote_template_registry()
+    disk = shutil.disk_usage(DATA_DIR)
+    memory_total = 0
+    memory_available = 0
+    try:
+        values: dict[str, int] = {}
+        for line in Path("/proc/meminfo").read_text("utf-8").splitlines():
+            key, raw = line.split(":", 1)
+            values[key] = int(raw.strip().split()[0]) * 1024
+        memory_total = values.get("MemTotal", 0)
+        memory_available = values.get("MemAvailable", 0)
+    except (OSError, ValueError, IndexError):
+        pass
     return {
         "ok": bool(shutil.which("ffmpeg") and shutil.which("ffprobe")),
         "ffmpeg": shutil.which("ffmpeg") or "",
@@ -4222,6 +4390,22 @@ def health() -> dict[str, Any]:
         "template_registry_error": TEMPLATE_REGISTRY_ERROR,
         "remotion_available": remotion_renderer_available(),
         "renderer": "remotion-vertical-v1" if remotion_renderer_available() else "ffmpeg-fallback",
+        "cos_output_enabled": cos_configured(),
+        "queue": {
+            "render_waiting": EXECUTOR._work_queue.qsize(),
+            "transcription_waiting": TRANSCRIPTION_EXECUTOR._work_queue.qsize(),
+            "render_concurrency": WORKERS,
+            "transcription_concurrency": TRANSCRIPTION_WORKERS,
+        },
+        "runtime": {
+            "load_average": list(os.getloadavg()) if hasattr(os, "getloadavg") else [],
+            "memory_total_bytes": memory_total,
+            "memory_available_bytes": memory_available,
+            "disk_total_bytes": disk.total,
+            "disk_free_bytes": disk.free,
+            "job_retention_hours": JOB_RETENTION_HOURS,
+            "cleanup": CLEANUP_STATE,
+        },
     }
 
 
@@ -4560,7 +4744,7 @@ async def create_job(
 def get_job(job_id: str) -> dict[str, Any]:
     if not job_id.isalnum() or len(job_id) != 32:
         raise HTTPException(status_code=400, detail="视频任务编号无效。")
-    return read_job(job_id)
+    return public_job(read_job(job_id))
 
 
 @app.api_route("/media/{job_id}/{name}", methods=["GET", "HEAD"])
@@ -4591,3 +4775,33 @@ def get_media(job_id: str, name: str) -> FileResponse:
             "X-Content-Type-Options": "nosniff",
         },
     )
+
+
+@app.on_event("startup")
+def restore_background_work() -> None:
+    cleanup_old_jobs()
+    recovered = 0
+    for candidate in DATA_DIR.iterdir():
+        metadata_file = candidate / "job.json"
+        if not candidate.is_dir() or not metadata_file.exists():
+            continue
+        try:
+            job = json.loads(metadata_file.read_text("utf-8"))
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
+        if str(job.get("state") or "") not in {"queued", "running"}:
+            continue
+        job_id = str(job.get("id") or candidate.name)
+        kind = str(job.get("kind") or "")
+        write_job(job_id, state="queued", stage="recovered", progress=max(1, int(job.get("progress") or 1)), message="服务已恢复，任务重新进入处理队列…")
+        if kind == "transcription":
+            TRANSCRIPTION_EXECUTOR.submit(process_transcription_job, job_id)
+        elif kind == "douyin_transcription":
+            TRANSCRIPTION_EXECUTOR.submit(process_douyin_transcription_job, job_id)
+        elif kind == "template_learning":
+            EXECUTOR.submit(process_template_learning_job, job_id)
+        else:
+            EXECUTOR.submit(process_job, job_id)
+        recovered += 1
+    CLEANUP_STATE["recovered_jobs"] = recovered
+    threading.Thread(target=cleanup_loop, name="video-worker-cleanup", daemon=True).start()

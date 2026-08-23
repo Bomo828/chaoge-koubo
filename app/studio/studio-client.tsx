@@ -132,6 +132,9 @@ type ViralWorkerJob = {
   analysis_summary?: string;
   result_url?: string;
   cover_url?: string;
+  result_object_key?: string;
+  cover_object_key?: string;
+  result_size?: number;
   error?: string;
   benchmark_title?: string;
   benchmark_author?: string;
@@ -2036,6 +2039,12 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [, setViralResultBlob] = useState<Blob | null>(null);
   const [viralDownloadUrl, setViralDownloadUrl] = useState("");
   const [, setViralSaved] = useState(false);
+  const viralCloudSourceRef = useRef<{
+    fingerprint: string;
+    sourceUrl: string;
+    objectKey: string;
+    expiresAt: number;
+  } | null>(null);
 
   useEffect(() => {
     if (!viralTranscriptDialogOpen) return;
@@ -2952,6 +2961,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     if (!file) return;
     setViralFiles([file.name]);
     setViralSourceFile(file);
+    viralCloudSourceRef.current = null;
     setViralImportPreparing(false);
     setViralVideoPreviewUrl(URL.createObjectURL(file));
     setViralAnalyzed(true);
@@ -3395,7 +3405,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return typeof data.item?.mediaUrl === "string" ? data.item.mediaUrl : "";
   }
 
-  async function archiveViralWorkerResult(sourceUrl: string, requestId: string, coverUrl = "") {
+  async function archiveViralWorkerResult(
+    sourceUrl: string,
+    requestId: string,
+    coverUrl = "",
+    sourceObjectKey = "",
+    coverObjectKey = "",
+  ) {
     const resultName = viralTitle.trim() || "一键网感成片";
     const response = await fetch("/api/member/assets", {
       method: "POST",
@@ -3407,6 +3423,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         name: resultName,
         sourceUrl,
         coverUrl,
+        sourceObjectKey,
+        coverObjectKey,
         sourceTaskId: requestId,
         createdAt: Date.now(),
       }),
@@ -3465,6 +3483,51 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       }
     }
     const sourceFile = await workerSourceFile();
+    const fingerprint = `${sourceFile.name}|${sourceFile.size}|${sourceFile.lastModified}`;
+    const cached = viralCloudSourceRef.current;
+    if (cached && cached.fingerprint === fingerprint && cached.expiresAt > Date.now() + 5 * 60_000) {
+      form.append("source_url", cached.sourceUrl);
+      form.append("source_name", sourceFile.name);
+      return;
+    }
+    try {
+      const signResponse = await fetch("/api/uploads/cos", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          filename: sourceFile.name,
+          contentType: sourceFile.type || "video/mp4",
+          sizeBytes: sourceFile.size,
+        }),
+      });
+      const signed = await signResponse.json() as {
+        error?: string;
+        uploadUrl?: string;
+        sourceUrl?: string;
+        objectKey?: string;
+        sourceExpiresAt?: number;
+      };
+      if (!signResponse.ok || !signed.uploadUrl || !signed.sourceUrl || !signed.objectKey) {
+        throw new Error(signed.error || "云端直传地址创建失败。");
+      }
+      const uploadResponse = await fetch(signed.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": sourceFile.type || "video/mp4" },
+        body: sourceFile,
+      });
+      if (!uploadResponse.ok) throw new Error(`原片直传失败（HTTP ${uploadResponse.status}）。`);
+      viralCloudSourceRef.current = {
+        fingerprint,
+        sourceUrl: signed.sourceUrl,
+        objectKey: signed.objectKey,
+        expiresAt: Number(signed.sourceExpiresAt || Date.now() + 60 * 60_000),
+      };
+      form.append("source_url", signed.sourceUrl);
+      form.append("source_name", sourceFile.name);
+      return;
+    } catch (error) {
+      console.warn("COS direct upload unavailable; falling back to worker upload", error);
+    }
     form.append("video", sourceFile, sourceFile.name);
   }
 
@@ -3624,7 +3687,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setViralStage("成片可立即预览，正在保存到会员资产…");
       let saved = true;
       try {
-        setViralDownloadUrl(await archiveViralWorkerResult(resultUrl, requestId, coverUrl));
+        setViralDownloadUrl(await archiveViralWorkerResult(
+          resultUrl,
+          job.id,
+          coverUrl,
+          job.result_object_key || "",
+          job.cover_object_key || "",
+        ));
       } catch (error) {
         saved = false;
         setViralError(error instanceof Error ? error.message : "成片已生成，但保存到会员资产失败。");

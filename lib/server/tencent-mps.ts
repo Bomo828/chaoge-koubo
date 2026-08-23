@@ -111,6 +111,15 @@ export function inputObjectKey(jobId: string, filename: string) {
   return `${config.inputPrefix}/${jobId}/${filename.replace(/[^a-zA-Z0-9._-]+/g, "-")}`;
 }
 
+export function viralSourceObjectKey(memberId: string, uploadId: string, filename: string) {
+  const config = requireConfig();
+  const day = new Date().toISOString().slice(0, 10);
+  const safeMember = memberId.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "member";
+  const safeUpload = uploadId.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 80) || "upload";
+  const safeFilename = filename.replace(/[^a-zA-Z0-9._-]+/g, "-").slice(-160) || "source.mp4";
+  return `${config.inputPrefix}/viral/${day}/${safeMember}/${safeUpload}-${safeFilename}`;
+}
+
 export function outputObjectKey(jobId: string) {
   const config = requireConfig();
   return `${config.outputPrefix}/${jobId}/clean.mp4`;
@@ -151,6 +160,29 @@ export function signedCosObjectUrl(objectKey: string, expiresIn = 2 * 60 * 60) {
   const pathname = encodeCosPath(objectKey);
   const authorization = cosAuthorization("GET", pathname, { host }, Math.max(300, Math.min(expiresIn, 24 * 60 * 60)));
   return `https://${host}${pathname}?${authorization}`;
+}
+
+export function signedCosUploadUrl(objectKey: string, expiresIn = 30 * 60) {
+  const config = requireConfig();
+  const host = cosHost(config);
+  const pathname = encodeCosPath(objectKey);
+  const authorization = cosAuthorization("PUT", pathname, { host }, Math.max(300, Math.min(expiresIn, 2 * 60 * 60)));
+  return `https://${host}${pathname}?${authorization}`;
+}
+
+export async function deleteCosObject(objectKey: string) {
+  const config = requireConfig();
+  const host = cosHost(config);
+  const pathname = encodeCosPath(objectKey);
+  const response = await fetch(`https://${host}${pathname}`, {
+    method: "DELETE",
+    headers: { Host: host, Authorization: cosAuthorization("DELETE", pathname, { host }, 600) },
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!response.ok && response.status !== 404) {
+    const detail = await response.text().catch(() => "");
+    throw new Error(`删除腾讯云 COS 文件失败（${response.status}）：${detail.slice(0, 180)}`);
+  }
 }
 
 export async function getCosObject(objectKey: string, range = "") {
