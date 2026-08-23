@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { listMemberAssets, saveCosMemberAsset, saveMemberAsset, saveUploadedMemberAsset } from "../../../../lib/member-assets";
 import { videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
+import { sanitizeViralWorkflowManifest } from "../../../../lib/viral-workflow";
 
 function clean(value: unknown, fallback: string, max: number) {
   return typeof value === "string" && value.trim() ? value.trim().slice(0, max) : fallback;
@@ -21,6 +22,7 @@ function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
     retentionDays: item.kind === "video" ? 7 : item.kind === "image" ? 30 : null,
     mediaUrl: `/api/member/assets/${encodeURIComponent(item.id)}`,
     coverUrl: item.cover_object_key ? `/api/member/assets/${encodeURIComponent(item.id)}?cover=1` : "",
+    viralWorkflow: item.viral_workflow,
   };
 }
 
@@ -72,6 +74,7 @@ export async function POST(request: Request) {
     const coverObjectKey = clean(body.coverObjectKey, "", 1_000);
     const sourceTaskId = clean(body.sourceTaskId, "", 120) || null;
     const kind = ["image", "video", "audio", "voice"].includes(String(body.kind)) ? String(body.kind) as "image" | "video" | "audio" | "voice" : "image";
+    const viralWorkflow = kind === "video" ? sanitizeViralWorkflowManifest(body.viralWorkflow) : null;
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(id)) return Response.json({ error: "资产编号无效。" }, { status: 400 });
     if (kind === "video" && sourceObjectKey && sourceTaskId) {
       const statusResponse = await fetch(`${videoWorkerUpstreamUrl()}/v1/jobs/${encodeURIComponent(sourceTaskId)}`, {
@@ -99,6 +102,7 @@ export async function POST(request: Request) {
         coverObjectKey: status.cover_object_key === coverObjectKey ? coverObjectKey || null : null,
         coverContentType: coverObjectKey ? "image/jpeg" : null,
         createdAt: Number(body.createdAt || Date.now()),
+        viralWorkflow,
       });
       return saved ? Response.json({ item: assetJson(saved) }) : Response.json({ error: "资产保存失败。" }, { status: 500 });
     }
@@ -112,6 +116,7 @@ export async function POST(request: Request) {
       coverUrl: /^https?:\/\//i.test(coverUrl) ? coverUrl : undefined,
       sourceTaskId,
       createdAt: Number(body.createdAt || Date.now()),
+      viralWorkflow,
     });
     return saved ? Response.json({ item: assetJson(saved) }) : Response.json({ error: "资产保存失败。" }, { status: 500 });
   } catch (error) {

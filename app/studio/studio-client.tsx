@@ -13,6 +13,7 @@ import { MarketDynamics } from "./market-dynamics";
 import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
+import type { ViralCaptionPlanItem, ViralWorkflowManifest } from "../../lib/viral-workflow";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -50,6 +51,7 @@ type MemberAssetItem = {
   retentionDays: number | null;
   mediaUrl: string;
   coverUrl?: string;
+  viralWorkflow?: ViralWorkflowManifest | null;
 };
 
 type WalletHistoryEntry = {
@@ -87,11 +89,7 @@ type CommonVoice = {
 const VOICE_AUDITION_TEXT = "我是您的克隆声音，我可以说很多的话。";
 const VOICE_AUDITION_TEXT_EN = "Hello, this is my cloned voice. I can speak English naturally.";
 
-type ViralCaption = {
-  start: number;
-  end: number;
-  text: string;
-};
+type ViralCaption = ViralCaptionPlanItem;
 
 function viralTimestamp(value: number) {
   const seconds = Math.max(0, Number.isFinite(value) ? value : 0);
@@ -528,7 +526,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   const isAdminAccount = member.role === "admin" || member.role === "super_admin";
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
-  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string } | null>(null);
+  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -676,7 +674,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
           {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
-            setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType });
+            setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
             openStudioSection("video");
           }} />}
           {active === "member" && <Member
@@ -1919,7 +1917,7 @@ type VideoWorkspace = "chooser" | "material" | "lip-sync" | "ai-benchmark" | "vi
 
 const VIDEO_WORKSPACES = new Set<VideoWorkspace>(["chooser", "material", "lip-sync", "ai-benchmark", "viral-edit", "ai-director"]);
 
-function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string } | null }) {
+function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
   const [workspace, setWorkspace] = useState<VideoWorkspace>("chooser");
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
@@ -1979,6 +1977,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [speechAudioUrl, setSpeechAudioUrl] = useState("");
   const [speechAudioDuration, setSpeechAudioDuration] = useState(0);
   const [speechCaptions, setSpeechCaptions] = useState<ViralCaption[]>([]);
+  const [speechViralTitle, setSpeechViralTitle] = useState("");
+  const [speechViralPlanReady, setSpeechViralPlanReady] = useState(false);
   const [scriptRewriteBusy, setScriptRewriteBusy] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false);
   const [speechError, setSpeechError] = useState("");
@@ -2014,6 +2014,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   const [viralTitle, setViralTitle] = useState("");
   const [, setViralSubtitle] = useState("");
   const [viralCaptions, setViralCaptions] = useState<ViralCaption[]>([]);
+  const [viralCaptionPlanReady, setViralCaptionPlanReady] = useState(false);
   const [viralCaptionsConfirmed, setViralCaptionsConfirmed] = useState(false);
   const [viralTranscriptDialogOpen, setViralTranscriptDialogOpen] = useState(false);
   const [viralReviewTitle, setViralReviewTitle] = useState("");
@@ -2070,8 +2071,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     const title = viralReviewTitle.trim();
     const captions = viralReviewCaptions.map((caption) => ({ ...caption, text: caption.text.trim() }));
     if (!title || !captions.length || captions.some((caption) => !caption.text)) return;
+    const captionsChanged = captions.some((caption, index) => caption.text !== viralCaptions[index]?.text)
+      || captions.length !== viralCaptions.length;
     setViralTitle(title);
     setViralCaptions(captions);
+    if (captionsChanged) setViralCaptionPlanReady(false);
     setViralSubtitle(captions.map((caption) => caption.text).join(" / ").slice(0, 120));
     setViralCaptionsConfirmed(true);
     setViralTranscriptError("");
@@ -2196,6 +2200,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   useEffect(() => {
     if (!viralImportAsset) return;
     let cancelled = false;
+    const workflow = viralImportAsset.viralWorkflow;
     queueMicrotask(() => {
       if (cancelled) return;
       setViralImportPreparing(true);
@@ -2212,8 +2217,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setViralTranscriptError("");
       setViralProcessStarted(false);
       setViralCoverUrl("");
-      setViralCaptions([]);
-      setViralCaptionsConfirmed(false);
+      setViralTitle(workflow?.title || "");
+      setViralCaptions(workflow?.captions?.map((caption) => ({ ...caption })) || []);
+      setViralCaptionsConfirmed(Boolean(workflow?.captions?.length));
+      setViralCaptionPlanReady(Boolean(workflow?.planReady));
       setViralAnalysisSummary("");
       setViralAnalysisMode("");
       setViralProcessingEngine("");
@@ -2224,6 +2231,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       id: viralImportAsset.id,
       name: viralImportAsset.name,
       mediaUrl: viralImportAsset.mediaUrl,
+      viralWorkflow: workflow || null,
     }));
     // Member assets used to remain only as a protected URL until the user
     // submitted the job. Preparing a real File now makes this path identical
@@ -2261,12 +2269,18 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   useEffect(() => {
     if (viralImportAsset || viralSourceFile || viralVideoPreviewUrl) return;
     try {
-      const saved = JSON.parse(window.sessionStorage.getItem("merchant-studio-viral-source") || "null") as { name?: string; mediaUrl?: string } | null;
+      const saved = JSON.parse(window.sessionStorage.getItem("merchant-studio-viral-source") || "null") as { name?: string; mediaUrl?: string; viralWorkflow?: ViralWorkflowManifest | null } | null;
       if (!saved?.name || !saved.mediaUrl || saved.mediaUrl.startsWith("blob:")) return;
       queueMicrotask(() => {
         setViralFiles([saved.name as string]);
         setViralVideoPreviewUrl(saved.mediaUrl as string);
         setViralAnalyzed(true);
+        if (saved.viralWorkflow?.captions?.length) {
+          setViralTitle(saved.viralWorkflow.title);
+          setViralCaptions(saved.viralWorkflow.captions.map((caption) => ({ ...caption })));
+          setViralCaptionsConfirmed(true);
+          setViralCaptionPlanReady(Boolean(saved.viralWorkflow.planReady));
+        }
       });
     } catch {
       window.sessionStorage.removeItem("merchant-studio-viral-source");
@@ -2762,6 +2776,8 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       setSpeechAudioUrl(data.audioUrl);
       setSpeechAudioDuration(Math.max(0, Number(data.duration) || 0));
       setSpeechCaptions(Array.isArray(data.captions) ? normalizeViralCaptionsForReview(data.captions) : []);
+      setSpeechViralTitle("");
+      setSpeechViralPlanReady(false);
       setSpeechAudioReady(true);
       window.dispatchEvent(new CustomEvent("member-assets-updated"));
     } catch (error) {
@@ -2841,6 +2857,44 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       // for the whole MP4 to be copied through the application server first.
       setLipSyncResultUrl(data.videoUrl);
       const completedTaskId = data.taskId || "";
+      const sourceCaptions = speechCaptions.map((caption) => ({ ...caption }));
+      let plannedTitle = viralTitleFromKnownScript(script);
+      let plannedCaptions = sourceCaptions;
+      let planReady = false;
+      if (sourceCaptions.length) {
+        try {
+          const planResponse = await fetch("/api/ai/viral-caption-plan", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ script, duration: speechAudioDuration || data.audioDuration || 600, captions: sourceCaptions }),
+          });
+          const planData = await planResponse.json() as {
+            title?: string;
+            captions?: ViralCaption[];
+            planReady?: boolean;
+          };
+          if (planResponse.ok && Array.isArray(planData.captions) && planData.captions.length === sourceCaptions.length) {
+            plannedTitle = planData.title?.trim() || plannedTitle;
+            plannedCaptions = planData.captions.map((caption) => ({ ...caption }));
+            planReady = Boolean(planData.planReady);
+          }
+        } catch {
+          // 对口型成片已经完成。轻量规划失败时保留原时间轴，渲染端会按本地规则兜底。
+        }
+      }
+      setSpeechCaptions(plannedCaptions);
+      setSpeechViralTitle(plannedTitle);
+      setSpeechViralPlanReady(planReady);
+      const viralWorkflow: ViralWorkflowManifest | null = plannedCaptions.length ? {
+        version: 1,
+        kind: "lip-sync-viral",
+        script: script.trim(),
+        title: plannedTitle,
+        duration: Math.max(1, speechAudioDuration || data.audioDuration || plannedCaptions.at(-1)?.end || 1),
+        captions: plannedCaptions,
+        planReady,
+        plannedAt: Date.now(),
+      } : null;
       void fetch("/api/member/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2852,6 +2906,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           sourceUrl: data.videoUrl,
           sourceTaskId: completedTaskId ? `chanjing_${completedTaskId}` : "",
           createdAt: Date.now(),
+          viralWorkflow,
         }),
       }).then((archiveResponse) => {
         if (archiveResponse.ok) window.dispatchEvent(new CustomEvent("member-assets-updated"));
@@ -2866,17 +2921,18 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   function openLipSyncResultInViralEditor() {
     if (!lipSyncResultUrl || lipSyncBusy) return;
     const sourceName = "对口型成片.mp4";
-    const confirmedCaptions = normalizeViralCaptionsForReview(speechCaptions);
+    const confirmedCaptions = speechCaptions.map((caption) => ({ ...caption }));
     openVideoWorkspace("viral-edit");
     setViralFiles([sourceName]);
     setViralSourceFile(null);
     setViralVideoPreviewUrl(lipSyncResultUrl);
     setViralSourceResolution(`${lipVideoSize.width} × ${lipVideoSize.height}`);
     setViralAnalyzed(true);
-    setViralTitle(viralTitleFromKnownScript(script));
+    setViralTitle(speechViralTitle || viralTitleFromKnownScript(script));
     setViralSubtitle(confirmedCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
     setViralCaptions(confirmedCaptions);
     setViralCaptionsConfirmed(Boolean(confirmedCaptions.length));
+    setViralCaptionPlanReady(speechViralPlanReady);
     setViralAnalysisSummary(confirmedCaptions.length ? "已复用对口型口播的原始字幕时间轴，无需再次识别整条视频。" : "");
     setViralAnalysisMode(confirmedCaptions.length ? "ai" : "");
     setViralProcessingEngine("");
@@ -2898,6 +2954,16 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       id: `lip-sync-${Date.now()}`,
       name: sourceName,
       mediaUrl: lipSyncResultUrl,
+      viralWorkflow: confirmedCaptions.length ? {
+        version: 1,
+        kind: "lip-sync-viral",
+        script: script.trim(),
+        title: speechViralTitle || viralTitleFromKnownScript(script),
+        duration: Math.max(1, speechAudioDuration || confirmedCaptions.at(-1)?.end || 1),
+        captions: confirmedCaptions,
+        planReady: speechViralPlanReady,
+        plannedAt: Date.now(),
+      } satisfies ViralWorkflowManifest : null,
     }));
   }
 
@@ -2912,6 +2978,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setViralSubtitle("");
     setViralCaptions([]);
     setViralCaptionsConfirmed(false);
+    setViralCaptionPlanReady(false);
     setViralTranscriptDialogOpen(false);
     setViralReviewTitle("");
     setViralReviewCaptions([]);
@@ -2977,6 +3044,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     setViralSubtitle("");
     setViralCaptions([]);
     setViralCaptionsConfirmed(false);
+    setViralCaptionPlanReady(false);
     setViralAnalysisSummary("");
     setViralAnalysisMode("");
     setViralProcessingEngine("");
@@ -3108,6 +3176,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       }
       setViralCaptions(sentenceCaptions);
       setViralCaptionsConfirmed(false);
+      setViralCaptionPlanReady(false);
       setViralSubtitle(sentenceCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
       const transcriptLanguage = viralSpeechLanguage(sentenceCaptions.map((caption) => caption.text).join(" "));
       const titleCandidate = aiTitle || job.title || "";
@@ -3627,6 +3696,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       form.append("template_id", viralTemplate);
       form.append("title", generatedTitle);
       form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
+      form.append("caption_plan_ready", viralCaptionPlanReady ? "true" : "false");
       form.append("include_sfx", viralIncludeSfx ? "true" : "false");
       form.append("include_bgm", viralIncludeBgm ? "true" : "false");
       const createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {

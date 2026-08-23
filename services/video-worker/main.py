@@ -547,7 +547,10 @@ def semantic_caption_plan(
     for index, caption in enumerate(planned):
         text = re.sub(r"\s+", "", str(caption.get("text") or ""))
         is_final = index == len(planned) - 1
-        if is_final and any(marker in text for marker in ("欢迎", "咨询", "预约", "点击", "联系", "了解", "开始", "留言", "关注")):
+        confirmed_node = str(caption.get("contentNode") or "").strip()
+        if confirmed_node in route_by_node:
+            node = confirmed_node
+        elif is_final and any(marker in text for marker in ("欢迎", "咨询", "预约", "点击", "联系", "了解", "开始", "留言", "关注")):
             node = "cta"
         elif index == 0 or any(marker in text for marker in ("你知道", "为什么", "千万", "别再", "很多人", "最重要", "想不想", "是不是")):
             node = "hook"
@@ -3634,11 +3637,32 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
             continue
         if not text or end <= start:
             continue
-        captions.append({
+        normalized: dict[str, Any] = {
             "start": round(start, 3),
             "end": round(end, 3),
             "text": text[:180],
-        })
+        }
+        keyword = str(item.get("keyword") or "").strip()[:16]
+        if keyword and re.sub(r"\s+", "", keyword) in re.sub(r"\s+", "", text):
+            normalized["keyword"] = keyword
+            normalized["keywordLocked"] = True
+        translation = str(item.get("translation") or "").strip()[:240]
+        if translation:
+            normalized["translation"] = translation
+        content_node = str(item.get("contentNode") or "").strip()
+        if content_node in {
+            "hook", "pain_reversal", "core_viewpoint", "number_benefit",
+            "example_step", "brand_entity", "cta", "supporting",
+        }:
+            normalized["contentNode"] = content_node
+        try:
+            normalized["contentWeight"] = max(0.0, min(1.0, float(item.get("contentWeight") or 0.0)))
+        except (TypeError, ValueError):
+            pass
+        keyword_origin = str(item.get("keywordOrigin") or "").strip()
+        if keyword_origin in {"ai", "local", "none"}:
+            normalized["keywordOrigin"] = keyword_origin
+        captions.append(normalized)
     return sorted(captions, key=lambda item: (float(item["start"]), float(item["end"])))
 
 
@@ -3759,18 +3783,24 @@ def process_job(job_id: str) -> None:
             float(current_template.get("cover_time_seconds") or 0.8),
         )
         edited_captions = normalized_edited_captions(job.get("edited_captions"), metadata["duration"])
+        caption_plan_ready = bool(job.get("caption_plan_ready")) and bool(edited_captions)
         info: Any = None
         words: list[dict[str, Any]] = []
         if edited_captions:
             write_job(job_id, stage="transcribe", progress=24, message="正在读取已校对的口播文案与时间轴…")
             segments = [{**item} for item in edited_captions]
-            caption_segments = local_semantic_caption_segments(
-                edited_captions,
-                int(current_template.get("caption_min_chars") or 4),
-                int(current_template["caption_max_chars"]),
-            )
-            caption_source = "user-edited:width-safe-segmentation"
-            analysis_mode = "user_edited"
+            if caption_plan_ready:
+                caption_segments = [{**item} for item in edited_captions]
+                caption_source = "lip-sync-manifest:precomputed-plan"
+                analysis_mode = "precomputed_lip_sync_timeline"
+            else:
+                caption_segments = local_semantic_caption_segments(
+                    edited_captions,
+                    int(current_template.get("caption_min_chars") or 4),
+                    int(current_template["caption_max_chars"]),
+                )
+                caption_source = "user-edited:width-safe-segmentation"
+                analysis_mode = "user_edited"
         else:
             write_job(job_id, stage="transcribe", progress=24, message="正在识别原片文案与字幕时间轴…")
             if not metadata["has_audio"]:
@@ -3820,7 +3850,10 @@ def process_job(job_id: str) -> None:
         # argument instead of copying or truncating the opening sentence.
         transcript = "。".join(str(item["text"]).strip() for item in caption_segments)
         confirmed_title = normalize_speech_text(str(job.get("title") or "")).strip("，,。！？!? ")
-        if title_is_valid(confirmed_title):
+        if caption_plan_ready:
+            title = confirmed_title if confirmed_title else derive_title(caption_segments, "")
+            title_source = "precomputed-lip-sync-plan"
+        elif title_is_valid(confirmed_title):
             title = confirmed_title
             title_source = "user-confirmed"
         else:
@@ -3830,14 +3863,26 @@ def process_job(job_id: str) -> None:
                 fallback_title,
                 current_template,
             )
-        if current_template.get("caption_bilingual"):
+        translations_ready = caption_plan_ready and all(str(item.get("translation") or "").strip() for item in caption_segments)
+        if current_template.get("caption_bilingual") and not translations_ready:
             write_job(job_id, stage="translate", progress=44, message="正在生成中英双语字幕，接口异常时会自动使用中文字幕继续…")
             translations = ai_translate_caption_segments(caption_segments)
             for segment, translation in zip(caption_segments, translations):
                 segment["translation"] = translation
         highlight_source = "not-required"
         template_id = str(job.get("template_id") or "template-9")
-        if template_id == "template-9":
+        if caption_plan_ready and template_id == "template-9":
+            directed_items = [
+                {
+                    "content_node": item.get("contentNode"),
+                    "keyword": item.get("keyword"),
+                    "emphasis": "strong" if float(item.get("contentWeight") or 0.0) >= 0.72 else "normal",
+                }
+                for item in caption_segments
+            ]
+            caption_segments = finalize_template9_director_plan(caption_segments, directed_items)
+            highlight_source = "precomputed-lip-sync-plan"
+        elif template_id == "template-9":
             write_job(job_id, stage="director", progress=48, message="AI 正在统一规划内容节点、字幕组合与镜头节奏…")
             caption_segments, highlight_source = ai_direct_template9_captions(
                 caption_segments,
@@ -3847,14 +3892,16 @@ def process_job(job_id: str) -> None:
         elif template_id == "template-10":
             write_job(job_id, stage="director", progress=48, message="正在规划黄白双语字幕、语义大字与镜头节奏…")
             caption_segments = finalize_template10_director_plan(caption_segments)
-            highlight_source = "template-10-local-director"
+            highlight_source = "precomputed-lip-sync-plan" if caption_plan_ready else "template-10-local-director"
         elif template_id in {"template-11", "template-12"}:
             caption_segments = semantic_caption_plan(
                 caption_segments,
                 title,
                 current_template.get("content_director"),
             )
-        if template_id in {"template-9", "template-10", "template-11", "template-12"}:
+            if caption_plan_ready:
+                highlight_source = "precomputed-lip-sync-plan"
+        if not caption_plan_ready and template_id in {"template-9", "template-10", "template-11", "template-12"}:
             write_job(job_id, stage="director", progress=49, message="AI 正在结合整条口播判断需要提亮的完整关键词…")
             caption_segments, keyword_source = ai_select_caption_highlights(caption_segments, title)
             highlight_source = (
@@ -3862,11 +3909,11 @@ def process_job(job_id: str) -> None:
                 if highlight_source not in {"", "not-required"}
                 else keyword_source
             )
-            if current_template.get("caption_long_text_mode") == "adaptive-two-line":
-                caption_segments = plan_adaptive_caption_lines(
-                    caption_segments,
-                    int(current_template.get("caption_line_max_chars") or 8),
-                )
+        if template_id in {"template-9", "template-10", "template-11", "template-12"} and current_template.get("caption_long_text_mode") == "adaptive-two-line":
+            caption_segments = plan_adaptive_caption_lines(
+                caption_segments,
+                int(current_template.get("caption_line_max_chars") or 8),
+            )
         highlighted_caption_count = sum(
             bool(str(item.get("keyword") or "").strip())
             for item in caption_segments
@@ -4695,6 +4742,7 @@ async def create_job(
     title: str = Form(""),
     merchant_json: str = Form("{}"),
     captions_json: str = Form("[]"),
+    caption_plan_ready: str = Form("false"),
     include_sfx: str = Form("true"),
     include_bgm: str = Form("false"),
 ) -> dict[str, Any]:
@@ -4752,6 +4800,7 @@ async def create_job(
         "title": title.strip()[:40],
         "merchant": merchant if isinstance(merchant, dict) else {},
         "edited_captions": edited_captions if isinstance(edited_captions, list) else [],
+        "caption_plan_ready": form_boolean(caption_plan_ready, False),
         "include_sfx": form_boolean(include_sfx, True),
         "include_bgm": form_boolean(include_bgm, False),
         "source_name": stored_source_name,

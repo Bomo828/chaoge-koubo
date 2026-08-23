@@ -5,6 +5,8 @@ import { pipeline } from "node:stream/promises";
 import type { MemberSession } from "../app/member-session";
 import { getDatabase, parseJson, unixNow } from "./server/db";
 import { deleteCosObject, getCosObject, signedCosObjectUrl } from "./server/tencent-mps";
+import type { ViralWorkflowManifest } from "./viral-workflow";
+import { sanitizeViralWorkflowManifest } from "./viral-workflow";
 
 export type MemberAssetRow = {
   id: string;
@@ -19,6 +21,7 @@ export type MemberAssetRow = {
   source_task_id: string | null;
   cover_object_key: string | null;
   cover_content_type: string | null;
+  viral_workflow: ViralWorkflowManifest | null;
   created_at: number;
   expires_at: number | null;
 };
@@ -65,6 +68,7 @@ function mapRow(row: AssetDbRow): MemberAssetRow {
     sourceTaskId?: string | null;
     coverObjectKey?: string | null;
     coverContentType?: string | null;
+    viralWorkflow?: unknown;
   }>(row.metadata_json, {});
   return {
     id: row.id,
@@ -79,6 +83,7 @@ function mapRow(row: AssetDbRow): MemberAssetRow {
     source_task_id: metadata.sourceTaskId || null,
     cover_object_key: metadata.coverObjectKey || null,
     cover_content_type: metadata.coverContentType || null,
+    viral_workflow: sanitizeViralWorkflowManifest(metadata.viralWorkflow),
     created_at: Number(row.created_at),
     expires_at: row.expires_at === null ? null : Number(row.expires_at),
   };
@@ -262,6 +267,7 @@ function insertAsset(member: MemberSession, input: {
   sourceTaskId?: string | null;
   coverObjectKey?: string | null;
   coverContentType?: string | null;
+  viralWorkflow?: ViralWorkflowManifest | null;
   createdAt?: number;
 }) {
   const now = unixNow();
@@ -288,6 +294,7 @@ function insertAsset(member: MemberSession, input: {
       sourceTaskId: input.sourceTaskId || null,
       coverObjectKey: input.coverObjectKey || null,
       coverContentType: input.coverContentType || null,
+      viralWorkflow: sanitizeViralWorkflowManifest(input.viralWorkflow),
     }),
     createdAt,
     now,
@@ -308,6 +315,7 @@ export async function saveCosMemberAsset(member: MemberSession, input: {
   sourceTaskId?: string | null;
   coverObjectKey?: string | null;
   coverContentType?: string | null;
+  viralWorkflow?: ViralWorkflowManifest | null;
   createdAt?: number;
 }) {
   const existing = getActiveAssetRow(member.id, input.id);
@@ -335,6 +343,7 @@ export async function saveMemberAsset(member: MemberSession, input: {
   coverUrl?: string;
   sourceTaskId?: string | null;
   createdAt?: number;
+  viralWorkflow?: ViralWorkflowManifest | null;
 }) {
   const existing = getActiveAssetRow(member.id, input.id);
   if (existing) return mapRow(existing);
@@ -379,6 +388,7 @@ export async function saveUploadedMemberAsset(member: MemberSession, input: {
   coverContentType?: string | null;
   sourceTaskId?: string | null;
   createdAt?: number;
+  viralWorkflow?: ViralWorkflowManifest | null;
 }) {
   const existing = getActiveAssetRow(member.id, input.id);
   if (existing) return mapRow(existing);
