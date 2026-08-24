@@ -9,7 +9,7 @@ import type { PlatformFeature, PlatformSettings, RechargePackage } from "../../l
 import { AI_COST_MARKUP_MULTIPLIER, billablePointsFromCost } from "../../lib/billing";
 
 type Stats = { users: number; projects: number; templates: number; tasks: number };
-type Tab = "features" | "templates" | "points" | "ai" | "voices" | "invites" | "users";
+type Tab = "features" | "templates" | "points" | "wechat" | "ai" | "voices" | "invites" | "users";
 type AiServiceStatus = {
   id: string;
   name: string;
@@ -31,6 +31,31 @@ type AiCredentialEditor = {
   appId: string;
   secretKey: string;
   baseUrl: string;
+};
+
+type WechatPayCredential = {
+  configured: boolean;
+  source: "admin" | "environment" | "none";
+  mchId: string;
+  appId: string;
+  certSerialNo: string;
+  platformSerialNo: string;
+  notifyUrl: string;
+  hasApiV3Key: boolean;
+  hasPrivateKey: boolean;
+  hasPlatformPublicKey: boolean;
+  updatedAt: number | null;
+};
+
+type WechatPayEditor = {
+  mchId: string;
+  appId: string;
+  apiV3Key: string;
+  certSerialNo: string;
+  privateKey: string;
+  platformPublicKey: string;
+  platformSerialNo: string;
+  notifyUrl: string;
 };
 
 type TemplateForm = {
@@ -112,6 +137,14 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   const [credentialMessage, setCredentialMessage] = useState("");
   const [credentialError, setCredentialError] = useState(false);
   const credentialKeyRef = useRef<HTMLInputElement>(null);
+  const [wechatCredential, setWechatCredential] = useState<WechatPayCredential | null>(null);
+  const [wechatEditor, setWechatEditor] = useState<WechatPayEditor>({
+    mchId: "", appId: "", apiV3Key: "", certSerialNo: "", privateKey: "",
+    platformPublicKey: "", platformSerialNo: "", notifyUrl: "https://studio.chaogeai.top/api/pay/wechat/notify",
+  });
+  const [wechatBusy, setWechatBusy] = useState<"load" | "save" | "test" | null>(null);
+  const [wechatFeedback, setWechatFeedback] = useState("");
+  const [wechatError, setWechatError] = useState(false);
   const [memberForm, setMemberForm] = useState<MemberForm | null>(null);
   const [invitationForm, setInvitationForm] = useState<InvitationForm>({
     count: 1,
@@ -259,6 +292,63 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
       setCredentialError(true);
       setCredentialMessage(error instanceof Error ? error.message : "接口凭证保存失败，原配置未变更。");
     } finally { setCredentialBusy(null); }
+  }
+
+  async function loadWechatPaySettings() {
+    setWechatBusy("load");
+    setWechatFeedback("");
+    setWechatError(false);
+    try {
+      const data = await api<{ credential: WechatPayCredential }>("/api/admin/wechat-pay-settings", { cache: "no-store" });
+      setWechatCredential(data.credential);
+      setWechatEditor((current) => ({
+        ...current,
+        mchId: data.credential.mchId,
+        appId: data.credential.appId,
+        certSerialNo: data.credential.certSerialNo,
+        platformSerialNo: data.credential.platformSerialNo,
+        notifyUrl: data.credential.notifyUrl || current.notifyUrl,
+        apiV3Key: "",
+        privateKey: "",
+        platformPublicKey: "",
+      }));
+    } catch (error) {
+      setWechatError(true);
+      setWechatFeedback(error instanceof Error ? error.message : "微信支付配置读取失败。");
+    } finally { setWechatBusy(null); }
+  }
+
+  async function saveWechatPaySettings(event: FormEvent) {
+    event.preventDefault();
+    setWechatBusy("save");
+    setWechatFeedback("");
+    setWechatError(false);
+    try {
+      const data = await api<{ credential: WechatPayCredential }>("/api/admin/wechat-pay-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(wechatEditor),
+      });
+      setWechatCredential(data.credential);
+      setWechatEditor((current) => ({ ...current, apiV3Key: "", privateKey: "", platformPublicKey: "" }));
+      setWechatFeedback("微信支付配置已加密保存，充值功能将立即使用新配置。");
+    } catch (error) {
+      setWechatError(true);
+      setWechatFeedback(error instanceof Error ? error.message : "微信支付配置保存失败。");
+    } finally { setWechatBusy(null); }
+  }
+
+  async function testWechatPaySettings() {
+    setWechatBusy("test");
+    setWechatFeedback("");
+    setWechatError(false);
+    try {
+      const data = await api<{ connected: boolean; message: string }>("/api/admin/wechat-pay-settings", { method: "POST" });
+      setWechatFeedback(data.message || "微信支付连接测试通过。");
+    } catch (error) {
+      setWechatError(true);
+      setWechatFeedback(error instanceof Error ? error.message : "微信支付连接测试失败。");
+    } finally { setWechatBusy(null); }
   }
 
   async function uploadPreview(file: File) {
@@ -463,7 +553,8 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
 
   const navItems: Array<{ id: Tab; icon: string; label: string }> = [
     { id: "features", icon: "功", label: "用户端功能" }, { id: "templates", icon: "模", label: "网感模板" },
-    { id: "points", icon: "积", label: "积分与充值" }, { id: "ai", icon: "AI", label: "AI 服务中心" },
+    { id: "points", icon: "积", label: "积分与充值" }, { id: "wechat", icon: "付", label: "微信支付" },
+    { id: "ai", icon: "AI", label: "AI 服务中心" },
     { id: "voices", icon: "声", label: "克隆声音" },
     { id: "invites", icon: "邀", label: "邀请码" },
     { id: "users", icon: "会", label: "会员管理" },
@@ -472,7 +563,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   return <main className="admin-shell">
     <aside className="admin-sidebar">
       <a className="admin-brand" href="/studio"><i><img src="/media/flash-lab-logo.png" alt="" /></i><span><b>爆点实验室</b></span></a>
-      <nav>{navItems.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => { setTab(item.id); if (item.id === "ai" && !aiStatuses.length) void refreshAiStatus(); }}><i>{item.icon}</i><span>{item.label}</span></button>)}</nav>
+      <nav>{navItems.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => { setTab(item.id); if (item.id === "ai" && !aiStatuses.length) void refreshAiStatus(); if (item.id === "wechat" && !wechatCredential) void loadWechatPaySettings(); }}><i>{item.icon}</i><span>{item.label}</span></button>)}</nav>
       <div className="admin-account"><span>{member.displayName}</span><small>{member.role === "super_admin" ? "超级管理员" : "运营管理员"}</small><a href="/studio">返回创作平台 →</a></div>
     </aside>
     <section className="admin-main">
@@ -538,7 +629,28 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           <div className="admin-billing-audit" role="status"><div><span>用户扣费</span><strong>实际成本 × {AI_COST_MARKUP_MULTIPLIER}</strong></div><div><span>加价率</span><strong>100%</strong></div><div><span>毛利率</span><strong>50%</strong></div><p>任务先预扣，完成后按上游实际消耗结算；失败全退，多预扣部分自动退回。</p></div>
           <footer className="admin-savebar"><span>积分规则填写成本积分；用户端统一按成本的 2 倍扣费。</span><button disabled={busy} onClick={() => void saveSettings(settings, "积分规则和充值套餐已保存。")}>{busy ? "正在保存…" : "保存积分与充值设置"}</button></footer>
         </section>
-      </> : tab === "ai" ? <>
+      </> : tab === "wechat" ? <section className="admin-list admin-wechat-section">
+        <header><div><h2>微信支付</h2><p>配置普通直连商户 Native 支付</p></div><span className={`admin-payment-state ${wechatCredential?.configured ? "is-ready" : ""}`}><i />{wechatBusy === "load" ? "正在读取" : wechatCredential?.configured ? "配置完整" : "待完善"}</span></header>
+        <div className="admin-wechat-layout">
+          <form className="admin-wechat-form" onSubmit={(event) => void saveWechatPaySettings(event)} autoComplete="off">
+            <label><span>微信支付商户号</span><input required inputMode="numeric" maxLength={32} value={wechatEditor.mchId} onChange={(event) => setWechatEditor({ ...wechatEditor, mchId: event.target.value })} placeholder="例如：1116833977" /></label>
+            <label><span>绑定 AppID</span><input required maxLength={64} value={wechatEditor.appId} onChange={(event) => setWechatEditor({ ...wechatEditor, appId: event.target.value })} placeholder="wx 开头的 AppID" /></label>
+            <label><span>商户 API 证书序列号</span><input required maxLength={256} value={wechatEditor.certSerialNo} onChange={(event) => setWechatEditor({ ...wechatEditor, certSerialNo: event.target.value })} /></label>
+            <label><span>微信支付公钥编号</span><input required maxLength={256} value={wechatEditor.platformSerialNo} onChange={(event) => setWechatEditor({ ...wechatEditor, platformSerialNo: event.target.value })} placeholder="PUB_KEY_ID_..." /></label>
+            <label className="wide"><span>支付结果回调地址</span><input required type="url" maxLength={1000} value={wechatEditor.notifyUrl} onChange={(event) => setWechatEditor({ ...wechatEditor, notifyUrl: event.target.value })} /></label>
+            <label className="wide"><span>APIv3 密钥</span><input type="password" maxLength={128} autoComplete="new-password" value={wechatEditor.apiV3Key} onChange={(event) => setWechatEditor({ ...wechatEditor, apiV3Key: event.target.value })} placeholder={wechatCredential?.hasApiV3Key ? "已安全保存，留空表示不更换" : "填写 32 位 APIv3 密钥"} /></label>
+            <label className="wide"><span>商户私钥 PEM</span><textarea spellCheck={false} value={wechatEditor.privateKey} onChange={(event) => setWechatEditor({ ...wechatEditor, privateKey: event.target.value })} placeholder={wechatCredential?.hasPrivateKey ? "已安全保存，留空表示不更换" : "粘贴完整的 apiclient_key.pem 内容"} /></label>
+            <label className="wide"><span>微信支付公钥 PEM</span><textarea spellCheck={false} value={wechatEditor.platformPublicKey} onChange={(event) => setWechatEditor({ ...wechatEditor, platformPublicKey: event.target.value })} placeholder={wechatCredential?.hasPlatformPublicKey ? "已安全保存，留空表示不更换" : "粘贴完整的微信支付公钥内容"} /></label>
+            <div className={`admin-wechat-feedback ${wechatError ? "is-error" : ""}`} role="status">{wechatFeedback || "敏感字段加密保存在服务器，页面不会回显明文。"}</div>
+            <footer><button type="button" className="admin-dialog-secondary" disabled={Boolean(wechatBusy) || !wechatCredential?.configured} onClick={() => void testWechatPaySettings()}>{wechatBusy === "test" ? "正在测试…" : "测试连接"}</button><button type="submit" className="admin-dialog-primary" disabled={Boolean(wechatBusy)}>{wechatBusy === "save" ? "正在安全保存…" : "安全保存配置"}</button></footer>
+          </form>
+          <aside className="admin-wechat-status">
+            <h3>配置状态</h3>
+            <dl><div><dt>商户资料</dt><dd>{wechatCredential?.mchId && wechatCredential?.appId ? "已填写" : "待填写"}</dd></div><div><dt>APIv3 密钥</dt><dd>{wechatCredential?.hasApiV3Key ? "已保存" : "待保存"}</dd></div><div><dt>商户私钥</dt><dd>{wechatCredential?.hasPrivateKey ? "已保存" : "待保存"}</dd></div><div><dt>支付公钥</dt><dd>{wechatCredential?.hasPlatformPublicKey ? "已保存" : "待保存"}</dd></div><div><dt>配置来源</dt><dd>{wechatCredential?.source === "admin" ? "后台安全配置" : wechatCredential?.source === "environment" ? "服务器环境" : "尚未配置"}</dd></div></dl>
+            <p>保存后，充值二维码下单、支付回调验签和积分入账将统一使用这里的配置。</p>
+          </aside>
+        </div>
+      </section> : tab === "ai" ? <>
         <section className="admin-list">
           <header><h2>AI 接口与余额</h2><button className="admin-add" disabled={checkingAi} onClick={() => void refreshAiStatus()}>{checkingAi ? "正在检测…" : "↻ 刷新实时状态"}</button></header>
           <div className="admin-ai-grid">{settings.aiProviders.map((provider) => {

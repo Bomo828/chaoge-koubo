@@ -4,10 +4,14 @@ import {
   createVerify,
   randomBytes,
 } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
 import type { MemberSession } from "../../app/member-session";
 import { getDatabase, unixNow } from "./db";
 import { getPlatformSettings, rechargeTotalPoints } from "./platform-settings";
+import {
+  getWechatPayConfig,
+  wechatPayMissingCredentialNames,
+  type WechatPayConfig,
+} from "./wechat-pay-credentials";
 
 const WECHAT_API_BASE = "https://api.mch.weixin.qq.com";
 export const CUSTOM_RECHARGE_MIN_YUAN = 1;
@@ -30,17 +34,6 @@ type RechargeOrderRow = {
   last_query_at: number | null;
   created_at: number;
   updated_at: number;
-};
-
-type WechatPayConfig = {
-  mchId: string;
-  appId: string;
-  apiV3Key: string;
-  serialNo: string;
-  privateKey: string;
-  platformKey: string;
-  platformSerial: string;
-  notifyUrl: string;
 };
 
 export type RechargeOrder = {
@@ -69,25 +62,8 @@ export class WechatPayError extends Error {
   }
 }
 
-function secretValue(valueName: string, pathName: string) {
-  const inline = process.env[valueName]?.trim();
-  if (inline) return inline.replace(/\\n/g, "\n");
-  const filePath = process.env[pathName]?.trim();
-  if (filePath && existsSync(filePath)) return readFileSync(filePath, "utf8").trim();
-  return "";
-}
-
 export function wechatPayMissingConfig() {
-  const checks = [
-    ["WECHAT_PAY_MCH_ID", process.env.WECHAT_PAY_MCH_ID?.trim()],
-    ["WECHAT_PAY_APP_ID", process.env.WECHAT_PAY_APP_ID?.trim()],
-    ["WECHAT_PAY_API_V3_KEY", process.env.WECHAT_PAY_API_V3_KEY?.trim()],
-    ["WECHAT_PAY_CERT_SERIAL_NO", process.env.WECHAT_PAY_CERT_SERIAL_NO?.trim()],
-    ["WECHAT_PAY_PRIVATE_KEY / WECHAT_PAY_PRIVATE_KEY_PATH", secretValue("WECHAT_PAY_PRIVATE_KEY", "WECHAT_PAY_PRIVATE_KEY_PATH")],
-    ["WECHAT_PAY_PLATFORM_PUBLIC_KEY / WECHAT_PAY_PLATFORM_CERT", secretValue("WECHAT_PAY_PLATFORM_PUBLIC_KEY", "WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH") || secretValue("WECHAT_PAY_PLATFORM_CERT", "WECHAT_PAY_PLATFORM_CERT_PATH")],
-    ["WECHAT_PAY_NOTIFY_URL", process.env.WECHAT_PAY_NOTIFY_URL?.trim()],
-  ] as const;
-  return checks.filter(([, value]) => !value).map(([name]) => name);
+  return wechatPayMissingCredentialNames();
 }
 
 export function isWechatPayConfigured() {
@@ -95,21 +71,11 @@ export function isWechatPayConfigured() {
 }
 
 function getConfig(): WechatPayConfig {
-  const missing = wechatPayMissingConfig();
-  if (missing.length) {
-    throw new WechatPayError(`微信支付尚未完成服务器配置：${missing.join("、")}`, 503, "PAYMENT_NOT_CONFIGURED");
+  try {
+    return getWechatPayConfig();
+  } catch (error) {
+    throw new WechatPayError(error instanceof Error ? error.message : "微信支付尚未完成配置。", 503, "PAYMENT_NOT_CONFIGURED");
   }
-  return {
-    mchId: process.env.WECHAT_PAY_MCH_ID!.trim(),
-    appId: process.env.WECHAT_PAY_APP_ID!.trim(),
-    apiV3Key: process.env.WECHAT_PAY_API_V3_KEY!.trim(),
-    serialNo: process.env.WECHAT_PAY_CERT_SERIAL_NO!.trim(),
-    privateKey: secretValue("WECHAT_PAY_PRIVATE_KEY", "WECHAT_PAY_PRIVATE_KEY_PATH"),
-    platformKey: secretValue("WECHAT_PAY_PLATFORM_PUBLIC_KEY", "WECHAT_PAY_PLATFORM_PUBLIC_KEY_PATH")
-      || secretValue("WECHAT_PAY_PLATFORM_CERT", "WECHAT_PAY_PLATFORM_CERT_PATH"),
-    platformSerial: process.env.WECHAT_PAY_PLATFORM_SERIAL_NO?.trim() || "",
-    notifyUrl: process.env.WECHAT_PAY_NOTIFY_URL!.trim(),
-  };
 }
 
 function signature(config: WechatPayConfig, method: string, requestPath: string, body: string, timestamp: string, nonce: string) {
@@ -131,7 +97,12 @@ function verifyWechatSignature(config: WechatPayConfig, timestamp: string, nonce
   }
 }
 
-async function requestWechat<T>(method: "GET" | "POST", requestPath: string, bodyObject?: Record<string, unknown>) {
+async function requestWechat<T>(
+  method: "GET" | "POST",
+  requestPath: string,
+  bodyObject?: Record<string, unknown>,
+  acceptableErrorCodes: string[] = [],
+) {
   const config = getConfig();
   const body = bodyObject ? JSON.stringify(bodyObject) : "";
   const timestamp = String(unixNow());
@@ -159,10 +130,19 @@ async function requestWechat<T>(method: "GET" | "POST", requestPath: string, bod
     throw new WechatPayError("微信支付响应缺少验签信息。", 502, "MISSING_WECHAT_SIGNATURE");
   }
   const data = responseBody ? JSON.parse(responseBody) as T & { code?: string; message?: string } : {} as T & { code?: string; message?: string };
-  if (!response.ok) {
+  if (!response.ok && !acceptableErrorCodes.includes(data.code || "")) {
     throw new WechatPayError(data.message || `微信支付请求失败（${response.status}）。`, 502, data.code || "WECHAT_API_ERROR");
   }
   return data;
+}
+
+export async function testWechatPayConnection() {
+  const config = getConfig();
+  const probe = `CONFIGTEST${Date.now()}`;
+  const requestPath = `/v3/pay/transactions/out-trade-no/${probe}?mchid=${encodeURIComponent(config.mchId)}`;
+  const result = await requestWechat<{ code?: string }>("GET", requestPath, undefined, ["ORDER_NOT_EXIST"]);
+  if (result.code !== "ORDER_NOT_EXIST") throw new WechatPayError("微信支付接口返回异常，请稍后重试。", 502, "UNEXPECTED_WECHAT_RESPONSE");
+  return { connected: true, message: "商户签名与微信支付公钥验签均已通过。" };
 }
 
 function publicOrder(row: RechargeOrderRow): RechargeOrder {
