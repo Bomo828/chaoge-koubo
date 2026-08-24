@@ -799,6 +799,29 @@ footer > div { justify-self: end; display: flex; gap: 24px; }
 .launch-login-brand h2 { margin: 0; font-size: 34px; font-weight: 1000; letter-spacing: -.05em; text-shadow: 4px 4px 0 rgba(244,11,134,.72); }
 
 .launch-login-form { padding: 0 31px 34px; }
+.launch-auth-tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 2px 0 14px;
+  padding: 4px;
+  border: 1px solid rgba(105,158,255,.2);
+  background: rgba(1,5,37,.52);
+}
+.launch-auth-tabs button {
+  min-height: 38px;
+  border: 0;
+  background: transparent;
+  color: rgba(211,224,255,.55);
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.launch-auth-tabs button.is-active {
+  background: rgba(34,231,255,.12);
+  color: var(--launch-cyan);
+  box-shadow: inset 0 -2px 0 var(--launch-cyan);
+}
 .launch-login-form > label { margin-top: 15px; display: block; }
 .launch-login-form > label > span:first-child { margin-bottom: 8px; display: block; color: rgba(220,230,255,.64); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
 .launch-login-form input[type="text"], .launch-login-form input[type="password"] {

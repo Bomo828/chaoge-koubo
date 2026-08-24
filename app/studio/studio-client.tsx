@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent } from "react";
 import { CaretRight, ChartLineUp, FolderOpen, House, ImageSquare, Plus, UserCircle, VideoCamera } from "@phosphor-icons/react";
 import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import { CHANJING_VOICE_CLONE_POINTS, lipSyncPoints } from "../../lib/chanjing-pricing";
+import { billablePointsFromCost } from "../../lib/billing";
 import { segmentViralCaptions, viralSpeechLanguage } from "../../lib/viral-caption-segmentation";
 import { IndustryImageLab } from "./image-lab";
 import { MarketDynamics } from "./market-dynamics";
@@ -4722,7 +4723,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       && Boolean(lipVideoFile);
     const currentSavedVoice = savedVoices.find((item) => item.voiceId === selectedVoice);
     const currentVoiceName = currentSavedVoice?.name || (voiceSource === "upload" ? voiceName || "待克隆声音" : "尚未选择声音");
-    const lipSyncEstimatedPoints = speechAudioDuration > 0 ? lipSyncPoints(speechAudioDuration, true) : null;
+    const lipSyncEstimatedPoints = speechAudioDuration > 0 ? billablePointsFromCost(lipSyncPoints(speechAudioDuration, true)) : null;
     const lipSyncCurrentStep = lipSyncResultUrl || canGenerateLipSync ? 4 : speechAudioReady ? 3 : voiceReady ? 2 : 1;
     const resetVoiceResult = () => {
       setUploadedVoiceReady(false);
@@ -4763,7 +4764,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
             {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
-            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm" onChange={(event) => { void prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => { if (voicePreviewConverted.current) setVoiceUploadPreviewError("浏览器仍无法播放转换后的音频，请重新导出为标准 MP3 或 WAV。"); else void convertVoiceAudioForBrowser(); }}>当前浏览器不支持音频试听。</audio>{voiceUploadPreviewConverting ? <em>正在转换兼容格式…</em> : null}</div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : `克隆中文 · ${CHANJING_VOICE_CLONE_POINTS}积分`}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : `克隆英文 · ${CHANJING_VOICE_CLONE_POINTS}积分`}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
+            {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm" onChange={(event) => { void prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => { if (voicePreviewConverted.current) setVoiceUploadPreviewError("浏览器仍无法播放转换后的音频，请重新导出为标准 MP3 或 WAV。"); else void convertVoiceAudioForBrowser(); }}>当前浏览器不支持音频试听。</audio>{voiceUploadPreviewConverting ? <em>正在转换兼容格式…</em> : null}</div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : `克隆中文 · ${billablePointsFromCost(CHANJING_VOICE_CLONE_POINTS)}积分`}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : `克隆英文 · ${billablePointsFromCost(CHANJING_VOICE_CLONE_POINTS)}积分`}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>
@@ -4895,7 +4896,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             <span>保留原片声音</span>
             <label><input type="checkbox" checked={viralIncludeSfx} onChange={(event) => setViralIncludeSfx(event.target.checked)} />添加音效</label>
             <label><input type="checkbox" checked={viralIncludeBgm} onChange={(event) => setViralIncludeBgm(event.target.checked)} />添加背景音乐</label>
-            <div><button type="button" disabled={!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length || viralProcessBusy || viralTranscriptBusy} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : "一键应用模板 · 28积分"}</button></div>
+            <div><button type="button" disabled={!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length || viralProcessBusy || viralTranscriptBusy} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : `一键应用模板 · ${billablePointsFromCost(28)}积分`}</button></div>
           </div>
         </section>
       </div>
@@ -5081,6 +5082,21 @@ function Member({
   const [assetsLoading, setAssetsLoading] = useState(true);
   const [rechargePackages, setRechargePackages] = useState<Array<{ id: string; name: string; totalPoints: number; priceYuan: number }>>([]);
   const [selectedRecharge, setSelectedRecharge] = useState("");
+  const [rechargeMode, setRechargeMode] = useState<"package" | "custom">("package");
+  const [customRechargeAmount, setCustomRechargeAmount] = useState("100");
+  const [rechargePointsPerYuan, setRechargePointsPerYuan] = useState(10);
+  const [customRechargeLimits, setCustomRechargeLimits] = useState({ enabled: false, minYuan: 1, maxYuan: 5000 });
+  const [paymentMode, setPaymentMode] = useState<"demo" | "wechat">("demo");
+  const [paymentAvailable, setPaymentAvailable] = useState(false);
+  const [paymentOrder, setPaymentOrder] = useState<null | {
+    outTradeNo: string;
+    packageName: string;
+    amountYuan: number;
+    points: number;
+    status: string;
+    qrDataUrl: string;
+    expiresAt: number;
+  }>(null);
   const [historyTab, setHistoryTab] = useState<"consumption" | "recharge">("consumption");
   const [walletHistory, setWalletHistory] = useState<WalletHistory>({ consumption: [], recharge: [] });
   const [historyLoading, setHistoryLoading] = useState(true);
@@ -5109,7 +5125,7 @@ function Member({
     };
   }, []);
 
-  async function loadWalletHistory() {
+  const loadWalletHistory = useCallback(async () => {
     setHistoryLoading(true);
     setHistoryError("");
     try {
@@ -5125,39 +5141,73 @@ function Member({
     } finally {
       setHistoryLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
     queueMicrotask(() => void loadWalletHistory());
-  }, []);
+  }, [loadWalletHistory]);
 
   useEffect(() => {
     fetch("/api/member/wallet", { cache: "no-store" })
       .then((response) => response.json())
-      .then((data: { rechargePackages?: Array<{ id: string; name: string; totalPoints: number; priceYuan: number }> }) => {
+      .then((data: {
+        rechargePackages?: Array<{ id: string; name: string; totalPoints: number; priceYuan: number }>;
+        rechargePointsPerYuan?: number;
+        customRecharge?: { enabled?: boolean; minYuan?: number; maxYuan?: number };
+        paymentMode?: "demo" | "wechat";
+        paymentAvailable?: boolean;
+        paymentMessage?: string;
+      }) => {
         const packages = Array.isArray(data.rechargePackages) ? data.rechargePackages : [];
         setRechargePackages(packages);
         setSelectedRecharge((current) => current || packages[0]?.id || "");
+        setRechargePointsPerYuan(Math.max(1, Math.floor(Number(data.rechargePointsPerYuan) || 10)));
+        setCustomRechargeLimits({
+          enabled: Boolean(data.customRecharge?.enabled),
+          minYuan: Math.max(1, Number(data.customRecharge?.minYuan) || 1),
+          maxYuan: Math.max(1, Number(data.customRecharge?.maxYuan) || 5000),
+        });
+        setPaymentMode(data.paymentMode === "wechat" ? "wechat" : "demo");
+        setPaymentAvailable(Boolean(data.paymentAvailable));
+        if (data.paymentMode === "wechat" && !data.paymentAvailable && data.paymentMessage) setRechargeMessage(data.paymentMessage);
       })
       .catch(() => undefined);
   }, []);
 
-  async function rechargeDemoPoints() {
+  async function startRecharge() {
     if (recharging) return;
     setRecharging(true);
     setRechargeMessage("");
     try {
       const selected = rechargePackages.find((item) => item.id === selectedRecharge);
-      if (!selected) throw new Error("请选择充值套餐。");
+      const customAmount = Math.floor(Number(customRechargeAmount));
+      if (rechargeMode === "package" && !selected) throw new Error("请选择充值套餐。");
+      if (rechargeMode === "custom" && (!Number.isFinite(customAmount) || customAmount < customRechargeLimits.minYuan || customAmount > customRechargeLimits.maxYuan)) {
+        throw new Error(`请输入${customRechargeLimits.minYuan}—${customRechargeLimits.maxYuan}元之间的整数金额。`);
+      }
+      if (paymentMode === "wechat") {
+        if (!paymentAvailable) throw new Error("微信支付暂未完成服务器配置，请联系平台管理员。");
+        const response = await fetch("/api/pay/wechat/native", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rechargeMode === "custom" ? { amountYuan: customAmount } : { packageId: selected!.id }),
+        });
+        const data = await response.json() as { error?: string; order?: { outTradeNo: string; packageName: string; amountYuan: number; points: number; status: string; qrDataUrl: string; expiresAt: number } };
+        if (!response.ok || !data.order?.qrDataUrl) throw new Error(data.error || "微信支付订单创建失败。 ");
+        setPaymentOrder(data.order);
+        setRechargeMessage("请使用微信扫描二维码完成支付");
+        return;
+      }
+      if (rechargeMode === "custom") throw new Error("自由金额充值仅支持微信支付。");
       const response = await fetch("/api/member/wallet", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount: selected.totalPoints, requestId: `demo-topup-${crypto.randomUUID()}` }),
+        body: JSON.stringify({ amount: selected!.totalPoints, requestId: `demo-topup-${crypto.randomUUID()}` }),
       });
       const data = await response.json() as { error?: string; wallet?: { points?: number } };
       if (!response.ok || typeof data.wallet?.points !== "number") throw new Error(data.error || "充值失败，请稍后重试。");
       onPointsChange(data.wallet.points);
-      setRechargeMessage(`${selected.totalPoints}积分已到账`);
+      setRechargeMessage(`${selected!.totalPoints}积分已到账`);
       await loadWalletHistory();
     } catch (error) {
       setRechargeMessage(error instanceof Error ? error.message : "充值失败，请稍后重试。");
@@ -5166,11 +5216,45 @@ function Member({
     }
   }
 
+  useEffect(() => {
+    if (!paymentOrder || paymentOrder.status !== "pending") return;
+    let stopped = false;
+    const check = async () => {
+      try {
+        const response = await fetch(`/api/pay/wechat/orders/${encodeURIComponent(paymentOrder.outTradeNo)}`, { cache: "no-store" });
+        const data = await response.json() as { error?: string; order?: { status?: string; paidAt?: number | null } };
+        if (!response.ok) throw new Error(data.error || "支付状态读取失败。");
+        if (stopped || !data.order?.status) return;
+        if (data.order.status === "paid") {
+          setPaymentOrder((current) => current ? { ...current, status: "paid" } : current);
+          const walletResponse = await fetch("/api/member/wallet", { cache: "no-store" });
+          const walletData = await walletResponse.json() as { wallet?: { points?: number } };
+          if (typeof walletData.wallet?.points === "number") onPointsChange(walletData.wallet.points);
+          setRechargeMessage(`${paymentOrder.points}积分已到账`);
+          await loadWalletHistory();
+        } else if (["closed", "expired", "failed"].includes(data.order.status)) {
+          setPaymentOrder((current) => current ? { ...current, status: data.order!.status! } : current);
+          setRechargeMessage("本次支付未完成，请重新创建充值订单。");
+        }
+      } catch (error) {
+        if (!stopped) setRechargeMessage(error instanceof Error ? error.message : "支付状态读取失败。");
+      }
+    };
+    void check();
+    const timer = window.setInterval(() => void check(), 3000);
+    return () => { stopped = true; window.clearInterval(timer); };
+  }, [loadWalletHistory, onPointsChange, paymentOrder]);
+
   const imageCount = assetItems.filter((item) => item.kind === "image").length;
   const videoCount = assetItems.filter((item) => item.kind === "video").length;
   const voiceCount = assetItems.filter((item) => item.kind === "voice" || item.kind === "audio").length;
 
   const currentPackage = rechargePackages.find((item) => item.id === selectedRecharge);
+  const customAmountValue = Math.floor(Number(customRechargeAmount));
+  const customAmountValid = Number.isFinite(customAmountValue)
+    && customAmountValue >= customRechargeLimits.minYuan
+    && customAmountValue <= customRechargeLimits.maxYuan;
+  const customRechargePoints = customAmountValid ? customAmountValue * rechargePointsPerYuan : 0;
   const consumptionDays = [...walletHistory.consumption.reduce((groups, item) => {
     const key = walletDateKey(item.createdAt);
     const records = groups.get(key) ?? [];
@@ -5182,7 +5266,25 @@ function Member({
 
   return <>
     <ToolHeading title="会员与资产" />
-    <div className="member-balance"><div><small>会员积分</small><b>{points.toLocaleString()} <span>PTS</span></b>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div><div className="member-recharge-actions"><select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select><button type="button" disabled={recharging || !currentPackage} onClick={() => void rechargeDemoPoints()}>{recharging ? "充值处理中…" : currentPackage ? `演示充值 ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button></div></div>
+    <div className="member-balance">
+      <div><small>会员积分</small><b>{points.toLocaleString()} <span>PTS</span></b>{rechargeMessage ? <em role="status">{rechargeMessage}</em> : null}</div>
+      <div className="member-recharge-shell">
+        {customRechargeLimits.enabled ? <div className="member-recharge-mode" role="tablist" aria-label="充值方式">
+          <button type="button" role="tab" aria-selected={rechargeMode === "package"} className={rechargeMode === "package" ? "active" : ""} onClick={() => setRechargeMode("package")}>套餐充值</button>
+          <button type="button" role="tab" aria-selected={rechargeMode === "custom"} className={rechargeMode === "custom" ? "active" : ""} onClick={() => setRechargeMode("custom")}>自由金额</button>
+        </div> : null}
+        <div className="member-recharge-actions">
+          {rechargeMode === "custom" && customRechargeLimits.enabled ? <label className={`member-custom-recharge ${customRechargeAmount && !customAmountValid ? "is-error" : ""}`}>
+            <span>¥</span>
+            <input type="number" inputMode="numeric" min={customRechargeLimits.minYuan} max={customRechargeLimits.maxYuan} step="1" value={customRechargeAmount} onChange={(event) => setCustomRechargeAmount(event.target.value)} aria-label="自由充值金额" />
+            <small>{customAmountValid ? `到账 ${customRechargePoints.toLocaleString()} 积分` : `${customRechargeLimits.minYuan}—${customRechargeLimits.maxYuan}元`}</small>
+          </label> : <select value={selectedRecharge} onChange={(event) => setSelectedRecharge(event.target.value)}>{rechargePackages.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.totalPoints}积分</option>)}</select>}
+          <button type="button" disabled={recharging || (paymentMode === "wechat" && !paymentAvailable) || (rechargeMode === "package" ? !currentPackage : !customAmountValid)} onClick={() => void startRecharge()}>{recharging ? "充值处理中…" : rechargeMode === "custom" ? `微信充值 ¥${customAmountValid ? customAmountValue : "—"}` : currentPackage ? `${paymentMode === "wechat" ? "微信充值" : "演示充值"} ¥${currentPackage.priceYuan}` : "暂无充值套餐"}</button>
+        </div>
+      </div>
+    </div>
+
+    {paymentOrder ? <div className="wechat-pay-backdrop" role="dialog" aria-modal="true" aria-label="微信支付充值" onMouseDown={(event) => { if (event.currentTarget === event.target && paymentOrder.status !== "paid") setPaymentOrder(null); }}><section className={`wechat-pay-dialog is-${paymentOrder.status}`}><button type="button" className="wechat-pay-close" aria-label="关闭" onClick={() => setPaymentOrder(null)}>×</button>{paymentOrder.status === "paid" ? <><i className="wechat-pay-success">✓</i><h2>充值成功</h2><p>{paymentOrder.points.toLocaleString()} 积分已经到账</p><button type="button" className="wechat-pay-done" onClick={() => setPaymentOrder(null)}>完成</button></> : <><span className="wechat-pay-brand">微信支付</span><h2>扫码充值 ¥{paymentOrder.amountYuan}</h2><p>{paymentOrder.packageName} · 到账 {paymentOrder.points.toLocaleString()} 积分</p><div className="wechat-pay-qr"><img src={paymentOrder.qrDataUrl} alt={`微信支付${paymentOrder.amountYuan}元二维码`} /></div><strong>请使用微信扫一扫</strong><small>二维码15分钟内有效，支付成功后积分自动到账</small></>}</section></div> : null}
 
     <section className="member-history-panel" aria-labelledby="member-history-title">
       <header className="member-history-toolbar">

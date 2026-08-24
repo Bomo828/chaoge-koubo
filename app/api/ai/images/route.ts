@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { ensureProviderBalance, providerCostToPoints, quoteGptImage2 } from "../../../../lib/ai-pricing";
+import { billablePointsFromCost, costPointsFromBillable } from "../../../../lib/billing";
 import { getWallet, pointsErrorResponse, refundAiPoints, refundAiPointsByRequest, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 import { createAiTask, getAiTask, updateAiTask } from "../../../../lib/server/ai-tasks";
 
@@ -233,11 +234,12 @@ export async function POST(request: Request) {
     }
     usableResult = true;
     const aggregate = aggregateTasks(tasks);
-    const chargedPoints = aggregate.actualPoints ?? quote.estimatedPoints;
+    const chargedCostPoints = aggregate.actualPoints ?? quote.estimatedPoints;
+    const chargedPoints = billablePointsFromCost(chargedCostPoints);
     const wallet = aggregate.isFinal
       ? aggregate.state === "failed"
         ? await refundAiPointsByRequest(member, reservation.requestId)
-        : await settleAiPointsByRequest(member, reservation.requestId, chargedPoints)
+        : await settleAiPointsByRequest(member, reservation.requestId, chargedCostPoints)
       : await getWallet(member);
     updateAiTask(member, reservation.requestId, {
       providerTaskIds: aggregate.taskIds,
@@ -248,7 +250,7 @@ export async function POST(request: Request) {
       pointsCharged: aggregate.isFinal && aggregate.state === "success" ? chargedPoints : 0,
     });
 
-    return Response.json({ ...aggregate, model: "gpt-image-2", requestId: reservation.requestId, pricing: quote, wallet });
+    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: "gpt-image-2", requestId: reservation.requestId, pricing: { ...quote, estimatedPoints: billablePointsFromCost(quote.estimatedPoints) }, wallet });
   } catch (error) {
     if (reservation && !usableResult) {
       await refundAiPoints(reservation).catch(() => undefined);
@@ -286,11 +288,12 @@ export async function GET(request: Request) {
     }
     const aggregate = aggregateTasks(tasks);
     const stored = requestId ? getAiTask(member, requestId) : null;
-    const chargedPoints = aggregate.actualPoints ?? stored?.pointsReserved ?? 0;
+    const chargedCostPoints = aggregate.actualPoints ?? costPointsFromBillable(stored?.pointsReserved ?? 0);
+    const chargedPoints = billablePointsFromCost(chargedCostPoints);
     const wallet = aggregate.isFinal && requestId
       ? aggregate.state === "failed"
         ? await refundAiPointsByRequest(member, requestId)
-        : await settleAiPointsByRequest(member, requestId, chargedPoints)
+        : await settleAiPointsByRequest(member, requestId, chargedCostPoints)
       : await getWallet(member);
     if (requestId) updateAiTask(member, requestId, {
       providerTaskIds: aggregate.taskIds,
@@ -300,7 +303,7 @@ export async function GET(request: Request) {
       error: aggregate.error,
       pointsCharged: aggregate.isFinal && aggregate.state === "success" ? chargedPoints : 0,
     });
-    return Response.json({ ...aggregate, model: "gpt-image-2", requestId: requestId || null, wallet });
+    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: "gpt-image-2", requestId: requestId || null, wallet });
   } catch (error) {
     return aiErrorResponse(error);
   }

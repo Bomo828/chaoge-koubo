@@ -39,6 +39,35 @@ function initialize(db: DatabaseSync) {
     );
     CREATE INDEX IF NOT EXISTS sessions_user_idx ON sessions(user_id, expires_at DESC);
 
+    CREATE TABLE IF NOT EXISTS invitation_codes (
+      id TEXT PRIMARY KEY,
+      code_hash TEXT NOT NULL UNIQUE,
+      code_hint TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active',
+      max_uses INTEGER NOT NULL DEFAULT 1,
+      used_count INTEGER NOT NULL DEFAULT 0,
+      expires_at INTEGER,
+      gift_points INTEGER NOT NULL DEFAULT 0,
+      member_level TEXT NOT NULL DEFAULT 'basic',
+      note TEXT NOT NULL DEFAULT '',
+      created_by TEXT REFERENCES users(id) ON DELETE SET NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS invitation_codes_status_idx
+      ON invitation_codes(status, expires_at, created_at DESC);
+
+    CREATE TABLE IF NOT EXISTS invitation_code_uses (
+      id TEXT PRIMARY KEY,
+      invitation_id TEXT NOT NULL REFERENCES invitation_codes(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      used_at INTEGER NOT NULL,
+      registration_ip TEXT NOT NULL DEFAULT '',
+      UNIQUE(invitation_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS invitation_code_uses_invitation_idx
+      ON invitation_code_uses(invitation_id, used_at DESC);
+
     CREATE TABLE IF NOT EXISTS projects (
       id TEXT PRIMARY KEY,
       owner_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -132,6 +161,29 @@ function initialize(db: DatabaseSync) {
       created_at INTEGER NOT NULL
     );
     CREATE UNIQUE INDEX IF NOT EXISTS point_ledger_task_unique ON point_ledger(task_id) WHERE task_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS recharge_orders (
+      out_trade_no TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      package_id TEXT NOT NULL,
+      package_name TEXT NOT NULL,
+      amount_fen INTEGER NOT NULL,
+      points INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending',
+      code_url TEXT NOT NULL DEFAULT '',
+      wechat_transaction_id TEXT,
+      trade_state TEXT NOT NULL DEFAULT 'NOTPAY',
+      failure_reason TEXT NOT NULL DEFAULT '',
+      expires_at INTEGER NOT NULL,
+      paid_at INTEGER,
+      last_query_at INTEGER,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS recharge_orders_user_idx
+      ON recharge_orders(user_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS recharge_orders_status_idx
+      ON recharge_orders(status, expires_at, created_at DESC);
 
     CREATE TABLE IF NOT EXISTS ai_point_charges (
       request_id TEXT PRIMARY KEY,

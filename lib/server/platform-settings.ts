@@ -38,6 +38,7 @@ export type PlatformSettings = {
   features: PlatformFeature[];
   pointRules: PointRule[];
   rechargePackages: RechargePackage[];
+  rechargePointsPerYuan: number;
   aiProviders: AiProviderSetting[];
   paymentMode: "demo" | "wechat";
   newUserPoints: number;
@@ -57,15 +58,16 @@ export const defaultPlatformSettings: PlatformSettings = {
     { action: "chat_assistant", name: "AI 助手（按实际算力结算）", points: 1, enabled: true },
     { action: "image_generate", name: "AI 图片生成（基础单张）", points: 10, enabled: true },
     { action: "video_generate", name: "AI 视频与网感剪辑", points: 28, enabled: true },
-    { action: "voice_clone", name: "克隆声音（每次）", points: 80, enabled: true },
-    { action: "speech_generate", name: "口播音频（按 0.15 积分/秒）", points: 1, enabled: true },
-    { action: "lip_sync_generate", name: "对口型（80 基础积分 + 2 积分/秒）", points: 80, enabled: true },
+    { action: "voice_clone", name: "克隆声音（成本 80 / 次）", points: 80, enabled: true },
+    { action: "speech_generate", name: "口播音频（成本 0.15 / 秒）", points: 1, enabled: true },
+    { action: "lip_sync_generate", name: "对口型（成本 80 + 2 / 秒）", points: 80, enabled: true },
   ],
   rechargePackages: [
     { id: "starter", name: "体验包", points: 1000, bonus: 0, priceYuan: 99, enabled: true },
     { id: "growth", name: "成长包", points: 3000, bonus: 300, priceYuan: 299, enabled: true },
     { id: "business", name: "商家包", points: 10000, bonus: 1500, priceYuan: 999, enabled: true },
   ],
+  rechargePointsPerYuan: 10,
   aiProviders: [
     { id: "lk888", name: "开放 AI 平台", purpose: "大模型分析、GPT Image 2、Seedance 2.0", enabled: true, lowBalanceThreshold: 20 },
     { id: "chanjing", name: "蝉镜数字人", purpose: "声音克隆、口播音频与对口型", enabled: true, lowBalanceThreshold: 20 },
@@ -88,14 +90,14 @@ export function getPlatformSettings(): PlatformSettings {
     pointRules: (Array.isArray(saved.pointRules) ? saved.pointRules : defaultPlatformSettings.pointRules)
       .filter((item) => String(item.action) !== "theme_analysis")
       .map((item) => {
-        if (item.action === "voice_clone" && Number(item.points) === 10) {
-          return { ...item, name: "克隆声音（每次）", points: 80 };
+        if (item.action === "voice_clone") {
+          return { ...item, name: "克隆声音（成本 80 / 次）", points: Number(item.points) === 10 ? 80 : item.points };
         }
         if (item.action === "speech_generate") {
-          return { ...item, name: "口播音频（按 0.15 积分/秒）", points: 1 };
+          return { ...item, name: "口播音频（成本 0.15 / 秒）", points: 1 };
         }
-        if (item.action === "lip_sync_generate" && Number(item.points) === 200) {
-          return { ...item, name: "对口型（80 基础积分 + 2 积分/秒）", points: 80 };
+        if (item.action === "lip_sync_generate") {
+          return { ...item, name: "对口型（成本 80 + 2 / 秒）", points: Number(item.points) === 200 ? 80 : item.points };
         }
         return item;
       }) as PointRule[],
@@ -105,6 +107,7 @@ export function getPlatformSettings(): PlatformSettings {
 }
 
 export function savePlatformSettings(actorId: string, input: PlatformSettings) {
+  const rechargePointsPerYuan = Math.min(100000, Math.max(1, Math.floor(Number(input.rechargePointsPerYuan) || 10)));
   const normalized: PlatformSettings = {
     features: input.features.filter((item) => String(item.entry) !== "decorate").slice(0, 30).map((item, index) => ({
       id: String(item.id || `feature-${index + 1}`).trim().slice(0, 40),
@@ -116,14 +119,18 @@ export function savePlatformSettings(actorId: string, input: PlatformSettings) {
       sortOrder: Number.isFinite(Number(item.sortOrder)) ? Number(item.sortOrder) : (index + 1) * 10,
     })),
     pointRules: input.pointRules.filter((item) => String(item.action) !== "theme_analysis").map((item) => ({ ...item, points: Math.max(0, Math.floor(Number(item.points) || 0)), enabled: Boolean(item.enabled) })),
-    rechargePackages: input.rechargePackages.slice(0, 12).map((item, index) => ({
-      id: String(item.id || `package-${index + 1}`).trim().slice(0, 40),
-      name: String(item.name || "积分包").trim().slice(0, 30),
-      points: Math.max(1, Math.floor(Number(item.points) || 1)),
-      bonus: Math.max(0, Math.floor(Number(item.bonus) || 0)),
-      priceYuan: Math.max(0.01, Number(Number(item.priceYuan || 0.01).toFixed(2))),
-      enabled: Boolean(item.enabled),
-    })),
+    rechargePackages: input.rechargePackages.slice(0, 12).map((item, index) => {
+      const priceYuan = Math.max(0.01, Number(Number(item.priceYuan || 0.01).toFixed(2)));
+      return {
+        id: String(item.id || `package-${index + 1}`).trim().slice(0, 40),
+        name: String(item.name || "积分包").trim().slice(0, 30),
+        points: Math.max(1, Math.floor(priceYuan * rechargePointsPerYuan)),
+        bonus: Math.max(0, Math.floor(Number(item.bonus) || 0)),
+        priceYuan,
+        enabled: Boolean(item.enabled),
+      };
+    }),
+    rechargePointsPerYuan,
     aiProviders: input.aiProviders.map((item) => ({ ...item, enabled: Boolean(item.enabled), lowBalanceThreshold: Math.max(0, Number(item.lowBalanceThreshold) || 0) })),
     paymentMode: input.paymentMode === "wechat" ? "wechat" : "demo",
     newUserPoints: Math.max(0, Math.floor(Number(input.newUserPoints) || 0)),
@@ -133,6 +140,14 @@ export function savePlatformSettings(actorId: string, input: PlatformSettings) {
     ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at
   `).run(SETTING_KEY, JSON.stringify(normalized), actorId, unixNow());
   return normalized;
+}
+
+export function rechargeBasePoints(settings: Pick<PlatformSettings, "rechargePointsPerYuan">, item: Pick<RechargePackage, "priceYuan">) {
+  return Math.max(1, Math.floor(Number(item.priceYuan) * Number(settings.rechargePointsPerYuan || 10)));
+}
+
+export function rechargeTotalPoints(settings: Pick<PlatformSettings, "rechargePointsPerYuan">, item: Pick<RechargePackage, "priceYuan" | "bonus">) {
+  return rechargeBasePoints(settings, item) + Math.max(0, Math.floor(Number(item.bonus) || 0));
 }
 
 export function pointCost(action: PointRule["action"], fallback: number) {

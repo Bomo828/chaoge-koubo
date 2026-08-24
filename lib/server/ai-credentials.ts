@@ -132,7 +132,11 @@ function normalizeBaseUrl(value: string | undefined, fallback = DEFAULT_LK888_BA
     throw new Error("接口地址格式不正确，请填写完整的 HTTPS 地址。");
   }
   const localDevelopment = parsed.hostname === "127.0.0.1" || parsed.hostname === "localhost";
-  if (parsed.protocol !== "https:" && !(process.env.NODE_ENV !== "production" && localDevelopment)) {
+  const allowInsecureLoopback = localDevelopment && (
+    process.env.NODE_ENV !== "production"
+    || process.env.ALLOW_INSECURE_LOCAL_PROVIDER_URLS === "true"
+  );
+  if (parsed.protocol !== "https:" && !allowInsecureLoopback) {
     throw new Error("接口地址必须使用 HTTPS。");
   }
   if (parsed.username || parsed.password) throw new Error("接口地址不能包含账号或密码。");

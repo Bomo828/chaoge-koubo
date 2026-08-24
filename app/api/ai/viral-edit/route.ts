@@ -7,6 +7,7 @@ import {
   reserveAiPoints,
   settleAiPointsByRequest,
 } from "../../../../lib/points";
+import { billablePointsFromCost } from "../../../../lib/billing";
 
 const VIRAL_EDIT_POINTS = 28;
 
@@ -99,7 +100,7 @@ export async function POST(request: Request) {
 
     if (phase === "reserve") {
       await reserveAiPoints(member, "video_generate", 1, requestId, VIRAL_EDIT_POINTS);
-      return Response.json({ requestId, points: VIRAL_EDIT_POINTS, wallet: await getWallet(member) });
+      return Response.json({ requestId, points: billablePointsFromCost(VIRAL_EDIT_POINTS), wallet: await getWallet(member) });
     }
 
     if (phase === "analyze") {
@@ -206,7 +207,7 @@ export async function POST(request: Request) {
       const actualCost = Math.max(0, Math.min(VIRAL_EDIT_POINTS, Math.ceil(Number(body.actualCost) || 0)));
       return Response.json({
         requestId,
-        points: actualCost,
+        points: billablePointsFromCost(actualCost),
         wallet: await settleAiPointsByRequest(member, requestId, actualCost),
       });
     }

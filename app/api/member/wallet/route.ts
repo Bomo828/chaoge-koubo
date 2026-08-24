@@ -1,6 +1,12 @@
 import { getMemberSession } from "../../../member-session";
 import { getWallet, pointsErrorResponse, topUpDemoPoints } from "../../../../lib/points";
-import { getPlatformSettings } from "../../../../lib/server/platform-settings";
+import { getPlatformSettings, rechargeBasePoints, rechargeTotalPoints } from "../../../../lib/server/platform-settings";
+import {
+  CUSTOM_RECHARGE_MAX_YUAN,
+  CUSTOM_RECHARGE_MIN_YUAN,
+  isWechatPayConfigured,
+  wechatPayMissingConfig,
+} from "../../../../lib/server/wechat-pay";
 
 export async function GET() {
   const member = await getMemberSession();
@@ -9,8 +15,22 @@ export async function GET() {
     const platform = getPlatformSettings();
     return Response.json({
       wallet: await getWallet(member),
-      rechargePackages: platform.rechargePackages.filter((item) => item.enabled).map((item) => ({ ...item, totalPoints: item.points + item.bonus })),
+      rechargePackages: platform.rechargePackages.filter((item) => item.enabled).map((item) => ({
+        ...item,
+        points: rechargeBasePoints(platform, item),
+        totalPoints: rechargeTotalPoints(platform, item),
+      })),
+      rechargePointsPerYuan: platform.rechargePointsPerYuan,
+      customRecharge: {
+        enabled: platform.paymentMode === "wechat",
+        minYuan: CUSTOM_RECHARGE_MIN_YUAN,
+        maxYuan: CUSTOM_RECHARGE_MAX_YUAN,
+      },
       paymentMode: platform.paymentMode,
+      paymentAvailable: platform.paymentMode === "wechat" && isWechatPayConfigured(),
+      paymentMessage: platform.paymentMode === "wechat" && !isWechatPayConfigured()
+        ? `微信支付尚缺少服务器配置：${wechatPayMissingConfig().join("、")}`
+        : "",
     });
   } catch (error) {
     return pointsErrorResponse(error) ?? Response.json({ error: "积分账户暂时不可用。" }, { status: 500 });

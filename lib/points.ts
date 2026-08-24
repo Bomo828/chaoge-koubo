@@ -1,6 +1,7 @@
 import type { MemberSession } from "../app/member-session";
+import { billablePointsFromCost } from "./billing";
 import { getDatabase, unixNow } from "./server/db";
-import { getPlatformSettings, pointCost } from "./server/platform-settings";
+import { getPlatformSettings, pointCost, rechargeTotalPoints } from "./server/platform-settings";
 
 export const AI_POINT_COSTS = {
   prompt_optimize: 2,
@@ -147,7 +148,7 @@ export async function topUpDemoPoints(member: MemberSession, amount: number, raw
   if (platform.paymentMode !== "demo") {
     throw new PointsError("当前已切换为正式支付模式，请通过支付订单完成充值。", 403);
   }
-  const allowedAmounts = new Set(platform.rechargePackages.filter((item) => item.enabled).map((item) => item.points + item.bonus));
+  const allowedAmounts = new Set(platform.rechargePackages.filter((item) => item.enabled).map((item) => rechargeTotalPoints(platform, item)));
   const safeAmount = Math.floor(amount);
   if (!allowedAmounts.has(safeAmount)) throw new PointsError("请选择有效的演示充值额度。", 400);
 
@@ -177,9 +178,10 @@ export async function reserveAiPoints(
 ): Promise<Reservation> {
   const requestId = normalizeRequestId(rawRequestId);
   const safeQuantity = Math.max(1, Math.floor(quantity));
-  const reservedCost = Number.isFinite(reservedCostOverride)
+  const reservedCostBasis = Number.isFinite(reservedCostOverride)
     ? Math.max(1, Math.ceil(Number(reservedCostOverride)))
     : pointCost(action, AI_POINT_COSTS[action]) * safeQuantity;
+  const reservedCost = billablePointsFromCost(reservedCostBasis);
   const db = getDatabase();
   const now = unixNow();
 
@@ -247,7 +249,7 @@ export async function settleAiPoints(reservation: Reservation, quantity: number)
     FROM ai_point_charges WHERE request_id = ? AND user_id = ?
   `).get(reservation.requestId, reservation.memberId) as ChargeRow | undefined;
   if (!charge) throw new PointsError("没有找到本次积分订单。", 404);
-  settleCharge(charge, pointCost(reservation.action, AI_POINT_COSTS[reservation.action]) * Math.max(1, Math.floor(quantity)));
+  settleCharge(charge, billablePointsFromCost(pointCost(reservation.action, AI_POINT_COSTS[reservation.action]) * Math.max(1, Math.floor(quantity))));
   return getWallet({ id: reservation.memberId, username: "", displayName: "", level: "", points: 0, role: "member" });
 }
 
@@ -258,7 +260,7 @@ export async function settleAiPointsByRequest(member: MemberSession, rawRequestI
     FROM ai_point_charges WHERE request_id = ? AND user_id = ?
   `).get(requestId, member.id) as ChargeRow | undefined;
   if (!charge) throw new PointsError("没有找到本次 AI 任务的积分订单。", 404);
-  settleCharge(charge, actualCost);
+  settleCharge(charge, billablePointsFromCost(actualCost));
   return getWallet(member);
 }
 

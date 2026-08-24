@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { quoteGptImage2 } from "../../../../lib/ai-pricing";
+import { billablePointsFromCost } from "../../../../lib/billing";
 
 type BalanceResponse = {
   balance?: number;
@@ -21,7 +22,7 @@ export async function GET(request: Request) {
       referenceCount: Number(url.searchParams.get("references") || 0),
     });
     const balance = await lk888Fetch<BalanceResponse>("/v1/skills/balance", { cache: "no-store" });
-    return Response.json({ quote, providerBalance: balance });
+    return Response.json({ quote: { ...quote, estimatedPoints: billablePointsFromCost(quote.estimatedPoints) }, providerBalance: balance });
   } catch (error) {
     return aiErrorResponse(error);
   }

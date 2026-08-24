@@ -7,6 +7,7 @@ import {
   uploadLipSyncMedia,
 } from "../../../../lib/chanjing";
 import { lipSyncPoints, wavDurationSeconds } from "../../../../lib/chanjing-pricing";
+import { billablePointsFromCost, costPointsFromBillable } from "../../../../lib/billing";
 import {
   getWallet,
   getReservedAiPoints,
@@ -94,7 +95,7 @@ export async function POST(request: Request) {
       progress: 0,
       requestId: reservation.requestId,
       projectName,
-      estimatedPoints,
+      estimatedPoints: billablePointsFromCost(estimatedPoints),
       audioDuration,
       wallet: await getWallet(member),
     });
@@ -119,8 +120,9 @@ export async function GET(request: Request) {
     const actualPoints = task.isFinal && requestId && task.state === "success"
       ? getReservedAiPoints(member, requestId)
       : 0;
+    const actualCostPoints = costPointsFromBillable(actualPoints);
     const wallet = task.isFinal && requestId
-      ? await settleAiPointsByRequest(member, requestId, actualPoints)
+      ? await settleAiPointsByRequest(member, requestId, actualCostPoints)
       : await getWallet(member);
     return Response.json({
       ...task,

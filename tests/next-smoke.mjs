@@ -108,6 +108,7 @@ const child = spawn(process.execPath, [".next/standalone/server.js"], {
     CHANJING_BASE_URL: collectorBaseUrl,
     CHANJING_APP_ID: "smoke-app-id",
     CHANJING_SECRET_KEY: "smoke-secret-key",
+    ALLOW_INSECURE_LOCAL_PROVIDER_URLS: "true",
   },
   stdio: ["ignore", "pipe", "pipe"],
 });
@@ -158,8 +159,9 @@ try {
   assert.equal(typeof (await photoVideoMps.json()).configured, "boolean");
 
   const commonVoices = await fetch(`${baseUrl}/api/ai/common-voices`, { headers: { cookie } });
-  assert.equal(commonVoices.status, 200);
-  const commonVoiceItems = (await commonVoices.json()).voices;
+  const commonVoiceBody = await commonVoices.text();
+  assert.equal(commonVoices.status, 200, commonVoiceBody);
+  const commonVoiceItems = JSON.parse(commonVoiceBody).voices;
   assert.equal(commonVoiceItems.length, 91);
   assert.equal(commonVoiceItems[0].name, "中年专家");
 

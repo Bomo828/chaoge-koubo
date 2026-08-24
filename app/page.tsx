@@ -18,7 +18,7 @@ export default async function Home({
   const params = await searchParams;
   const auth = Array.isArray(params.auth) ? params.auth[0] : params.auth;
   const returnToValue = Array.isArray(params.return_to) ? params.return_to[0] : params.return_to;
-  const initialAuthMode = auth === "register" || auth === "login" ? "login" : null;
+  const initialAuthMode = auth === "register" || auth === "login" ? auth : null;
   const initialReturnTo = returnToValue?.startsWith("/") && !returnToValue.startsWith("//")
     ? returnToValue
     : "/studio";

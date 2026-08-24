@@ -2,6 +2,7 @@ import { getMemberSession } from "../../../../member-session";
 import { providerCostToPoints } from "../../../../../lib/ai-pricing";
 import { AiProviderError, aiErrorResponse, lk888Request } from "../../../../../lib/lk888";
 import { getWallet, pointsErrorResponse, refundAiPoints, reserveAiPoints, settleAiPointsByRequest } from "../../../../../lib/points";
+import { billablePointsFromCost } from "../../../../../lib/billing";
 import { ownsAgentConversation, rememberAgentConversation, rememberAgentTask } from "../../../../../lib/server/agent-conversations";
 
 export const runtime = "nodejs";
@@ -173,7 +174,7 @@ export async function POST(request: Request) {
             await refundAiPoints(reservation);
             wallet = await getWallet(member);
           }
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "wallet", points: wallet.points, cost: providerCost, cost_points: chargedPoints })}\n\n`));
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: "wallet", points: wallet.points, cost: providerCost, cost_points: billablePointsFromCost(chargedPoints) })}\n\n`));
         } catch (error) {
           if (reservation) await refundAiPoints(reservation).catch(() => undefined);
           const message = error instanceof Error ? error.message : "AI 助手连接中断。";

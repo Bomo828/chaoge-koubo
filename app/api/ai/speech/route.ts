@@ -2,9 +2,9 @@ import { getMemberSession } from "../../../member-session";
 import { chanjingErrorResponse, createSpeechTask, ensureChanjingBalance, getSpeechTask } from "../../../../lib/chanjing";
 import { estimatedSpeechPoints, speechPoints } from "../../../../lib/chanjing-pricing";
 import { saveMemberAsset } from "../../../../lib/member-assets";
+import { billablePointsFromCost } from "../../../../lib/billing";
 import {
   getWallet,
-  getReservedAiPoints,
   pointsErrorResponse,
   refundAiPoints,
   reserveAiPoints,
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       audioUrl: "",
       requestId: reservation.requestId,
       speed,
-      estimatedPoints,
+      estimatedPoints: billablePointsFromCost(estimatedPoints),
       wallet: await getWallet(member),
     });
   } catch (error) {
@@ -96,7 +96,6 @@ export async function GET(request: Request) {
   const requestId = url.searchParams.get("request_id") || "";
   const projectName = (url.searchParams.get("project_name") || "口播音频").slice(0, 80);
   const voiceName = (url.searchParams.get("voice_name") || "口播声音").slice(0, 40);
-  const estimatedPoints = Math.max(1, Number(url.searchParams.get("estimated_points")) || 1);
   if (!taskId) return Response.json({ error: "缺少口播音频任务编号。" }, { status: 400 });
 
   try {
@@ -104,10 +103,10 @@ export async function GET(request: Request) {
     const archived = task.audioUrl
       ? await archiveAudio(member, { audioUrl: task.audioUrl, taskId, projectName, voiceName })
       : { audioUrl: "", saved: false };
-    const reservedPoints = requestId ? getReservedAiPoints(member, requestId) : estimatedPoints;
-    const actualPoints = task.state === "success" ? Math.min(reservedPoints, speechPoints(task.duration)) : 0;
+    const actualCostPoints = task.state === "success" ? speechPoints(task.duration) : 0;
+    const actualPoints = billablePointsFromCost(actualCostPoints);
     const wallet = task.isFinal && requestId
-      ? await settleAiPointsByRequest(member, requestId, actualPoints)
+      ? await settleAiPointsByRequest(member, requestId, actualCostPoints)
       : await getWallet(member);
     return Response.json({
       ...task,

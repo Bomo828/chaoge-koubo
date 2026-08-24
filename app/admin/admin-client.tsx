@@ -4,10 +4,12 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import type { MemberSession } from "../member-session";
 import type { AdminTemplate, AdminUser } from "../../lib/server/admin-data";
 import type { ClonedVoiceRecord } from "../../lib/server/cloned-voices";
+import type { AdminInvitation } from "../../lib/server/invitations";
 import type { PlatformFeature, PlatformSettings, RechargePackage } from "../../lib/server/platform-settings";
+import { AI_COST_MARKUP_MULTIPLIER, billablePointsFromCost } from "../../lib/billing";
 
 type Stats = { users: number; projects: number; templates: number; tasks: number };
-type Tab = "features" | "templates" | "points" | "ai" | "voices" | "users";
+type Tab = "features" | "templates" | "points" | "ai" | "voices" | "invites" | "users";
 type AiServiceStatus = {
   id: string;
   name: string;
@@ -52,6 +54,15 @@ type MemberForm = {
   points: number;
 };
 
+type InvitationForm = {
+  count: number;
+  maxUses: number;
+  validityDays: number;
+  giftPoints: number;
+  memberLevel: string;
+  note: string;
+};
+
 const emptyTemplate: TemplateForm = {
   name: "", slug: "", category: "viral_video", version: 1, status: "draft",
   previewUrl: "", coverUrl: "", description: "", config: {},
@@ -70,17 +81,19 @@ const entryOptions: Array<{ value: PlatformFeature["entry"]; label: string }> = 
   { value: "member", label: "会员中心" },
 ];
 
-export function AdminClient({ member, initialStats, initialTemplates, initialUsers, initialVoices, initialSettings }: {
+export function AdminClient({ member, initialStats, initialTemplates, initialUsers, initialVoices, initialInvitations, initialSettings }: {
   member: MemberSession;
   initialStats: Stats;
   initialTemplates: AdminTemplate[];
   initialUsers: AdminUser[];
   initialVoices: ClonedVoiceRecord[];
+  initialInvitations: AdminInvitation[];
   initialSettings: PlatformSettings;
 }) {
   const [tab, setTab] = useState<Tab>("features");
   const [templates, setTemplates] = useState(initialTemplates);
   const [users, setUsers] = useState(initialUsers);
+  const [invitations, setInvitations] = useState(initialInvitations);
   const [voices] = useState(initialVoices);
   const [settings, setSettings] = useState(initialSettings);
   const [pointEdits, setPointEdits] = useState<Record<string, string>>({});
@@ -100,6 +113,15 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   const [credentialError, setCredentialError] = useState(false);
   const credentialKeyRef = useRef<HTMLInputElement>(null);
   const [memberForm, setMemberForm] = useState<MemberForm | null>(null);
+  const [invitationForm, setInvitationForm] = useState<InvitationForm>({
+    count: 1,
+    maxUses: 1,
+    validityDays: 30,
+    giftPoints: initialSettings.newUserPoints,
+    memberLevel: "basic",
+    note: "",
+  });
+  const [generatedCodes, setGeneratedCodes] = useState<string[]>([]);
 
   const publishedCount = useMemo(() => templates.filter((item) => item.status === "published").length, [templates]);
   const enabledFeatureCount = settings.features.filter((item) => item.enabled).length;
@@ -388,10 +410,53 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
     } finally { setBusy(false); }
   }
 
+  async function generateInvitationCodes(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true); setMessage(""); setGeneratedCodes([]);
+    try {
+      const data = await api<{ items: AdminInvitation[]; codes: Array<{ id: string; code: string }> }>("/api/admin/invitations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(invitationForm),
+      });
+      setInvitations((current) => [...data.items, ...current]);
+      setGeneratedCodes(data.codes.map((item) => item.code));
+      setMessage(`已生成 ${data.codes.length} 个邀请码。完整邀请码只在本次显示，请立即复制保存。`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "邀请码生成失败。");
+    } finally { setBusy(false); }
+  }
+
+  async function changeInvitationStatus(item: AdminInvitation) {
+    setBusy(true); setMessage("");
+    try {
+      const data = await api<{ item: AdminInvitation }>(`/api/admin/invitations/${item.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: item.status === "active" ? "disabled" : "active" }),
+      });
+      setInvitations((current) => current.map((entry) => entry.id === data.item.id ? data.item : entry));
+      setMessage(data.item.status === "active" ? "邀请码已重新启用。" : "邀请码已停用。用户将无法再使用。 ");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "邀请码状态更新失败。");
+    } finally { setBusy(false); }
+  }
+
+  async function copyGeneratedCodes() {
+    if (!generatedCodes.length) return;
+    try {
+      await navigator.clipboard.writeText(generatedCodes.join("\n"));
+      setMessage("邀请码已经复制到剪贴板。完整邀请码关闭页面后不会再次显示。");
+    } catch {
+      setMessage("自动复制失败，请手动选择邀请码复制。 ");
+    }
+  }
+
   const navItems: Array<{ id: Tab; icon: string; label: string }> = [
     { id: "features", icon: "功", label: "用户端功能" }, { id: "templates", icon: "模", label: "网感模板" },
     { id: "points", icon: "积", label: "积分与充值" }, { id: "ai", icon: "AI", label: "AI 服务中心" },
     { id: "voices", icon: "声", label: "克隆声音" },
+    { id: "invites", icon: "邀", label: "邀请码" },
     { id: "users", icon: "会", label: "会员管理" },
   ];
 
@@ -450,13 +515,19 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
       </> : tab === "points" ? <>
         <section className="admin-list">
           <header><h2>AI 积分扣费规则</h2><span>按功能独立设置</span></header>
-          <div className="admin-point-rules">{settings.pointRules.map((rule) => <article key={rule.action}><div><b>{rule.name}</b><small>{rule.action}</small></div><label><span>每次基础积分</span><input type="number" min="0" value={rule.points} onChange={(event) => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, points: Number(event.target.value) } : item) }))} /></label><button className={`admin-switch ${rule.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, enabled: !item.enabled } : item) }))}>{rule.enabled ? "计费中" : "免费"}</button></article>)}</div>
+          <div className="admin-point-rules">{settings.pointRules.map((rule) => <article key={rule.action}><div><b>{rule.name}</b><small>{rule.action}</small></div><label><span>成本积分 / 单位</span><input type="number" min="0" value={rule.points} onChange={(event) => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, points: Number(event.target.value) } : item) }))} /><small className="admin-retail-points">用户扣费 {billablePointsFromCost(rule.points)} 积分</small></label><button className={`admin-switch ${rule.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, pointRules: current.pointRules.map((item) => item.action === rule.action ? { ...item, enabled: !item.enabled } : item) }))}>{rule.enabled ? "计费中" : "免费"}</button></article>)}</div>
         </section>
         <section className="admin-list">
-          <header><h2>充值套餐</h2><button className="admin-add" onClick={() => setSettings((current) => ({ ...current, rechargePackages: [...current.rechargePackages, { id: `package-${Date.now()}`, name: "新套餐", points: 1000, bonus: 0, priceYuan: 99, enabled: false }] }))}>＋ 新增套餐</button></header>
-          <div className="admin-package-grid">{settings.rechargePackages.map((item) => <RechargeEditor key={item.id} item={item} onChange={(next) => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.map((entry) => entry.id === item.id ? next : entry) }))} onDelete={() => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.filter((entry) => entry.id !== item.id) }))} />)}</div>
-          <div className="admin-payment-row"><label><span>新会员赠送积分</span><input type="number" min="0" value={settings.newUserPoints} onChange={(event) => setSettings({ ...settings, newUserPoints: Number(event.target.value) })} /></label><label><span>支付接入模式</span><select value={settings.paymentMode} onChange={(event) => setSettings({ ...settings, paymentMode: event.target.value === "wechat" ? "wechat" : "demo" })}><option value="demo">本地演示充值</option><option value="wechat">微信支付（部署时接入）</option></select></label><p>{settings.paymentMode === "demo" ? "当前仅模拟积分到账，不发生真实支付。" : "正式部署时需要商户号、API v3 密钥、证书和支付回调域名。"}</p></div>
-          <footer className="admin-savebar"><span>浮动成本任务仍按上游实际 cost 结算，基础积分用于预授权。</span><button disabled={busy} onClick={() => void saveSettings(settings, "积分规则和充值套餐已保存。")}>{busy ? "正在保存…" : "保存积分与充值设置"}</button></footer>
+          <header><h2>充值套餐</h2><button className="admin-add" onClick={() => setSettings((current) => ({ ...current, rechargePackages: [...current.rechargePackages, { id: `package-${Date.now()}`, name: "新套餐", points: 990, bonus: 0, priceYuan: 99, enabled: false }] }))}>＋ 新增套餐</button></header>
+          <div className="admin-package-grid">{settings.rechargePackages.map((item) => <RechargeEditor key={item.id} item={item} pointsPerYuan={settings.rechargePointsPerYuan} onChange={(next) => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.map((entry) => entry.id === item.id ? next : entry) }))} onDelete={() => setSettings((current) => ({ ...current, rechargePackages: current.rechargePackages.filter((entry) => entry.id !== item.id) }))} />)}</div>
+          <div className="admin-payment-row">
+            <label><span>充值积分比例</span><input type="number" min="1" max="100000" step="1" value={settings.rechargePointsPerYuan} onChange={(event) => setSettings({ ...settings, rechargePointsPerYuan: Number(event.target.value) })} /></label>
+            <label><span>新会员赠送积分</span><input type="number" min="0" value={settings.newUserPoints} onChange={(event) => setSettings({ ...settings, newUserPoints: Number(event.target.value) })} /></label>
+            <label><span>支付接入模式</span><select value={settings.paymentMode} onChange={(event) => setSettings({ ...settings, paymentMode: event.target.value === "wechat" ? "wechat" : "demo" })}><option value="demo">本地演示充值</option><option value="wechat">微信支付</option></select></label>
+            <p><strong>1 元 = {Math.max(1, Math.floor(settings.rechargePointsPerYuan || 10)).toLocaleString()} 积分</strong><span>基础积分自动换算，套餐赠送积分另行叠加。</span></p>
+          </div>
+          <div className="admin-billing-audit" role="status"><div><span>用户扣费</span><strong>实际成本 × {AI_COST_MARKUP_MULTIPLIER}</strong></div><div><span>加价率</span><strong>100%</strong></div><div><span>毛利率</span><strong>50%</strong></div><p>任务先预扣，完成后按上游实际消耗结算；失败全退，多预扣部分自动退回。</p></div>
+          <footer className="admin-savebar"><span>积分规则填写成本积分；用户端统一按成本的 2 倍扣费。</span><button disabled={busy} onClick={() => void saveSettings(settings, "积分规则和充值套餐已保存。")}>{busy ? "正在保存…" : "保存积分与充值设置"}</button></footer>
         </section>
       </> : tab === "ai" ? <>
         <section className="admin-list">
@@ -496,7 +567,44 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           <em className={voice.status}>{voice.status === "ready" ? "可使用" : voice.status === "unavailable" ? "需重新同步" : voice.status}</em>
           {voice.sampleAssetId ? <audio controls preload="none" src={`/api/admin/voices/${encodeURIComponent(voice.id)}/sample`} /> : <small className="admin-voice-no-sample">暂无试听样本</small>}
         </article>)}</div> : <div className="admin-empty">暂无克隆声音，会员完成声音克隆后会自动同步。</div>}
-      </section> : <section className="admin-list admin-user-section">
+      </section> : tab === "invites" ? <>
+        <section className="admin-editor admin-invitation-editor">
+          <header><h2>生成会员邀请码</h2><span>完整邀请码只显示一次，后台仅保存安全摘要</span></header>
+          <form onSubmit={(event) => void generateInvitationCodes(event)}>
+            <label><span>生成数量</span><input type="number" min="1" max="50" value={invitationForm.count} onChange={(event) => setInvitationForm({ ...invitationForm, count: Number(event.target.value) })} /></label>
+            <label><span>每个码可用次数</span><input type="number" min="1" max="100" value={invitationForm.maxUses} onChange={(event) => setInvitationForm({ ...invitationForm, maxUses: Number(event.target.value) })} /></label>
+            <label><span>有效期（天）</span><input type="number" min="0" max="365" value={invitationForm.validityDays} onChange={(event) => setInvitationForm({ ...invitationForm, validityDays: Number(event.target.value) })} /></label>
+            <label><span>注册赠送积分</span><input type="number" min="0" value={invitationForm.giftPoints} onChange={(event) => setInvitationForm({ ...invitationForm, giftPoints: Number(event.target.value) })} /></label>
+            <label><span>会员等级</span><select value={invitationForm.memberLevel} onChange={(event) => setInvitationForm({ ...invitationForm, memberLevel: event.target.value })}><option value="basic">基础会员</option><option value="growth">成长会员</option><option value="business">商家会员</option><option value="vip">VIP 会员</option></select></label>
+            <label className="wide"><span>渠道或备注</span><input maxLength={100} value={invitationForm.note} onChange={(event) => setInvitationForm({ ...invitationForm, note: event.target.value })} placeholder="例如：首批内测会员" /></label>
+            <button className="admin-primary" type="submit" disabled={busy}>{busy ? "正在生成…" : "生成邀请码"}</button>
+          </form>
+          {generatedCodes.length ? <div className="admin-generated-codes">
+            <div><b>本次生成的邀请码</b><span>关闭或刷新页面后将无法查看完整号码</span></div>
+            <textarea readOnly value={generatedCodes.join("\n")} aria-label="本次生成的邀请码" />
+            <button type="button" onClick={() => void copyGeneratedCodes()}>复制全部邀请码</button>
+          </div> : null}
+        </section>
+        <section className="admin-list admin-invitation-list">
+          <header><h2>邀请码记录</h2><span>{invitations.length} 个邀请码</span></header>
+          {invitations.length ? <div className="admin-invite-table">
+            {invitations.map((item) => {
+              const expired = item.availability === "expired";
+              const exhausted = item.availability === "exhausted";
+              const stateLabel = item.availability === "disabled" ? "已停用" : expired ? "已过期" : exhausted ? "已用完" : "可使用";
+              return <article key={item.id}>
+                <div className="admin-invite-code"><b>{item.codeHint}</b><span>{item.note || "未填写备注"}</span></div>
+                <div><small>使用次数</small><b>{item.usedCount} / {item.maxUses}</b></div>
+                <div><small>注册权益</small><b>{item.memberLevel} · {item.giftPoints.toLocaleString()} 积分</b></div>
+                <div><small>有效期</small><b>{item.expiresAt ? new Date(item.expiresAt * 1000).toLocaleDateString("zh-CN") : "长期有效"}</b></div>
+                <div><small>最近使用</small><b>{item.lastUsedBy || "尚未使用"}</b></div>
+                <em className={stateLabel === "可使用" ? "is-active" : ""}>{stateLabel}</em>
+                <button type="button" disabled={busy || expired || exhausted} onClick={() => void changeInvitationStatus(item)}>{item.status === "active" ? "停用" : "启用"}</button>
+              </article>;
+            })}
+          </div> : <div className="admin-empty">还没有邀请码，可以先生成一个用于注册测试。</div>}
+        </section>
+      </> : <section className="admin-list admin-user-section">
         <header><h2>会员、权限与积分</h2><div className="admin-user-heading-actions"><span>{users.length} 个账号</span><button className="admin-add" onClick={() => setMemberForm({ ...emptyMember })}>＋ 新增会员</button></div></header>
         {memberForm ? <form className="admin-member-editor" onSubmit={(event) => void saveMemberAccount(event)}>
           <header><div><b>{memberForm.id ? "编辑会员资料" : "新增会员账号"}</b><span>{memberForm.id ? "密码留空表示不修改" : "创建后会员可立即登录"}</span></div><button type="button" onClick={() => setMemberForm(null)}>取消</button></header>
@@ -513,6 +621,9 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   </main>;
 }
 
-function RechargeEditor({ item, onChange, onDelete }: { item: RechargePackage; onChange: (item: RechargePackage) => void; onDelete: () => void }) {
-  return <article><header><input value={item.name} onChange={(event) => onChange({ ...item, name: event.target.value })} /><button className={`admin-switch ${item.enabled ? "is-on" : ""}`} onClick={() => onChange({ ...item, enabled: !item.enabled })}>{item.enabled ? "上架" : "下架"}</button></header><div><label><span>基础积分</span><input type="number" min="1" value={item.points} onChange={(event) => onChange({ ...item, points: Number(event.target.value) })} /></label><label><span>赠送积分</span><input type="number" min="0" value={item.bonus} onChange={(event) => onChange({ ...item, bonus: Number(event.target.value) })} /></label><label><span>售价（元）</span><input type="number" min="0.01" step="0.01" value={item.priceYuan} onChange={(event) => onChange({ ...item, priceYuan: Number(event.target.value) })} /></label></div><footer><b>{(item.points + item.bonus).toLocaleString()} 积分</b><span>¥{item.priceYuan.toFixed(2)}</span><button onClick={onDelete}>删除</button></footer></article>;
+function RechargeEditor({ item, pointsPerYuan, onChange, onDelete }: { item: RechargePackage; pointsPerYuan: number; onChange: (item: RechargePackage) => void; onDelete: () => void }) {
+  const basePoints = Math.max(1, Math.floor(Number(item.priceYuan) * Math.max(1, Math.floor(Number(pointsPerYuan) || 10))));
+  const totalPoints = basePoints + Math.max(0, Math.floor(Number(item.bonus) || 0));
+  const bonusRate = basePoints > 0 ? Math.max(0, Number(item.bonus) || 0) / basePoints : 0;
+  return <article className={bonusRate > 0.3 ? "is-pricing-risk" : ""}><header><input value={item.name} aria-label="套餐名称" onChange={(event) => onChange({ ...item, name: event.target.value })} /><button className={`admin-switch ${item.enabled ? "is-on" : ""}`} onClick={() => onChange({ ...item, enabled: !item.enabled })}>{item.enabled ? "上架" : "下架"}</button></header><div><label><span>售价（元）</span><input type="number" min="0.01" step="0.01" value={item.priceYuan} onChange={(event) => onChange({ ...item, priceYuan: Number(event.target.value) })} /></label><label><span>按比例积分</span><input type="number" value={basePoints} readOnly aria-readonly="true" /></label><label><span>赠送积分</span><input type="number" min="0" value={item.bonus} onChange={(event) => onChange({ ...item, bonus: Number(event.target.value) })} /></label></div><footer><div><b>{totalPoints.toLocaleString()} 积分</b><small>{(totalPoints / Math.max(0.01, Number(item.priceYuan) || 0.01)).toFixed(1)} 积分 / 元</small></div><span>¥{Number(item.priceYuan || 0).toFixed(2)}</span>{bonusRate > 0.3 ? <em>赠送比例过高</em> : null}<button onClick={onDelete}>删除</button></footer></article>;
 }

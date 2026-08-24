@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { providerCostToPoints } from "../../../../lib/ai-pricing";
+import { billablePointsFromCost, costPointsFromBillable } from "../../../../lib/billing";
 import { getWallet, pointsErrorResponse, refundAiPoints, refundAiPointsByRequest, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 import { quoteMerchantVideo } from "../../../../lib/video-pricing";
 import { createAiTask, getAiTask, updateAiTask } from "../../../../lib/server/ai-tasks";
@@ -112,11 +113,12 @@ export async function POST(request: Request) {
       throw new AiProviderError("Seedance 任务响应中没有任务编号或视频地址，已自动退回本次预授权积分。", 502);
     }
     submitted = true;
-    const chargedPoints = task.actualPoints ?? quote.reservedPoints;
+    const chargedCostPoints = task.actualPoints ?? quote.reservedPoints;
+    const chargedPoints = billablePointsFromCost(chargedCostPoints);
     const wallet = task.isFinal
       ? task.state === "failed"
         ? await refundAiPointsByRequest(member, reservation.requestId)
-        : await settleAiPointsByRequest(member, reservation.requestId, chargedPoints)
+        : await settleAiPointsByRequest(member, reservation.requestId, chargedCostPoints)
       : await getWallet(member);
     updateAiTask(member, reservation.requestId, {
       providerTaskIds: task.taskId ? [task.taskId] : [],
@@ -128,11 +130,12 @@ export async function POST(request: Request) {
     });
     return Response.json({
       ...task,
+      actualPoints: task.isFinal ? chargedPoints : null,
       model: quote.model,
       modelDisplayName: quote.displayName,
       projectName,
       requestId: reservation.requestId,
-      quote,
+      quote: { ...quote, reservedPoints: billablePointsFromCost(quote.reservedPoints) },
       wallet,
     });
   } catch (error) {
@@ -190,7 +193,7 @@ export async function GET(request: Request) {
         resolution: url.searchParams.get("resolution") || "720p",
         version: url.searchParams.get("version") || "快速",
       });
-      return Response.json({ quote });
+      return Response.json({ quote: { ...quote, reservedPoints: billablePointsFromCost(quote.reservedPoints) } });
     } catch (error) {
       return aiErrorResponse(error);
     }
@@ -199,11 +202,12 @@ export async function GET(request: Request) {
     const provider = await lk888Fetch<ProviderPayload>(`/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`, { cache: "no-store" });
     const task = normalizedPayload(provider);
     const stored = requestId ? getAiTask(member, requestId) : null;
-    const chargedPoints = task.actualPoints ?? stored?.pointsReserved ?? 0;
+    const chargedCostPoints = task.actualPoints ?? costPointsFromBillable(stored?.pointsReserved ?? 0);
+    const chargedPoints = billablePointsFromCost(chargedCostPoints);
     const wallet = task.isFinal && requestId
       ? task.state === "failed"
         ? await refundAiPointsByRequest(member, requestId)
-        : await settleAiPointsByRequest(member, requestId, chargedPoints)
+        : await settleAiPointsByRequest(member, requestId, chargedCostPoints)
       : await getWallet(member);
     if (requestId) updateAiTask(member, requestId, {
       providerTaskIds: task.taskId ? [task.taskId] : [taskId],
@@ -213,7 +217,7 @@ export async function GET(request: Request) {
       error: task.error,
       pointsCharged: task.isFinal && task.state === "success" ? chargedPoints : 0,
     });
-    return Response.json({ ...task, model: stored?.input.model || "kwvideo-v2-ref", requestId: requestId || null, wallet });
+    return Response.json({ ...task, actualPoints: task.isFinal ? chargedPoints : null, model: stored?.input.model || "kwvideo-v2-ref", requestId: requestId || null, wallet });
   } catch (error) {
     return pointsErrorResponse(error) ?? aiErrorResponse(error);
   }

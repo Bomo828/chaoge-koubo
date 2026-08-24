@@ -122,6 +122,15 @@ export function findUserByUsername(username: string) {
   `).get(username.trim()) as UserRow | undefined;
 }
 
+export function getUserById(userId: string) {
+  ensureBootstrapUsers();
+  const row = getDatabase().prepare(`
+    SELECT id, username, password_hash, display_name, avatar_url, role, level, points, status
+    FROM users WHERE id = ? LIMIT 1
+  `).get(userId) as UserRow | undefined;
+  return row ? toUser(row) : null;
+}
+
 export function authenticateUser(username: string, password: string) {
   const row = findUserByUsername(username);
   if (!row || row.status !== "active" || !verifyPassword(password, row.password_hash)) return null;
