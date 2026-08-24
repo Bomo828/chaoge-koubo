@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
+import { douyinSecUidFromUrl, extractDouyinUrl, isDouyinHostname } from "../douyin-links";
 import { getDatabase, unixNow } from "./db";
+import { getTikHubConfig } from "./ai-credentials";
 
 export type MarketAccountRow = {
   id: string;
@@ -71,34 +73,22 @@ function nestedRecord(value: unknown, key: string) {
 function firstUrl(value: unknown): string {
   if (!value || typeof value !== "object" || Array.isArray(value)) return "";
   const list = (value as Record<string, unknown>).url_list;
-  return Array.isArray(list) ? safeString(list.find((item) => typeof item === "string"), 2000) : "";
-}
-
-function isDouyinHost(hostname: string) {
-  const host = hostname.toLowerCase();
-  return host === "douyin.com" || host.endsWith(".douyin.com") || host === "iesdouyin.com" || host.endsWith(".iesdouyin.com");
-}
-
-function urlFromShareText(value: string) {
-  const match = value.trim().match(/https?:\/\/[^\s<>"']+/i);
-  return (match?.[0] || value.trim()).replace(/[，,。；;！!？?）)】\]}》]+$/u, "");
-}
-
-function secUidFromUrl(sourceUrl: string) {
-  const parsed = new URL(sourceUrl);
-  const pathMatch = parsed.pathname.match(/\/(?:user|share\/user)\/([^/?]+)/i);
-  return (pathMatch?.[1] || parsed.searchParams.get("sec_uid") || parsed.searchParams.get("sec_user_id") || "").slice(0, 180);
+  if (!Array.isArray(list)) return "";
+  const urls = list.filter((item): item is string => typeof item === "string" && item.length > 0);
+  const browserCompatible = urls.find((url) => /\.(?:jpe?g|png|webp)(?:\?|$)/i.test(url));
+  return safeString(browserCompatible || urls[0], 2000);
 }
 
 export async function resolveDouyinProfileUrl(rawUrl: string) {
-  const cleaned = urlFromShareText(rawUrl);
+  const cleaned = extractDouyinUrl(rawUrl);
+  if (!cleaned) throw new Error("没有识别到抖音链接，请粘贴完整分享口令或账号主页链接。");
   let parsed: URL;
   try {
     parsed = new URL(cleaned);
   } catch {
     throw new Error("请输入完整的抖音账号主页链接。");
   }
-  if (!isDouyinHost(parsed.hostname)) throw new Error("目前仅支持 douyin.com 的公开账号主页链接。");
+  if (!isDouyinHostname(parsed.hostname)) throw new Error("目前仅支持 douyin.com 的公开账号主页链接。");
 
   let resolved = parsed;
   if (parsed.hostname.toLowerCase().startsWith("v.")) {
@@ -109,10 +99,10 @@ export async function resolveDouyinProfileUrl(rawUrl: string) {
     });
     resolved = new URL(response.url);
     await response.body?.cancel().catch(() => undefined);
-    if (!isDouyinHost(resolved.hostname)) throw new Error("抖音短链跳转到了非抖音地址。");
+    if (!isDouyinHostname(resolved.hostname)) throw new Error("抖音短链跳转到了非抖音地址。");
   }
 
-  const secUid = secUidFromUrl(resolved.toString());
+  const secUid = douyinSecUidFromUrl(resolved.toString());
   if (!secUid) throw new Error("这个链接不是抖音账号主页，请复制账号主页右上角的分享链接。");
   return { sourceUrl: `https://www.douyin.com/user/${secUid}`, secUid };
 }
@@ -178,6 +168,12 @@ export function createMarketAccount(ownerId: string, sourceUrl: string, secUid: 
   return db.prepare("SELECT * FROM monitored_accounts WHERE id = ?").get(id) as MarketAccountRow;
 }
 
+export function findMarketAccount(ownerId: string, secUid: string) {
+  return getDatabase().prepare(`
+    SELECT * FROM monitored_accounts WHERE owner_id = ? AND sec_uid = ? LIMIT 1
+  `).get(ownerId, secUid) as MarketAccountRow | undefined;
+}
+
 export function queueMarketAccountSync(ownerId: string, accountId: string) {
   const db = getDatabase();
   const now = unixNow();
@@ -200,18 +196,130 @@ function safeServiceBaseUrl(configuredValue: string, serviceName: string) {
   return configured;
 }
 
-function collectorBaseUrl() {
-  return safeServiceBaseUrl(process.env.DOUYIN_COLLECTOR_BASE_URL || "https://douyin.wtf", "抖音作品采集服务");
-}
-
 function profileBaseUrl() {
   return safeServiceBaseUrl(process.env.DOUYIN_PROFILE_API_BASE_URL || "https://www.iesdouyin.com", "抖音账号资料服务");
+}
+
+async function fetchDouyinPosts(secUid: string) {
+  const tikhub = getTikHubConfig();
+  if (tikhub.apiKey) {
+    const postsUrl = `${tikhub.baseUrl}/api/v1/douyin/app/v3/fetch_user_post_videos?sec_user_id=${encodeURIComponent(secUid)}&max_cursor=0&count=20`;
+    return await fetchJson(postsUrl, {
+      Authorization: `Bearer ${tikhub.apiKey}`,
+      "User-Agent": DESKTOP_USER_AGENT,
+      Accept: "application/json",
+    }, 20_000);
+  }
+
+  const legacyCollector = process.env.DOUYIN_COLLECTOR_BASE_URL?.trim();
+  if (legacyCollector) {
+    const baseUrl = safeServiceBaseUrl(legacyCollector, "抖音作品采集服务");
+    const postsUrl = `${baseUrl}/api/douyin/web/fetch_user_post_videos?sec_user_id=${encodeURIComponent(secUid)}&max_cursor=0&count=20`;
+    return await fetchJson(postsUrl, { "User-Agent": DESKTOP_USER_AGENT, Accept: "application/json" }, 12_000);
+  }
+
+  throw new Error("市场数据服务尚未配置，请联系管理员配置 TikHub API Key。");
+}
+
+function providerErrorMessage(payload: Record<string, unknown>) {
+  const detail = nestedRecord(payload, "detail");
+  const code = safeNumber(detail?.code, safeNumber(payload.code, 200));
+  if (code === 200 || code === 0) return "";
+
+  const rawMessage = safeString(detail?.message_zh, 500)
+    || safeString(detail?.message, 500)
+    || safeString(payload.message_zh, 500)
+    || safeString(payload.message, 500);
+  if (code === 402 || /余额不足|insufficient balance/i.test(rawMessage)) {
+    return "TikHub 付费余额不足，暂时无法读取公开作品，请联系管理员充值市场数据服务额度。";
+  }
+  if (code === 401 || code === 403) {
+    return "TikHub 授权失败，请联系管理员检查市场数据服务密钥。";
+  }
+  return rawMessage ? `市场数据服务返回异常：${rawMessage}` : `市场数据服务返回异常（${code}）`;
+}
+
+function awemeListFromPayload(payload: Record<string, unknown> | null) {
+  if (!payload) return null;
+  const direct = payload.aweme_list;
+  if (Array.isArray(direct)) return direct;
+  const firstData = nestedRecord(payload, "data");
+  if (Array.isArray(firstData?.aweme_list)) return firstData.aweme_list;
+  const secondData = firstData ? nestedRecord(firstData, "data") : undefined;
+  if (Array.isArray(secondData?.aweme_list)) return secondData.aweme_list;
+  return null;
 }
 
 async function fetchJson(url: string, headers: HeadersInit, timeout = 45_000) {
   const response = await fetch(url, { headers, cache: "no-store", signal: AbortSignal.timeout(timeout) });
   if (!response.ok) throw new Error(`公开数据接口响应异常（${response.status}）`);
-  return await response.json() as Record<string, unknown>;
+  const payload = await response.json() as Record<string, unknown>;
+  const serviceError = providerErrorMessage(payload);
+  if (serviceError) throw new Error(serviceError);
+  return payload;
+}
+
+function profileValues(userInfo: DouyinUserInfo, videoCountFallback = 0) {
+  const nickname = safeString(userInfo.nickname, 120) || "抖音账号";
+  const handle = safeString(userInfo.unique_id, 120) || safeString(userInfo.short_id, 120);
+  return {
+    nickname,
+    handle: handle ? `抖音号：${handle}` : "抖音公开账号",
+    avatarUrl: firstUrl(userInfo.avatar_medium) || firstUrl(userInfo.avatar_thumb),
+    signature: safeString(userInfo.signature, 1000),
+    followerCount: Math.max(0, Math.floor(safeNumber(userInfo.mplatform_followers_count, safeNumber(userInfo.follower_count, 0)))),
+    followingCount: Math.max(0, Math.floor(safeNumber(userInfo.following_count, 0))),
+    totalLikes: Math.max(0, Math.floor(safeNumber(userInfo.total_favorited, 0))),
+    videoCount: Math.max(videoCountFallback, Math.floor(safeNumber(userInfo.aweme_count, videoCountFallback))),
+  };
+}
+
+function updateAccountProfile(ownerId: string, accountId: string, userInfo: DouyinUserInfo, statusMessage: string, videoCountFallback = 0) {
+  const db = getDatabase();
+  const now = unixNow();
+  const profile = profileValues(userInfo, videoCountFallback);
+  db.prepare(`
+    UPDATE monitored_accounts SET nickname = ?, handle = ?, avatar_url = ?, signature = ?,
+      follower_count = ?, following_count = ?, total_likes = ?, video_count = ?, status = 'ready',
+      status_message = ?, last_sync_at = ?, next_sync_at = ?, updated_at = ?
+    WHERE id = ? AND owner_id = ?
+  `).run(
+    profile.nickname,
+    profile.handle,
+    profile.avatarUrl,
+    profile.signature,
+    profile.followerCount,
+    profile.followingCount,
+    profile.totalLikes,
+    profile.videoCount,
+    statusMessage,
+    now,
+    now + 15 * 60,
+    now,
+    accountId,
+    ownerId,
+  );
+}
+
+export async function syncMarketAccountProfile(ownerId: string, accountId: string) {
+  const queued = queueMarketAccountSync(ownerId, accountId);
+  if (!queued) return null;
+  const db = getDatabase();
+  const now = unixNow();
+  try {
+    const profileUrl = `${profileBaseUrl()}/web/api/v2/user/info/?sec_uid=${encodeURIComponent(queued.sec_uid)}`;
+    const profilePayload = await fetchJson(profileUrl, { "User-Agent": MOBILE_USER_AGENT, Accept: "application/json" }, 15_000);
+    const userInfo = nestedRecord(profilePayload, "user_info") as DouyinUserInfo | undefined;
+    if (!userInfo || safeNumber(profilePayload.status_code, -1) !== 0) throw new Error("抖音没有返回可读取的账号资料。");
+    updateAccountProfile(ownerId, accountId, userInfo, "账号资料已读取，正在同步公开作品");
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "账号资料读取失败";
+    db.prepare(`
+      UPDATE monitored_accounts SET status = 'error', status_message = ?, next_sync_at = NULL, updated_at = ?
+      WHERE id = ? AND owner_id = ?
+    `).run(`账号资料读取失败：${message}`, now, accountId, ownerId);
+  }
+  return db.prepare("SELECT * FROM monitored_accounts WHERE id = ? AND owner_id = ?").get(accountId, ownerId) as MarketAccountRow;
 }
 
 function normalizeAweme(item: DouyinAweme) {
@@ -249,18 +357,20 @@ export async function syncMarketAccount(ownerId: string, accountId: string) {
   const now = unixNow();
   try {
     const profileUrl = `${profileBaseUrl()}/web/api/v2/user/info/?sec_uid=${encodeURIComponent(queued.sec_uid)}`;
-    const postsUrl = `${collectorBaseUrl()}/api/douyin/web/fetch_user_post_videos?sec_user_id=${encodeURIComponent(queued.sec_uid)}&max_cursor=0&count=20`;
-    const [profilePayload, postsPayload] = await Promise.all([
+    const [profileResult, postsResult] = await Promise.allSettled([
       fetchJson(profileUrl, { "User-Agent": MOBILE_USER_AGENT, Accept: "application/json" }, 25_000),
-      fetchJson(postsUrl, { "User-Agent": DESKTOP_USER_AGENT, Accept: "application/json" }, 60_000),
+      fetchDouyinPosts(queued.sec_uid),
     ]);
+    if (profileResult.status === "rejected") throw profileResult.reason;
+    const profilePayload = profileResult.value;
     const userInfo = nestedRecord(profilePayload, "user_info") as DouyinUserInfo | undefined;
-    const postsData = nestedRecord(postsPayload, "data");
-    const awemeList = Array.isArray(postsData?.aweme_list) ? postsData.aweme_list : [];
     if (!userInfo || safeNumber(profilePayload.status_code, -1) !== 0) throw new Error("抖音没有返回可读取的账号资料。");
-    if (!Array.isArray(awemeList)) throw new Error("作品采集服务没有返回作品列表。");
 
-    const normalized = awemeList.map((item) => item && typeof item === "object" && !Array.isArray(item) ? normalizeAweme(item as DouyinAweme) : null).filter(Boolean) as NonNullable<ReturnType<typeof normalizeAweme>>[];
+    const postsPayload = postsResult.status === "fulfilled" ? postsResult.value : null;
+    const awemeList = awemeListFromPayload(postsPayload);
+    const postsAvailable = Array.isArray(awemeList);
+
+    const normalized = (awemeList || []).map((item) => item && typeof item === "object" && !Array.isArray(item) ? normalizeAweme(item as DouyinAweme) : null).filter(Boolean) as NonNullable<ReturnType<typeof normalizeAweme>>[];
     for (const video of normalized) {
       const id = `market_video_${createHash("sha256").update(`${accountId}:${video.awemeId}`).digest("hex").slice(0, 24)}`;
       db.prepare(`
@@ -277,31 +387,12 @@ export async function syncMarketAccount(ownerId: string, accountId: string) {
       `).run(`snapshot_${randomUUID()}`, stored.id, now, video.metrics.play, video.metrics.like, video.metrics.comment, video.metrics.share, video.metrics.collect, JSON.stringify(video.metrics.raw).slice(0, 12_000));
     }
 
-    const nickname = safeString(userInfo.nickname, 120) || "抖音账号";
-    const handle = safeString(userInfo.unique_id, 120) || safeString(userInfo.short_id, 120);
-    const avatarUrl = firstUrl(userInfo.avatar_medium) || firstUrl(userInfo.avatar_thumb);
-    const remoteVideoCount = Math.max(normalized.length, Math.floor(safeNumber(userInfo.aweme_count, normalized.length)));
-    db.prepare(`
-      UPDATE monitored_accounts SET nickname = ?, handle = ?, avatar_url = ?, signature = ?,
-        follower_count = ?, following_count = ?, total_likes = ?, video_count = ?, status = 'ready',
-        status_message = ?, last_sync_at = ?, next_sync_at = ?, updated_at = ?
-      WHERE id = ? AND owner_id = ?
-    `).run(
-      nickname,
-      handle ? `抖音号：${handle}` : "抖音公开账号",
-      avatarUrl,
-      safeString(userInfo.signature, 1000),
-      Math.max(0, Math.floor(safeNumber(userInfo.mplatform_followers_count, safeNumber(userInfo.follower_count, 0)))),
-      Math.max(0, Math.floor(safeNumber(userInfo.following_count, 0))),
-      Math.max(0, Math.floor(safeNumber(userInfo.total_favorited, 0))),
-      remoteVideoCount,
-      `已同步账号资料和 ${normalized.length} 条公开作品`,
-      now,
-      now + 15 * 60,
-      now,
-      accountId,
-      ownerId,
-    );
+    const postsMessage = postsResult.status === "fulfilled" && postsAvailable
+      ? `已同步账号资料和 ${normalized.length} 条公开作品`
+      : postsResult.status === "rejected" && postsResult.reason instanceof Error
+        ? `账号资料已同步；${postsResult.reason.message}`
+        : "账号资料已同步；作品接口没有返回可读取的数据";
+    updateAccountProfile(ownerId, accountId, userInfo, postsMessage, normalized.length);
   } catch (error) {
     const message = error instanceof Error ? error.message : "账号同步失败";
     db.prepare(`

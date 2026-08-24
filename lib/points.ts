@@ -11,6 +11,7 @@ export const AI_POINT_COSTS = {
   voice_clone: 80,
   speech_generate: 1,
   lip_sync_generate: 80,
+  market_account_add: 10,
 } as const;
 
 export type AiPointAction = keyof typeof AI_POINT_COSTS;
@@ -213,6 +214,7 @@ const actionReasons: Record<AiPointAction, string> = {
   voice_clone: "AI 克隆声音",
   speech_generate: "AI 生成口播音频",
   lip_sync_generate: "AI 生成对口型视频",
+  market_account_add: "添加对标账号",
 };
 
 function settleCharge(charge: ChargeRow, actualCost: number) {

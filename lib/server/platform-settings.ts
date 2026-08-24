@@ -11,7 +11,7 @@ export type PlatformFeature = {
 };
 
 export type PointRule = {
-  action: "prompt_optimize" | "chat_assistant" | "image_generate" | "video_generate" | "voice_clone" | "speech_generate" | "lip_sync_generate";
+  action: "prompt_optimize" | "chat_assistant" | "image_generate" | "video_generate" | "voice_clone" | "speech_generate" | "lip_sync_generate" | "market_account_add";
   name: string;
   points: number;
   enabled: boolean;
@@ -27,7 +27,7 @@ export type RechargePackage = {
 };
 
 export type AiProviderSetting = {
-  id: "lk888" | "chanjing" | "video-worker";
+  id: "lk888" | "chanjing" | "tikhub" | "video-worker";
   name: string;
   purpose: string;
   enabled: boolean;
@@ -61,6 +61,7 @@ export const defaultPlatformSettings: PlatformSettings = {
     { action: "voice_clone", name: "克隆声音（成本 80 / 次）", points: 80, enabled: true },
     { action: "speech_generate", name: "口播音频（成本 0.15 / 秒）", points: 1, enabled: true },
     { action: "lip_sync_generate", name: "对口型（成本 80 + 2 / 秒）", points: 80, enabled: true },
+    { action: "market_account_add", name: "添加对标账号", points: 10, enabled: true },
   ],
   rechargePackages: [
     { id: "starter", name: "体验包", points: 1000, bonus: 0, priceYuan: 99, enabled: true },
@@ -71,6 +72,7 @@ export const defaultPlatformSettings: PlatformSettings = {
   aiProviders: [
     { id: "lk888", name: "开放 AI 平台", purpose: "大模型分析、GPT Image 2、Seedance 2.0", enabled: true, lowBalanceThreshold: 20 },
     { id: "chanjing", name: "蝉镜数字人", purpose: "声音克隆、口播音频与对口型", enabled: true, lowBalanceThreshold: 20 },
+    { id: "tikhub", name: "市场数据服务", purpose: "抖音公开账号资料、作品与互动数据", enabled: true, lowBalanceThreshold: 10 },
     { id: "video-worker", name: "视频处理服务", purpose: "字幕、模板、转场、音效与成片", enabled: true, lowBalanceThreshold: 0 },
   ],
   paymentMode: "demo",
@@ -87,9 +89,12 @@ export function getPlatformSettings(): PlatformSettings {
     ...saved,
     features: (Array.isArray(saved.features) ? saved.features : defaultPlatformSettings.features)
       .filter((item) => String(item.entry) !== "decorate") as PlatformFeature[],
-    pointRules: (Array.isArray(saved.pointRules) ? saved.pointRules : defaultPlatformSettings.pointRules)
-      .filter((item) => String(item.action) !== "theme_analysis")
-      .map((item) => {
+    pointRules: defaultPlatformSettings.pointRules
+      .map((fallback) => {
+        const savedRule = Array.isArray(saved.pointRules)
+          ? saved.pointRules.find((item) => item.action === fallback.action)
+          : undefined;
+        const item = savedRule ? { ...fallback, ...savedRule } : fallback;
         if (item.action === "voice_clone") {
           return { ...item, name: "克隆声音（成本 80 / 次）", points: Number(item.points) === 10 ? 80 : item.points };
         }
@@ -102,7 +107,12 @@ export function getPlatformSettings(): PlatformSettings {
         return item;
       }) as PointRule[],
     rechargePackages: Array.isArray(saved.rechargePackages) ? saved.rechargePackages : defaultPlatformSettings.rechargePackages,
-    aiProviders: Array.isArray(saved.aiProviders) ? saved.aiProviders : defaultPlatformSettings.aiProviders,
+    aiProviders: defaultPlatformSettings.aiProviders.map((fallback) => {
+      const savedProvider = Array.isArray(saved.aiProviders)
+        ? saved.aiProviders.find((item) => item.id === fallback.id)
+        : undefined;
+      return savedProvider ? { ...fallback, ...savedProvider } : fallback;
+    }),
   };
 }
 

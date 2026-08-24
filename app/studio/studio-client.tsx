@@ -674,10 +674,28 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
           {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
-          {active === "assets" && <Assets initialFilter={assetInitialFilter} onUseViral={(asset) => {
-            setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
-            openStudioSection("video");
-          }} />}
+          {active === "assets" && <Assets
+            initialFilter={assetInitialFilter}
+            onUseViral={(asset) => {
+              setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
+              openStudioSection("video");
+            }}
+            onUseSuperEditor={(asset) => {
+              window.sessionStorage.setItem("merchant-studio-ai-explainer-source", JSON.stringify({
+                id: asset.id,
+                name: asset.name,
+                mediaUrl: asset.mediaUrl,
+                fallbackMediaUrl: asset.mediaUrl,
+                transcript: asset.viralWorkflow?.script || "",
+                title: asset.viralWorkflow?.title || "",
+                duration: asset.viralWorkflow?.duration || 0,
+                captions: asset.viralWorkflow?.captions || [],
+                source: "member-asset",
+                consumed: false,
+              }));
+              window.location.assign("/ai-explainer/index.html");
+            }}
+          />}
           {active === "member" && <Member
             points={walletPoints}
             onPointsChange={setWalletPoints}
@@ -2896,11 +2914,24 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         planReady,
         plannedAt: Date.now(),
       } : null;
+      const archivedAssetId = stableAssetId(`lip-sync|${completedTaskId || data.videoUrl}`);
+      window.sessionStorage.setItem("merchant-studio-ai-explainer-source", JSON.stringify({
+        id: archivedAssetId,
+        name: "对口型成片.mp4",
+        mediaUrl: `/api/member/assets/${encodeURIComponent(archivedAssetId)}`,
+        fallbackMediaUrl: data.videoUrl,
+        transcript: script.trim(),
+        title: plannedTitle,
+        duration: Math.max(1, speechAudioDuration || data.audioDuration || plannedCaptions.at(-1)?.end || 1),
+        captions: plannedCaptions,
+        source: "lip-sync",
+        consumed: false,
+      }));
       void fetch("/api/member/assets", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          id: stableAssetId(`lip-sync|${completedTaskId || data.videoUrl}`),
+          id: archivedAssetId,
           projectName: "对口型视频",
           kind: "video",
           name: "对口型成片",
@@ -2966,6 +2997,29 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         plannedAt: Date.now(),
       } satisfies ViralWorkflowManifest : null,
     }));
+  }
+
+  function openLipSyncResultInSuperEditor() {
+    if (!lipSyncResultUrl || lipSyncBusy) return;
+    const existing = (() => {
+      try {
+        return JSON.parse(window.sessionStorage.getItem("merchant-studio-ai-explainer-source") || "null") as Record<string, unknown> | null;
+      } catch {
+        return null;
+      }
+    })();
+    window.sessionStorage.setItem("merchant-studio-ai-explainer-source", JSON.stringify({
+      ...(existing || {}),
+      name: "对口型成片.mp4",
+      fallbackMediaUrl: lipSyncResultUrl,
+      transcript: script.trim(),
+      title: speechViralTitle || viralTitleFromKnownScript(script),
+      duration: Math.max(1, speechAudioDuration || speechCaptions.at(-1)?.end || 1),
+      captions: speechCaptions.map((caption) => ({ ...caption })),
+      source: "lip-sync",
+      consumed: false,
+    }));
+    window.location.assign("/ai-explainer/index.html");
   }
 
   function openDirectorResultInViralEditor(source: { name: string; mediaUrl: string }) {
@@ -4798,6 +4852,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             <div className="lip-sync-final-actions">
               <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || !lipSyncEstimatedPoints} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
+              <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInSuperEditor}>{lipSyncResultUrl ? "✦ 导入AI超级剪辑" : "生成后可导入AI超级剪辑"}</button>
             </div>
             {lipSyncError ? <div className="video-agent-error" role="alert">{lipSyncError}</div> : null}
           </section>
@@ -4997,7 +5052,15 @@ function formatAssetSize(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFilter; onUseViral: (asset: MemberAssetItem) => void }) {
+function Assets({
+  initialFilter = "all",
+  onUseViral,
+  onUseSuperEditor,
+}: {
+  initialFilter?: AssetFilter;
+  onUseViral: (asset: MemberAssetItem) => void;
+  onUseSuperEditor: (asset: MemberAssetItem) => void;
+}) {
   const [items, setItems] = useState<MemberAssetItem[]>([]);
   const [filter, setFilter] = useState<AssetFilter>(initialFilter);
   const [loading, setLoading] = useState(true);
@@ -5062,8 +5125,8 @@ function Assets({ initialFilter = "all", onUseViral }: { initialFilter?: AssetFi
       <button className={filter === "video" ? "active" : ""} onClick={() => setFilter("video")}><i>视</i><b>生成短视频</b><span>{videoCount} 个</span></button>
       <button className={filter === "audio" ? "active" : ""} onClick={() => setFilter("audio")}><i>声</i><b>声音与音频</b><span>{audioCount} 个</span></button>
     </div>
-    {error ? <div className="asset-state is-error"><b>资产空间暂时无法打开</b><span>{error}</span><button onClick={() => void loadAssets()}>重新加载</button></div> : loading ? <div className="asset-state"><i /><b>正在读取会员资产</b><span>生成记录正在按项目整理</span></div> : projects.length ? <div className="asset-project-list">{projects.map(([projectName, projectItems]) => <section className="asset-project" key={projectName}><header><div><small>项目</small><h2>{projectName}</h2></div><span>{formatAssetTime(projectItems[0].createdAt)} · {projectItems.length} 个文件</span></header><div className="asset-item-grid">{projectItems.map((item) => <article className={`asset-item is-${item.kind}`} key={item.id}><button className="asset-media" onClick={() => setSelectedAsset(item)} aria-label={`打开${item.name}`}>{item.kind === "image" ? <img src={item.mediaUrl} alt={item.name} loading="lazy" /> : item.kind === "video" ? <video src={item.mediaUrl} poster={item.coverUrl || undefined} preload="metadata" muted /> : <span>{item.kind === "voice" ? "声" : "音"}</span>}<i>{item.kind === "video" ? "▶" : item.kind === "image" ? "查看" : "播放"}</i></button><div><b>{item.name}</b><span>{formatAssetTime(item.createdAt)} · {formatAssetSize(item.sizeBytes)}</span></div><div className="asset-item-actions"><a href={`${item.mediaUrl}?download=1`} download={item.name}>下载</a><button onClick={() => void deleteAsset(item)}>删除</button></div></article>)}</div></section>)}</div> : <div className="asset-state is-empty"><b>还没有{filter === "all" ? "会员资产" : filter === "image" ? "生成图片" : filter === "video" ? "生成短视频" : "声音文件"}</b><span>完成一次 AI 生成后，结果会自动按项目名称与时间出现在这里。</span></div>}
-    {selectedAsset ? <div className="asset-viewer-backdrop" role="dialog" aria-modal="true" aria-label="查看会员资产" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedAsset(null); }}><section className="asset-viewer"><button className="asset-viewer-close" aria-label="关闭" onClick={() => setSelectedAsset(null)}>×</button><header><small>{selectedAsset.projectName}</small><h2>{selectedAsset.name}</h2><span>{formatAssetTime(selectedAsset.createdAt)}</span></header>{selectedAsset.kind === "image" ? <img src={selectedAsset.mediaUrl} alt={selectedAsset.name} /> : selectedAsset.kind === "video" ? <video src={selectedAsset.mediaUrl} poster={selectedAsset.coverUrl || undefined} controls autoPlay playsInline disablePictureInPicture /> : <audio src={selectedAsset.mediaUrl} controls autoPlay />}<footer><a href={`${selectedAsset.mediaUrl}?download=1`} download={selectedAsset.name}>↓ 下载文件</a>{selectedAsset.kind === "video" ? <button className="asset-viewer-viral" onClick={() => onUseViral(selectedAsset)}>✦ 一键网感</button> : null}<button onClick={() => setSelectedAsset(null)}>关闭</button></footer></section></div> : null}
+    {error ? <div className="asset-state is-error"><b>资产空间暂时无法打开</b><span>{error}</span><button onClick={() => void loadAssets()}>重新加载</button></div> : loading ? <div className="asset-state"><i /><b>正在读取会员资产</b><span>生成记录正在按项目整理</span></div> : projects.length ? <div className="asset-project-list">{projects.map(([projectName, projectItems]) => <section className="asset-project" key={projectName}><header><div><small>项目</small><h2>{projectName}</h2></div><span>{formatAssetTime(projectItems[0].createdAt)} · {projectItems.length} 个文件</span></header><div className="asset-item-grid">{projectItems.map((item) => <article className={`asset-item is-${item.kind}`} key={item.id}><button className="asset-media" onClick={() => setSelectedAsset(item)} aria-label={`打开${item.name}`}>{item.kind === "image" ? <img src={item.mediaUrl} alt={item.name} loading="lazy" /> : item.kind === "video" ? <video src={item.mediaUrl} poster={item.coverUrl || undefined} preload="metadata" muted /> : <span>{item.kind === "voice" ? "声" : "音"}</span>}<i>{item.kind === "video" ? "▶" : item.kind === "image" ? "查看" : "播放"}</i></button><div><b>{item.name}</b><span>{formatAssetTime(item.createdAt)} · {formatAssetSize(item.sizeBytes)}</span></div>{item.kind === "video" ? <div className="asset-item-workflows"><button onClick={() => onUseViral(item)}>✦ 一键网感</button><button onClick={() => onUseSuperEditor(item)}>◆ 一键超级剪辑</button></div> : null}<div className="asset-item-actions"><a href={`${item.mediaUrl}?download=1`} download={item.name}>下载</a><button onClick={() => void deleteAsset(item)}>删除</button></div></article>)}</div></section>)}</div> : <div className="asset-state is-empty"><b>还没有{filter === "all" ? "会员资产" : filter === "image" ? "生成图片" : filter === "video" ? "生成短视频" : "声音文件"}</b><span>完成一次 AI 生成后，结果会自动按项目名称与时间出现在这里。</span></div>}
+    {selectedAsset ? <div className="asset-viewer-backdrop" role="dialog" aria-modal="true" aria-label="查看会员资产" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedAsset(null); }}><section className="asset-viewer"><button className="asset-viewer-close" aria-label="关闭" onClick={() => setSelectedAsset(null)}>×</button><header><small>{selectedAsset.projectName}</small><h2>{selectedAsset.name}</h2><span>{formatAssetTime(selectedAsset.createdAt)}</span></header>{selectedAsset.kind === "image" ? <img src={selectedAsset.mediaUrl} alt={selectedAsset.name} /> : selectedAsset.kind === "video" ? <video src={selectedAsset.mediaUrl} poster={selectedAsset.coverUrl || undefined} controls autoPlay playsInline disablePictureInPicture /> : <audio src={selectedAsset.mediaUrl} controls autoPlay />}<footer><a href={`${selectedAsset.mediaUrl}?download=1`} download={selectedAsset.name}>↓ 下载文件</a>{selectedAsset.kind === "video" ? <button className="asset-viewer-viral" onClick={() => onUseViral(selectedAsset)}>✦ 一键网感</button> : null}{selectedAsset.kind === "video" ? <button className="asset-viewer-super" onClick={() => onUseSuperEditor(selectedAsset)}>◆ 一键超级剪辑</button> : null}<button onClick={() => setSelectedAsset(null)}>关闭</button></footer></section></div> : null}
   </>;
 }
 

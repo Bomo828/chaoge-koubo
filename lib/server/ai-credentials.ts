@@ -6,6 +6,7 @@ import { getDatabase, unixNow } from "./db";
 const CREDENTIAL_SETTING_KEY = "ai_provider_credentials_v1";
 const DEFAULT_LK888_BASE_URL = "https://api.lk888.ai";
 const DEFAULT_CHANJING_BASE_URL = "https://open-api.chanjing.cc";
+const DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io";
 
 type StoredLk888Credential = {
   apiKey?: string;
@@ -22,12 +23,20 @@ type StoredChanjingCredential = {
   updatedBy: string;
 };
 
+type StoredTikHubCredential = {
+  apiKey?: string;
+  baseUrl?: string;
+  updatedAt: number;
+  updatedBy: string;
+};
+
 type StoredCredentials = {
   lk888?: StoredLk888Credential;
   chanjing?: StoredChanjingCredential;
+  tikhub?: StoredTikHubCredential;
 };
 
-export type ProviderCredentialId = "lk888" | "chanjing";
+export type ProviderCredentialId = "lk888" | "chanjing" | "tikhub";
 export type ProviderCredentialInput = {
   apiKey?: string;
   appId?: string;
@@ -51,6 +60,8 @@ export type ChanjingCredentialSummary = {
   source: "admin" | "environment" | "none";
   updatedAt: number | null;
 };
+
+export type TikHubCredentialSummary = Lk888CredentialSummary;
 
 function dataDirectory() {
   return process.env.APP_DATA_DIR?.trim() || ".data";
@@ -184,6 +195,18 @@ export function getChanjingConfig() {
   };
 }
 
+export function getTikHubConfig() {
+  const stored = readStoredCredentials().tikhub;
+  const storedKey = stored?.apiKey?.trim() || "";
+  const environmentKey = process.env.TIKHUB_API_KEY?.trim() || "";
+  return {
+    apiKey: storedKey || environmentKey,
+    baseUrl: normalizeBaseUrl(stored?.baseUrl || process.env.TIKHUB_API_BASE_URL || DEFAULT_TIKHUB_BASE_URL, DEFAULT_TIKHUB_BASE_URL),
+    source: storedKey ? "admin" as const : environmentKey ? "environment" as const : "none" as const,
+    updatedAt: stored?.updatedAt || null,
+  };
+}
+
 export function getLk888CredentialSummary(): Lk888CredentialSummary {
   const config = getLk888Config();
   return {
@@ -201,6 +224,17 @@ export function getChanjingCredentialSummary(): ChanjingCredentialSummary {
     configured: Boolean(config.appId && config.secretKey),
     maskedAppId: maskKey(config.appId),
     maskedSecretKey: maskKey(config.secretKey),
+    baseUrl: config.baseUrl,
+    source: config.source,
+    updatedAt: config.updatedAt,
+  };
+}
+
+export function getTikHubCredentialSummary(): TikHubCredentialSummary {
+  const config = getTikHubConfig();
+  return {
+    configured: Boolean(config.apiKey),
+    maskedKey: maskKey(config.apiKey),
     baseUrl: config.baseUrl,
     source: config.source,
     updatedAt: config.updatedAt,
@@ -300,6 +334,41 @@ export async function testChanjingCredentials(input: ProviderCredentialInput) {
   return { connected: true, balance: Number.isFinite(balance) ? balance : null, unit: "蝉豆", baseUrl };
 }
 
+export async function testTikHubCredentials(input: { apiKey?: string; baseUrl?: string }) {
+  const current = getTikHubConfig();
+  const apiKey = input.apiKey?.trim() || current.apiKey;
+  const baseUrl = normalizeBaseUrl(input.baseUrl || current.baseUrl, DEFAULT_TIKHUB_BASE_URL);
+  if (!apiKey) throw new Error("请填写 TikHub API Key 后再测试连接。");
+  if (apiKey.length < 12 || /\s/.test(apiKey)) throw new Error("TikHub API Key 格式不正确，请检查后重试。");
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/api/v1/tikhub/user/get_user_info`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(15_000),
+    });
+  } catch (error) {
+    throw providerFetchError(error);
+  }
+  const payload = await response.json().catch(() => ({})) as Record<string, unknown>;
+  if (!response.ok || Number(payload.code ?? 0) !== 200) {
+    const message = typeof payload.message === "string"
+      ? payload.message
+      : typeof payload.detail === "string"
+        ? payload.detail
+        : `TikHub 接口连接失败（${response.status}）`;
+    throw new Error(message);
+  }
+  const userData = payload.user_data && typeof payload.user_data === "object"
+    ? payload.user_data as Record<string, unknown>
+    : {};
+  const paidBalance = Number(userData.balance);
+  const freeCredit = Number(userData.free_credit);
+  const balance = (Number.isFinite(paidBalance) ? paidBalance : 0) + (Number.isFinite(freeCredit) ? freeCredit : 0);
+  return { connected: true, balance, unit: "额度", baseUrl };
+}
+
 export async function saveLk888Credentials(actorId: string, input: { apiKey?: string; baseUrl?: string }) {
   const current = getLk888Config();
   const stored = readStoredCredentials();
@@ -345,14 +414,39 @@ export async function saveChanjingCredentials(actorId: string, input: ProviderCr
   return getChanjingCredentialSummary();
 }
 
+export async function saveTikHubCredentials(actorId: string, input: { apiKey?: string; baseUrl?: string }) {
+  const current = getTikHubConfig();
+  const stored = readStoredCredentials();
+  const apiKey = input.apiKey?.trim() || current.apiKey;
+  const baseUrl = normalizeBaseUrl(input.baseUrl || current.baseUrl, DEFAULT_TIKHUB_BASE_URL);
+  await testTikHubCredentials({ apiKey, baseUrl });
+
+  const now = unixNow();
+  const next: StoredCredentials = {
+    ...stored,
+    tikhub: { apiKey, baseUrl, updatedAt: now, updatedBy: actorId },
+  };
+  getDatabase().prepare(`
+    INSERT INTO system_settings (key, value_json, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(CREDENTIAL_SETTING_KEY, encryptCredentials(next), actorId, now);
+  return getTikHubCredentialSummary();
+}
+
 export function getProviderCredentialSummary(providerId: ProviderCredentialId) {
-  return providerId === "lk888" ? getLk888CredentialSummary() : getChanjingCredentialSummary();
+  if (providerId === "lk888") return getLk888CredentialSummary();
+  if (providerId === "tikhub") return getTikHubCredentialSummary();
+  return getChanjingCredentialSummary();
 }
 
 export function testProviderCredentials(providerId: ProviderCredentialId, input: ProviderCredentialInput) {
-  return providerId === "lk888" ? testLk888Credentials(input) : testChanjingCredentials(input);
+  if (providerId === "lk888") return testLk888Credentials(input);
+  if (providerId === "tikhub") return testTikHubCredentials(input);
+  return testChanjingCredentials(input);
 }
 
 export function saveProviderCredentials(providerId: ProviderCredentialId, actorId: string, input: ProviderCredentialInput) {
-  return providerId === "lk888" ? saveLk888Credentials(actorId, input) : saveChanjingCredentials(actorId, input);
+  if (providerId === "lk888") return saveLk888Credentials(actorId, input);
+  if (providerId === "tikhub") return saveTikHubCredentials(actorId, input);
+  return saveChanjingCredentials(actorId, input);
 }

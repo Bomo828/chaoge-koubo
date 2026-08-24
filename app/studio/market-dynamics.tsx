@@ -21,6 +21,7 @@ import {
   X,
 } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
+import { extractDouyinUrl } from "../../lib/douyin-links";
 
 /*
 THESIS: 把账号追踪做成一张持续更新的数据打样单，拒绝泛白数据看板。
@@ -69,6 +70,7 @@ type MarketAccount = {
 
 type MarketVideo = {
   id: string;
+  sourceUrl: string;
   title: string;
   cover: string;
   published: string;
@@ -106,14 +108,14 @@ const DEMO_ACCOUNT: MarketAccount = {
 const PAGE_LOADED_AT = Date.now();
 
 const DEMO_VIDEOS: MarketVideo[] = [
-  { id: "v1", title: "门店短视频开场，前三秒一定要说清这件事", cover: "/template-covers/template-9.jpg", published: "今天 11:26", duration: "00:38", plays: 286_000, likes: 18_600, comments: 1_238, shares: 3_409, collects: 7_611, growth: 42, recent: true },
-  { id: "v2", title: "同样的产品，为什么别人的画面更有成交感", cover: "/template-covers/template-10.jpg", published: "昨天 19:42", duration: "00:52", plays: 168_000, likes: 9_842, comments: 684, shares: 1_932, collects: 5_107, growth: 31, recent: true },
-  { id: "v3", title: "把一个卖点拆成三条内容，账号就有连续性", cover: "/template-covers/template-11.jpg", published: "08月12日", duration: "01:06", plays: 92_400, likes: 6_218, comments: 510, shares: 862, collects: 3_287, growth: 18 },
-  { id: "v4", title: "本地生活账号常用的四种镜头推进方式", cover: "/template-covers/template-12.jpg", published: "08月11日", duration: "00:47", plays: 73_800, likes: 4_903, comments: 327, shares: 716, collects: 2_845, growth: 14 },
-  { id: "v5", title: "知识口播不枯燥，字幕应该承担什么任务", cover: "/template-covers/template-9.jpg", published: "08月09日", duration: "00:59", plays: 121_000, likes: 8_426, comments: 598, shares: 1_207, collects: 4_921, growth: 26 },
-  { id: "v6", title: "用户不是不感兴趣，而是你进入观点太慢", cover: "/template-covers/template-10.jpg", published: "08月07日", duration: "00:44", plays: 64_200, likes: 3_788, comments: 261, shares: 554, collects: 2_034, growth: 9 },
-  { id: "v7", title: "一条视频只有一个重点，表达反而更有力量", cover: "/template-covers/template-11.jpg", published: "08月05日", duration: "00:36", plays: 87_600, likes: 5_512, comments: 404, shares: 909, collects: 2_986, growth: 12 },
-  { id: "v8", title: "复盘短视频时，先别急着只看播放量", cover: "/template-covers/template-12.jpg", published: "08月03日", duration: "01:12", plays: 156_000, likes: 10_284, comments: 782, shares: 1_486, collects: 5_632, growth: 22 },
+  { id: "v1", sourceUrl: "", title: "门店短视频开场，前三秒一定要说清这件事", cover: "/template-covers/template-9.jpg", published: "今天 11:26", duration: "00:38", plays: 286_000, likes: 18_600, comments: 1_238, shares: 3_409, collects: 7_611, growth: 42, recent: true },
+  { id: "v2", sourceUrl: "", title: "同样的产品，为什么别人的画面更有成交感", cover: "/template-covers/template-10.jpg", published: "昨天 19:42", duration: "00:52", plays: 168_000, likes: 9_842, comments: 684, shares: 1_932, collects: 5_107, growth: 31, recent: true },
+  { id: "v3", sourceUrl: "", title: "把一个卖点拆成三条内容，账号就有连续性", cover: "/template-covers/template-11.jpg", published: "08月12日", duration: "01:06", plays: 92_400, likes: 6_218, comments: 510, shares: 862, collects: 3_287, growth: 18 },
+  { id: "v4", sourceUrl: "", title: "本地生活账号常用的四种镜头推进方式", cover: "/template-covers/template-12.jpg", published: "08月11日", duration: "00:47", plays: 73_800, likes: 4_903, comments: 327, shares: 716, collects: 2_845, growth: 14 },
+  { id: "v5", sourceUrl: "", title: "知识口播不枯燥，字幕应该承担什么任务", cover: "/template-covers/template-9.jpg", published: "08月09日", duration: "00:59", plays: 121_000, likes: 8_426, comments: 598, shares: 1_207, collects: 4_921, growth: 26 },
+  { id: "v6", sourceUrl: "", title: "用户不是不感兴趣，而是你进入观点太慢", cover: "/template-covers/template-10.jpg", published: "08月07日", duration: "00:44", plays: 64_200, likes: 3_788, comments: 261, shares: 554, collects: 2_034, growth: 9 },
+  { id: "v7", sourceUrl: "", title: "一条视频只有一个重点，表达反而更有力量", cover: "/template-covers/template-11.jpg", published: "08月05日", duration: "00:36", plays: 87_600, likes: 5_512, comments: 404, shares: 909, collects: 2_986, growth: 12 },
+  { id: "v8", sourceUrl: "", title: "复盘短视频时，先别急着只看播放量", cover: "/template-covers/template-12.jpg", published: "08月03日", duration: "01:12", plays: 156_000, likes: 10_284, comments: 782, shares: 1_486, collects: 5_632, growth: 22 },
 ];
 
 const TREND = [38, 44, 41, 53, 61, 58, 76, 83, 79, 92, 88, 100];
@@ -159,16 +161,18 @@ export function MarketDynamics({ title }: { title: string }) {
   const [videoFilter, setVideoFilter] = useState<"all" | "recent" | "rising">("all");
   const [selectedVideoId, setSelectedVideoId] = useState(DEMO_VIDEOS[0].id);
   const [syncing, setSyncing] = useState(false);
+  const [addAccountPoints, setAddAccountPoints] = useState(20);
 
   async function loadAccounts() {
     setLoading(true);
     setLoadError("");
     try {
       const response = await fetch("/api/member/market/accounts", { cache: "no-store" });
-      const data = await response.json() as { items?: MarketAccount[]; error?: string };
+      const data = await response.json() as { items?: MarketAccount[]; pricing?: { addAccountPoints?: number }; error?: string };
       if (!response.ok) throw new Error(data.error || "监控账号读取失败。");
       const items = Array.isArray(data.items) ? data.items : [];
       setAccounts(items);
+      setAddAccountPoints(Math.max(0, Number(data.pricing?.addAccountPoints ?? 20)));
       setSelectedId((current) => items.some((item) => item.id === current) ? current : items[0]?.id || DEMO_ACCOUNT.id);
     } catch (error) {
       setLoadError(error instanceof Error ? error.message : "监控账号读取失败。");
@@ -188,6 +192,7 @@ export function MarketDynamics({ title }: { title: string }) {
   const videos = useMemo(() => {
     const source = isDemo ? DEMO_VIDEOS : (selectedAccount.videos || []).map((video) => ({
       id: video.id,
+      sourceUrl: video.sourceUrl,
       title: video.title,
       cover: video.coverUrl,
       published: publishedLabel(video.publishedAt),
@@ -211,21 +216,31 @@ export function MarketDynamics({ title }: { title: string }) {
 
   async function addAccount() {
     if (!sourceUrl.trim() || adding) return;
+    const normalizedSourceUrl = extractDouyinUrl(sourceUrl);
+    if (!normalizedSourceUrl) {
+      setActionMessage("没有识别到抖音链接，请粘贴完整分享口令或账号主页链接。");
+      return;
+    }
     setAdding(true);
     setActionMessage("");
     try {
       const response = await fetch("/api/member/market/accounts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sourceUrl }),
+        body: JSON.stringify({ sourceUrl: normalizedSourceUrl, requestId: `market_${crypto.randomUUID()}` }),
       });
-      const data = await response.json() as { item?: MarketAccount; error?: string };
+      const data = await response.json() as { item?: MarketAccount; chargedPoints?: number; duplicate?: boolean; refunded?: boolean; error?: string };
       if (!response.ok || !data.item) throw new Error(data.error || "账号添加失败。");
       setAccounts((current) => [data.item!, ...current.filter((item) => item.id !== data.item!.id)]);
       setSelectedId(data.item.id);
       setSourceUrl("");
       setAddOpen(false);
-      setActionMessage(data.item.status === "ready" ? data.item.statusMessage : data.item.statusMessage || "账号已添加，但首次同步没有完成。");
+      setActionMessage(data.duplicate
+        ? "该账号已经在监控中，本次没有重复扣费。"
+        : data.refunded
+          ? `${data.item.statusMessage || "首次同步没有完成"}，积分已自动退回。`
+          : `${data.item.statusMessage || "账号已添加。"}${data.chargedPoints ? `，已扣 ${data.chargedPoints} 积分。` : ""}`);
+      if (data.item.status === "ready") void syncAccountById(data.item.id);
     } catch (error) {
       setActionMessage(error instanceof Error ? error.message : "账号添加失败。");
     } finally {
@@ -233,21 +248,26 @@ export function MarketDynamics({ title }: { title: string }) {
     }
   }
 
-  async function syncAccount() {
-    if (isDemo || syncing) return;
+  async function syncAccountById(accountId: string) {
     setSyncing(true);
-    setActionMessage("");
     try {
-      const response = await fetch(`/api/member/market/accounts/${encodeURIComponent(selectedAccount.id)}`, { method: "PATCH" });
+      const response = await fetch(`/api/member/market/accounts/${encodeURIComponent(accountId)}`, { method: "PATCH" });
       const data = await response.json() as { item?: Partial<MarketAccount>; error?: string };
-      if (!response.ok || !data.item) throw new Error(data.error || "同步任务提交失败。");
-      setAccounts((current) => current.map((item) => item.id === selectedAccount.id ? { ...item, ...data.item } : item));
-      setActionMessage(data.item.status === "ready" ? data.item.statusMessage || "账号同步完成。" : data.item.statusMessage || "账号同步失败，请稍后重试。");
+      if (!response.ok || !data.item) throw new Error(data.error || "作品同步任务提交失败。");
+      setAccounts((current) => current.map((item) => item.id === accountId ? { ...item, ...data.item } : item));
+      setActionMessage(data.item.statusMessage || "账号同步完成。");
     } catch (error) {
-      setActionMessage(error instanceof Error ? error.message : "同步任务提交失败。");
+      setActionMessage(error instanceof Error ? error.message : "作品同步任务提交失败。");
+      await loadAccounts();
     } finally {
       setSyncing(false);
     }
+  }
+
+  async function syncAccount() {
+    if (isDemo || syncing) return;
+    setActionMessage("");
+    await syncAccountById(selectedAccount.id);
   }
 
   async function removeAccount() {
@@ -280,8 +300,8 @@ export function MarketDynamics({ title }: { title: string }) {
 
       {addOpen ? <div className="market-add-dock">
         <span className="market-add-icon"><LinkSimple size={22} /></span>
-        <label><b>粘贴抖音账号主页链接</b><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void addAccount(); }} placeholder="https://www.douyin.com/user/..." autoFocus /></label>
-        <button type="button" disabled={adding || !sourceUrl.trim()} onClick={() => void addAccount()}>{adding ? "正在添加…" : "开始监控"}</button>
+        <label><b>粘贴抖音分享口令或账号主页链接</b><input value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void addAccount(); }} placeholder="支持直接粘贴整段抖音分享文字" autoFocus /><small>{addAccountPoints ? `添加 1 个新账号消耗 ${addAccountPoints} 积分，重复账号不扣费` : "当前添加账号免费"}</small></label>
+        <button type="button" disabled={adding || !sourceUrl.trim()} onClick={() => void addAccount()}>{adding ? "正在添加…" : addAccountPoints ? `开始监控 · ${addAccountPoints}积分` : "开始监控"}</button>
       </div> : null}
 
       {actionMessage ? <div className="market-message" role="status"><CheckCircle size={17} weight="fill" /><span>{actionMessage}</span><button type="button" onClick={() => setActionMessage("")} aria-label="关闭提示"><X size={15} /></button></div> : null}
@@ -331,10 +351,13 @@ export function MarketDynamics({ title }: { title: string }) {
 
             <div className="market-video-area">
               <div className="market-video-grid">
-                {videos.map((video) => <button type="button" className={`market-video-card ${activeVideoId === video.id ? "is-selected" : ""}`} key={video.id} onClick={() => setSelectedVideoId(video.id)}>
-                  <span className="market-cover">{video.cover ? <img src={video.cover} alt="" loading="lazy" /> : <span className="market-cover-fallback"><VideoCamera size={28} /></span>}<i className="market-duration">{video.duration}</i>{video.recent ? <i className="market-new">新发布</i> : null}<em><Play size={15} weight="fill" />{compactNumber(video.plays)}</em></span>
-                  <span className="market-video-copy"><b>{video.title}</b><small>{video.published}</small><span><i><Heart size={14} />{compactNumber(video.likes)}</i><i><ChatCircleDots size={14} />{compactNumber(video.comments)}</i><i className="is-growth"><TrendUp size={14} />{video.growth}%</i></span></span>
-                </button>)}
+                {videos.map((video) => <article className={`market-video-card ${activeVideoId === video.id ? "is-selected" : ""}`} key={video.id}>
+                  <button type="button" className="market-video-select" onClick={() => setSelectedVideoId(video.id)}>
+                    <span className="market-cover">{video.cover ? <img src={video.cover} alt="" loading="lazy" /> : <span className="market-cover-fallback"><VideoCamera size={28} /></span>}<i className="market-duration">{video.duration}</i>{video.recent ? <i className="market-new">新发布</i> : null}<em><Play size={15} weight="fill" />{compactNumber(video.plays)}</em></span>
+                    <span className="market-video-copy"><b>{video.title}</b><small>{video.published}</small><span><i><Heart size={14} />{compactNumber(video.likes)}</i><i><ChatCircleDots size={14} />{compactNumber(video.comments)}</i><i className="is-growth"><TrendUp size={14} />{video.growth}%</i></span></span>
+                  </button>
+                  {video.sourceUrl ? <a className="market-video-link" href={video.sourceUrl} target="_blank" rel="noreferrer"><LinkSimple size={14} />打开视频</a> : null}
+                </article>)}
               </div>
 
               {selectedVideo ? <aside className="market-insight-panel">

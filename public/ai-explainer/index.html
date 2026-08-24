@@ -239,7 +239,7 @@
   </div>
   <div class="toast" id="toast" aria-live="polite"></div>
   <script>
-    const duration=60;let pxPerSecond=40,currentTime=8.05,playing=false,raf=null,lastFrame=0,selectedId='n2',dragState=null,playheadDragging=false,toastTimer=null,lastFocused=null,motionBadgeTimer=null,motionPreviewing=false,sourceVideoUrl=null,sourceVideoName='',sourceFrameUrl=null,generatedVideoUrl=null,directorPlan=null,directorPlanReady=false,videoHasGenerated=false,coverHasGenerated=false,contentBrief=null,contentAnalysisPending=null,currentCoverStyleId=null,coverGenerationCount=0;let motionRuntime={nodeId:null,phase:null};const history=[],future=[],coverStyleHistory=[];
+    let duration=60,pxPerSecond=40,currentTime=8.05,playing=false,raf=null,lastFrame=0,selectedId='n2',dragState=null,playheadDragging=false,toastTimer=null,lastFocused=null,motionBadgeTimer=null,motionPreviewing=false,sourceVideoUrl=null,sourceVideoFile=null,sourceVideoName='',sourceFrameUrl=null,sourceTranscript='',sourceCaptions=[],sourceTranscriptPending=null,generatedVideoUrl=null,directorPlan=null,directorPlanReady=false,videoHasGenerated=false,coverHasGenerated=false,contentBrief=null,contentAnalysisPending=null,currentCoverStyleId=null,coverGenerationCount=0;let motionRuntime={nodeId:null,phase:null};const history=[],future=[],coverStyleHistory=[];
     const nodes=[
       {id:'n1',start:2.2,end:5.8,title:'产品整体展示',quote:'“今天给大家介绍一款更高效的经营工具。”',mode:'full',asset:'商品管理界面',type:'全屏素材'},
       {id:'n2',start:8,end:12.5,title:'展示产品操作流程',quote:'“打开后台以后，三步就可以完成商品发布。”',mode:'pip',asset:'操作流程录屏',type:'画中画素材'},
@@ -368,13 +368,42 @@
     function resetLiveDirectorLayer(){const layer=$('#liveDirectorLayer'),media=layer.querySelector('video');if(media)media.pause();layer.className='live-director-layer';layer.replaceChildren();liveDirectorAssetId=null}
     function updateLiveDirectorPreview(){const base=$('#inlineResultVideo'),layer=$('#liveDirectorLayer');if(generatedVideoUrl||!videoHasGenerated||!materialAssets.length||!Number.isFinite(base.duration)||base.duration<=0){resetLiveDirectorLayer();return}const usable=Math.max(1,base.duration*.78),start=base.duration*.1,slot=usable/materialAssets.length,position=base.currentTime-start,index=Math.floor(position/slot),inside=position-index*slot,visible=index>=0&&index<materialAssets.length&&inside>=slot*.12&&inside<=Math.min(slot*.12+3,slot*.76);if(!visible){const media=layer.querySelector('video');if(media)media.pause();layer.classList.remove('show');return}const asset=materialAssets[index];if(liveDirectorAssetId!==asset.id){const media=document.createElement(asset.kind==='video'?'video':'img');media.src=asset.url;if(asset.kind==='video'){media.muted=true;media.loop=true;media.playsInline=true;media.preload='auto'}else media.alt='';const label=document.createElement('span');label.textContent=asset.name;layer.replaceChildren(media,label);liveDirectorAssetId=asset.id}layer.className=`live-director-layer show mode-${['full','pip','strip'][index%3]}`;const media=layer.querySelector('video');if(media){if(base.paused)media.pause();else media.play().catch(()=>{})}}
     function mediaUrlToDataUrl(url){return fetch(url).then(response=>{if(!response.ok)throw new Error('参考图读取失败');return response.blob()}).then(blob=>new Promise((resolve,reject)=>{const reader=new FileReader();reader.onload=()=>resolve(reader.result);reader.onerror=()=>reject(new Error('参考图编码失败'));reader.readAsDataURL(blob)}))}
-    async function collectDirectorReferences(){const references=[],reference_roles=[];if(sourceFrameUrl){references.push(sourceFrameUrl);reference_roles.push(`参考图${references.length}：口播原片人物与场景`)}for(const asset of materialAssets.filter(item=>item.url).slice(0,10)){try{const frame=asset.kind==='video'?await captureVideoFrame(asset.url):await mediaUrlToDataUrl(asset.url);references.push(frame);reference_roles.push(`参考图${references.length}：素材id=${asset.id}，名称=${asset.name}，类型=${asset.kind}`)}catch(error){console.warn(error)}}return{references,reference_roles}}
-    async function getSourceDuration(){if(!sourceVideoUrl)throw new Error('请先上传口播原片');const probe=document.createElement('video');probe.playsInline=true;probe.preload='metadata';probe.src=sourceVideoUrl;await waitForVideo(probe);const value=probe.duration;probe.removeAttribute('src');probe.load();if(!Number.isFinite(value)||value<=0)throw new Error('无法读取口播原片时长');return value}
+    function captureVideoFrameAt(url,ratio=.5){return new Promise((resolve,reject)=>{const video=document.createElement('video'),timer=setTimeout(()=>finish(new Error('读取素材画面超时')),9000);let settled=false,targetTime=0;video.muted=true;video.playsInline=true;video.preload='auto';function cleanup(){clearTimeout(timer);video.pause();video.removeAttribute('src');video.load()}function finish(error){if(settled)return;settled=true;if(error){cleanup();reject(error);return}try{const canvas=document.createElement('canvas'),width=480,height=720,context=canvas.getContext('2d'),scale=Math.max(width/video.videoWidth,height/video.videoHeight),drawWidth=video.videoWidth*scale,drawHeight=video.videoHeight*scale;canvas.width=width;canvas.height=height;context.drawImage(video,(width-drawWidth)/2,(height-drawHeight)/2,drawWidth,drawHeight);const frame=canvas.toDataURL('image/jpeg',.8);cleanup();resolve(frame)}catch(cause){cleanup();reject(cause)}}video.addEventListener('error',()=>finish(new Error('无法读取素材视频')),{once:true});video.addEventListener('loadedmetadata',()=>{targetTime=Number.isFinite(video.duration)?Math.min(Math.max(video.duration*Math.max(.03,Math.min(.97,ratio)),.12),Math.max(.12,video.duration-.12)):.12;video.currentTime=targetTime},{once:true});video.addEventListener('seeked',()=>finish(),{once:true});video.addEventListener('loadeddata',()=>{if(targetTime===0&&video.readyState>=2)finish()},{once:true});video.src=url;video.load()})}
+    async function collectDirectorReferences(){const references=[],reference_roles=[];if(sourceFrameUrl){references.push(sourceFrameUrl);reference_roles.push(`参考图${references.length}：口播原片人物与场景`)}for(const asset of materialAssets.filter(item=>item.url)){if(references.length>=20)break;try{if(asset.kind==='video'){for(const [ratio,label] of [[.12,'前段'],[.5,'中段'],[.86,'后段']]){if(references.length>=20)break;const frame=await captureVideoFrameAt(asset.url,ratio);references.push(frame);reference_roles.push(`参考图${references.length}：素材id=${asset.id}，名称=${asset.name}，视频${label}画面`)}}else{const frame=await mediaUrlToDataUrl(asset.url);references.push(frame);reference_roles.push(`参考图${references.length}：素材id=${asset.id}，名称=${asset.name}，图片素材`)}}catch(error){console.warn(error)}}return{references,reference_roles}}
+    async function getSourceDuration(){if(!sourceVideoUrl)throw new Error('请先上传口播原片');const probe=document.createElement('video');probe.playsInline=true;probe.preload='metadata';probe.src=sourceVideoUrl;await waitForVideo(probe);const value=probe.duration;probe.removeAttribute('src');probe.load();if(!Number.isFinite(value)||value<=0)throw new Error('无法读取口播原片时长');duration=value;$('#playhead').setAttribute('aria-valuemax',String(value));return value}
+    async function requestSourceTranscript(){
+      if(sourceTranscript&&sourceCaptions.length)return{transcript:sourceTranscript,captions:sourceCaptions};
+      if(sourceTranscriptPending)return sourceTranscriptPending;
+      if(!sourceVideoFile)throw new Error('当前原片没有附带口播时间轴，请重新上传视频以完成语音识别');
+      sourceTranscriptPending=(async()=>{
+        const createForm=()=>{const form=new FormData();form.append('video',sourceVideoFile,sourceVideoFile.name);form.append('template_id','ai-super-editor');form.append('fast_mode','1');return form};
+        $('#workStatus').textContent='正在读取口播时间轴';$('#workStatus').classList.add('busy');
+        let response=await fetch('/video-worker/v1/transcriptions',{method:'POST',body:createForm()});
+        if(response.status===404||response.status===405)response=await fetch('/video-worker/v1/jobs',{method:'POST',body:createForm()});
+        let job=await response.json().catch(()=>null);
+        if(!response.ok||!job?.id)throw new Error(job?.detail||`口播时间轴读取失败（${response.status}）`);
+        const deadline=Date.now()+5*60*1000;
+        while(job.state!=='success'&&job.state!=='failed'){
+          if(Date.now()>deadline)throw new Error('口播时间轴读取超过5分钟，请稍后重试');
+          await new Promise(resolve=>setTimeout(resolve,750));
+          const statusResponse=await fetch(`/video-worker/v1/jobs/${encodeURIComponent(job.id)}`,{cache:'no-store'});
+          job=await statusResponse.json().catch(()=>null);
+          if(!statusResponse.ok||!job?.id)throw new Error(job?.detail||'读取口播识别进度失败');
+          const progress=Math.max(1,Math.min(99,Number(job.progress)||1));
+          $('#workStatus').textContent=`正在读取口播时间轴 ${progress}%`;
+        }
+        const captions=(Array.isArray(job.captions)?job.captions:[]).map(item=>({start:Number(item.start)||0,end:Number(item.end)||0,text:String(item.text||'').trim()})).filter(item=>item.text&&item.end>item.start).sort((a,b)=>a.start-b.start);
+        if(!captions.length)throw new Error(job.error||job.message||'没有识别到清晰口播，请确认原片带有人声');
+        sourceCaptions=captions;sourceTranscript=captions.map(item=>item.text).join('');
+        return{transcript:sourceTranscript,captions:sourceCaptions}
+      })().finally(()=>{sourceTranscriptPending=null});
+      return sourceTranscriptPending
+    }
     async function requestContentAnalysis(){
       if(!sourceVideoUrl)throw new Error('请先上传口播原片');
-      const[videoDuration,{references,reference_roles}]=await Promise.all([getSourceDuration(),collectDirectorReferences()]);
+      const[videoDuration,{references,reference_roles},{transcript,captions}]=await Promise.all([getSourceDuration(),collectDirectorReferences(),requestSourceTranscript()]);
       $('#workStatus').textContent='正在分析本次内容';$('#workStatus').classList.add('busy');$('#coverStatus').textContent='正在分析本次内容';$('#coverStatus').classList.add('busy');
-      const apiUrl=location.protocol==='file:'?'http://127.0.0.1:8790/api/content/analyze':'/api/content/analyze',response=await fetch(apiUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({duration:videoDuration,source_name:sourceVideoName,materials:materialAssets.map(asset=>({id:asset.id,name:asset.name,kind:asset.kind})),references,reference_roles})}),payload=await response.json().catch(()=>({}));
+      const apiUrl=location.protocol==='file:'?'http://127.0.0.1:8790/api/content/analyze':'/api/content/analyze',response=await fetch(apiUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({duration:videoDuration,source_name:sourceVideoName,transcript,captions,materials:materialAssets.map(asset=>({id:asset.id,name:asset.name,kind:asset.kind})),references,reference_roles})}),payload=await response.json().catch(()=>({}));
       if(!response.ok||!payload.ok||!payload.brief)throw new Error(payload.error||`AI内容分析失败（${response.status}）`);
       contentBrief=payload.brief;return{brief:contentBrief,videoDuration,references,reference_roles}
     }
@@ -383,12 +412,49 @@
     async function requestDirectorPlan(){
       if(!sourceVideoUrl)throw new Error('请先上传口播原片');
       if(!materialAssets.length)throw new Error('请先添加至少一个讲解素材');
-      const[videoDuration,brief,{references,reference_roles}]=await Promise.all([getSourceDuration(),ensureContentBrief(),collectDirectorReferences()]);
+      const[videoDuration,brief,{references,reference_roles},{transcript,captions}]=await Promise.all([getSourceDuration(),ensureContentBrief(),collectDirectorReferences(),requestSourceTranscript()]);
       $('#workStatus').textContent='AI导演正在编排';$('#videoPending').textContent='AI导演正在使用本次内容简报';
-      const apiUrl=location.protocol==='file:'?'http://127.0.0.1:8790/api/director/plan':'/api/director/plan',response=await fetch(apiUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({duration:videoDuration,source_name:sourceVideoName,content_brief:brief,materials:materialAssets.map(asset=>({id:asset.id,name:asset.name,kind:asset.kind})),references,reference_roles})}),payload=await response.json().catch(()=>({}));
+      const apiUrl=location.protocol==='file:'?'http://127.0.0.1:8790/api/director/plan':'/api/director/plan',response=await fetch(apiUrl,{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({duration:videoDuration,source_name:sourceVideoName,transcript,captions,content_brief:brief,materials:materialAssets.map(asset=>({id:asset.id,name:asset.name,kind:asset.kind})),references,reference_roles})}),payload=await response.json().catch(()=>({}));
       if(!response.ok||!payload.ok||!payload.plan)throw new Error(payload.error||`AI导演服务请求失败（${response.status}）`);
       if(!Array.isArray(payload.plan.shots)||!payload.plan.shots.length)throw new Error('AI导演没有生成可执行的素材安排');
       directorPlan=payload.plan;applyDirectorPlan(directorPlan);return directorPlan
+    }
+    function normalizeImportedCaptions(value){return(Array.isArray(value)?value:[]).map(item=>({start:Number(item?.start)||0,end:Number(item?.end)||0,text:String(item?.text||'').trim()})).filter(item=>item.text&&item.end>item.start).sort((a,b)=>a.start-b.start)}
+    async function fetchPreparedSourceBlob(payload){
+      const primary=String(payload?.mediaUrl||'').trim(),fallback=String(payload?.fallbackMediaUrl||'').trim(),candidates=[primary,fallback].filter((url,index,list)=>url&&list.indexOf(url)===index);
+      let lastError=null;
+      for(const url of candidates){
+        const attempts=url===primary&&url.startsWith('/api/member/assets/')?12:1;
+        for(let attempt=0;attempt<attempts;attempt+=1){
+          try{
+            const response=await fetch(url,{cache:'no-store'});
+            if(response.ok){const blob=await response.blob();if(blob.size>0)return blob;throw new Error('读取到的视频文件为空')}
+            lastError=new Error(`视频读取失败（${response.status}）`)
+          }catch(error){lastError=error}
+          if(attempt<attempts-1)await new Promise(resolve=>setTimeout(resolve,750))
+        }
+      }
+      throw lastError||new Error('没有找到可导入的会员视频')
+    }
+    async function importPreparedMemberSource(){
+      const storageKey='merchant-studio-ai-explainer-source';let payload=null;
+      try{payload=JSON.parse(window.sessionStorage.getItem(storageKey)||'null')}catch{window.sessionStorage.removeItem(storageKey);return}
+      if(!payload||!['lip-sync','member-asset'].includes(payload.source)||payload.consumed===true)return;
+      const importedCaptions=normalizeImportedCaptions(payload.captions),importedTranscript=String(payload.transcript||'').trim();
+      const hasPreparedTimeline=Boolean(importedTranscript&&importedCaptions.length);
+      $('#workStatus').textContent=hasPreparedTimeline?'正在导入视频与口播时间轴':'正在导入会员视频';$('#workStatus').classList.add('busy');
+      try{
+        const blob=await fetchPreparedSourceBlob(payload),name=String(payload.name||'会员视频.mp4');
+        if(sourceVideoUrl?.startsWith('blob:'))URL.revokeObjectURL(sourceVideoUrl);
+        const mediaType=blob.type.startsWith('video/')?blob.type:'video/mp4';sourceVideoFile=new File([blob],name,{type:mediaType});sourceVideoUrl=URL.createObjectURL(sourceVideoFile);sourceVideoName=name;sourceFrameUrl=null;sourceTranscript=hasPreparedTimeline?importedTranscript:'';sourceCaptions=hasPreparedTimeline?importedCaptions:[];sourceTranscriptPending=null;
+        const importedDuration=Number(payload.duration)||importedCaptions.at(-1)?.end||0;if(importedDuration>0){duration=importedDuration;$('#playhead').setAttribute('aria-valuemax',String(duration))}
+        markResultsPending();renderMaterialAssets(hasPreparedTimeline?'已导入口播时间轴':'已导入会员视频');renderTimeline();setCurrentTime(Math.min(currentTime,Math.max(0,duration-.01)),false);applyCoverMedia();
+        $('#sourceStatus').textContent=hasPreparedTimeline?`${name} · 已导入 ${importedCaptions.length} 段口播时间轴`:`${name} · 生成时自动读取口播时间轴`;
+        const currentUrl=sourceVideoUrl;
+        try{sourceFrameUrl=await captureVideoFrame(currentUrl);if(currentUrl===sourceVideoUrl)applyCoverMedia()}catch(error){console.warn(error)}
+        try{await getSourceDuration();renderTimeline();setCurrentTime(Math.min(currentTime,Math.max(0,duration-.01)),false)}catch(error){console.warn(error)}
+        window.sessionStorage.setItem(storageKey,JSON.stringify({...payload,consumed:true}));$('#workStatus').textContent='待生成';$('#workStatus').classList.remove('busy');showToast(hasPreparedTimeline?`已导入视频和 ${importedCaptions.length} 段口播时间轴`:'已导入会员视频，生成时将自动识别口播')
+      }catch(error){$('#workStatus').textContent='导入失败';$('#workStatus').classList.remove('busy');showToast(error?.message||'会员视频导入失败')}
     }
     async function collectCoverReferences(){const references=[],roles=[];if(sourceFrameUrl){references.push(sourceFrameUrl);roles.push(`参考图${references.length}是口播人物，必须保持真实五官、发型、年龄和服装一致`)}for(const asset of materialAssets.filter(item=>item.url).slice(0,3)){try{const image=asset.kind==='video'?await captureVideoFrame(asset.url):await mediaUrlToDataUrl(asset.url);references.push(image);roles.push(`参考图${references.length}是本次素材“${asset.name}”，只保留其真实场景和主体关系`)}catch(error){console.warn(error)}}return{references,roles}}
     const COVER_STYLES={
@@ -428,7 +494,7 @@
         button.disabled=false;button.textContent=previousLabel||'一键网感';
       }
     }
-    $('#backButton').addEventListener('click',closeNodeEditor);$('#sourceImport').addEventListener('click',()=>$('#sourceFile').click());$('#materialImport').addEventListener('click',()=>$('#materialFiles').click());$('#sourceFile').addEventListener('change',event=>{const file=event.target.files[0];if(!file)return;if(sourceVideoUrl)URL.revokeObjectURL(sourceVideoUrl);sourceVideoUrl=URL.createObjectURL(file);sourceVideoName=file.name;sourceFrameUrl=null;markResultsPending();applyCoverMedia();$('#sourceStatus').textContent=`${file.name} · 正在提取封面帧`;const currentUrl=sourceVideoUrl;captureVideoFrame(currentUrl).then(frame=>{if(currentUrl!==sourceVideoUrl)return;sourceFrameUrl=frame;applyCoverMedia();$('#sourceStatus').textContent=`${file.name} · 已导入`}).catch(()=>{if(currentUrl!==sourceVideoUrl)return;$('#sourceStatus').textContent=`${file.name} · 已导入，预览帧读取失败`});setPlanUpdating(()=>{if(currentUrl===sourceVideoUrl&&!sourceFrameUrl)$('#sourceStatus').textContent=`${file.name} · 已导入`})});$('#materialFiles').addEventListener('change',event=>{const files=[...event.target.files];if(!files.length)return;const added=files.map((file,index)=>{const video=file.type.startsWith('video/')||/\.(mp4|mov|webm|m4v)$/i.test(file.name);return{id:`upload-${Date.now()}-${index}`,name:file.name,kind:video?'video':'image',url:URL.createObjectURL(file),meta:`${(file.size/1048576).toFixed(1)} MB · ${video?'视频':'图片'}`}});materialAssets.push(...added);event.target.value='';markResultsPending();renderMaterialAssets('正在读取');requestAnimationFrame(()=>$('#materialAssetList').scrollTo({left:$('#materialAssetList').scrollWidth,behavior:'smooth'}));setPlanUpdating(()=>renderMaterialAssets('已读取'))});$('#refreshCover').addEventListener('click',generateNextCover);$('#coverFeedbackButton').addEventListener('click',()=>{const panel=$('#coverFeedback');const nextHidden=!panel.hidden;panel.hidden=nextHidden;$('#coverFeedbackButton').setAttribute('aria-expanded',String(!nextHidden));if(!nextHidden)requestAnimationFrame(()=>$('#coverFeedbackInput').focus())});$('#applyCoverFeedback').addEventListener('click',generateNextCover);$('#generateInline').addEventListener('click',playInlineResult);
+    $('#backButton').addEventListener('click',closeNodeEditor);$('#sourceImport').addEventListener('click',()=>$('#sourceFile').click());$('#materialImport').addEventListener('click',()=>$('#materialFiles').click());$('#sourceFile').addEventListener('change',event=>{const file=event.target.files[0];if(!file)return;if(sourceVideoUrl?.startsWith('blob:'))URL.revokeObjectURL(sourceVideoUrl);sourceVideoFile=file;sourceVideoUrl=URL.createObjectURL(file);sourceVideoName=file.name;sourceFrameUrl=null;sourceTranscript='';sourceCaptions=[];sourceTranscriptPending=null;markResultsPending();applyCoverMedia();$('#sourceStatus').textContent=`${file.name} · 正在提取封面帧`;const currentUrl=sourceVideoUrl;captureVideoFrame(currentUrl).then(frame=>{if(currentUrl!==sourceVideoUrl)return;sourceFrameUrl=frame;applyCoverMedia();$('#sourceStatus').textContent=`${file.name} · 已导入，生成时自动读取口播时间轴`}).catch(()=>{if(currentUrl!==sourceVideoUrl)return;$('#sourceStatus').textContent=`${file.name} · 已导入，预览帧读取失败`});setPlanUpdating(()=>{if(currentUrl===sourceVideoUrl&&!sourceFrameUrl)$('#sourceStatus').textContent=`${file.name} · 已导入`})});$('#materialFiles').addEventListener('change',event=>{const files=[...event.target.files];if(!files.length)return;const added=files.map((file,index)=>{const video=file.type.startsWith('video/')||/\.(mp4|mov|webm|m4v)$/i.test(file.name);return{id:`upload-${Date.now()}-${index}`,name:file.name,kind:video?'video':'image',url:URL.createObjectURL(file),meta:`${(file.size/1048576).toFixed(1)} MB · ${video?'视频':'图片'}`}});materialAssets.push(...added);event.target.value='';markResultsPending();renderMaterialAssets('正在读取');requestAnimationFrame(()=>$('#materialAssetList').scrollTo({left:$('#materialAssetList').scrollWidth,behavior:'smooth'}));setPlanUpdating(()=>renderMaterialAssets('已读取'))});$('#refreshCover').addEventListener('click',generateNextCover);$('#coverFeedbackButton').addEventListener('click',()=>{const panel=$('#coverFeedback');const nextHidden=!panel.hidden;panel.hidden=nextHidden;$('#coverFeedbackButton').setAttribute('aria-expanded',String(!nextHidden));if(!nextHidden)requestAnimationFrame(()=>$('#coverFeedbackInput').focus())});$('#applyCoverFeedback').addEventListener('click',generateNextCover);$('#generateInline').addEventListener('click',playInlineResult);
     $('#sourceFile').addEventListener('change',()=>requestAnimationFrame(()=>renderMaterialAssets('已读取')));
     $('#playButton').addEventListener('click',()=>togglePlay());scrubber.addEventListener('input',e=>setCurrentTime(Number(e.target.value)));playhead.addEventListener('pointerdown',startPlayheadDrag);playhead.addEventListener('keydown',handlePlayheadKey);timelineCanvas.addEventListener('pointerdown',event=>{if(event.target.closest('.timeline-node,.playhead'))return;if(event.pointerType==='mouse'&&event.button!==0)return;togglePlay(false);setCurrentTime(timeFromPointer(event))});
     $('#modeGrid').addEventListener('click',e=>{const b=e.target.closest('.mode-button');if(!b)return;saveHistory();const n=nodes.find(x=>x.id===selectedId);n.mode=b.dataset.mode;n.type={pip:'画中画素材',full:'全屏素材',composite:'组合画面',card:'动态信息卡'}[n.mode];n.dynamic=n.mode==='card';n.edited=true;renderInspector();renderTimeline();showToast('展现方式已更新')});
@@ -489,7 +555,7 @@
         videoRegenerationTimer=null;buttons.forEach(button=>button.disabled=false);syncGenerationActionLabels();if(trigger.id==='generateButton')trigger.textContent=directorPlanReady?'按当前方案再生成':'生成';trigger.focus()
       }
     }
-    $('#generateButton').addEventListener('click',requestRegeneration);$('#regenerateTest').addEventListener('click',requestRegeneration);$('#inlineResultVideo').addEventListener('timeupdate',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('play',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('pause',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('seeked',updateLiveDirectorPreview);window.addEventListener('resize',renderTimeline);window.addEventListener('beforeunload',()=>{materialAssets.forEach(asset=>{if(asset.url)URL.revokeObjectURL(asset.url)});if(sourceVideoUrl)URL.revokeObjectURL(sourceVideoUrl);if(generatedVideoUrl)URL.revokeObjectURL(generatedVideoUrl)});renderMaterialAssets();renderTimeline();renderInspector();setCurrentTime(8.05);updateHistoryButtons();syncGenerationActionLabels();
+    $('#generateButton').addEventListener('click',requestRegeneration);$('#regenerateTest').addEventListener('click',requestRegeneration);$('#inlineResultVideo').addEventListener('timeupdate',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('play',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('pause',updateLiveDirectorPreview);$('#inlineResultVideo').addEventListener('seeked',updateLiveDirectorPreview);window.addEventListener('resize',renderTimeline);window.addEventListener('beforeunload',()=>{materialAssets.forEach(asset=>{if(asset.url?.startsWith('blob:'))URL.revokeObjectURL(asset.url)});if(sourceVideoUrl?.startsWith('blob:'))URL.revokeObjectURL(sourceVideoUrl);if(generatedVideoUrl?.startsWith('blob:'))URL.revokeObjectURL(generatedVideoUrl)});renderMaterialAssets();renderTimeline();renderInspector();setCurrentTime(8.05);updateHistoryButtons();syncGenerationActionLabels();void importPreparedMemberSource();
   </script>
 </body>
 </html>
