@@ -15,6 +15,7 @@ import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
 import type { ViralCaptionPlanItem, ViralWorkflowManifest } from "../../lib/viral-workflow";
+import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -114,7 +115,11 @@ function normalizeViralCaptionsForReview(captions: ViralCaption[]) {
 
 function viralTitleFromKnownScript(value: string) {
   const firstSentence = value.trim().split(/[。！？!?\n]/, 1)[0]?.replace(/\s+/g, "") || "";
-  return firstSentence.slice(0, 16) || "口播重点";
+  return planViralTitleLayout(firstSentence.slice(0, 16) || "口播重点").serializedTitle;
+}
+
+function plainViralTitle(value: string) {
+  return value.replace(/[|｜]/g, "").trim();
 }
 
 type ViralWorkerJob = {
@@ -2081,15 +2086,20 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   }, [viralTranscriptDialogOpen]);
 
   function openViralTranscriptReview() {
-    setViralReviewTitle(viralTitle);
+    setViralReviewTitle(plainViralTitle(viralTitle));
     setViralReviewCaptions(viralCaptions.map((caption) => ({ ...caption })));
     setViralTranscriptDialogOpen(true);
   }
 
   function confirmViralTranscriptReview() {
-    const title = viralReviewTitle.trim();
-    const captions = viralReviewCaptions.map((caption) => ({ ...caption, text: caption.text.trim() }));
-    if (!title || !captions.length || captions.some((caption) => !caption.text)) return;
+    const plainTitle = viralReviewTitle.trim();
+    const title = planViralTitleLayout(plainTitle).serializedTitle;
+    const captions = viralReviewCaptions.map((caption) => {
+      const text = caption.text.trim();
+      const layout = planViralCaptionLayout(text, caption.captionLines, 10);
+      return { ...caption, text, captionLineMode: layout.mode, captionLines: layout.lines };
+    });
+    if (!plainTitle || !captions.length || captions.some((caption) => !caption.text)) return;
     const captionsChanged = captions.some((caption, index) => caption.text !== viralCaptions[index]?.text)
       || captions.length !== viralCaptions.length;
     setViralTitle(title);
@@ -3243,7 +3253,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
         : "口播内容提炼";
       const resolvedTitle = languageMatchedTitle || localEnglishTitle;
       setViralTitle(resolvedTitle);
-      setViralReviewTitle(resolvedTitle);
+      setViralReviewTitle(plainViralTitle(resolvedTitle));
       setViralReviewCaptions(sentenceCaptions.map((caption) => ({ ...caption })));
       setViralTranscriptDialogOpen(true);
       setViralAnalysisMode("ai");
@@ -3402,12 +3412,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     if (time <= introDuration) {
       const title = content.title.trim() || "真实体验";
       const forceTwoLines = isBoldYellowWhite && title.length >= 6;
-      const splitAt = title.length > 9 || forceTwoLines
-        ? Math.max(3, Math.min(title.length - 3, Math.round(title.length / 2)))
-        : title.length;
-      const titleLines = title.length > 9 || forceTwoLines
-        ? [title.slice(0, splitAt), title.slice(splitAt, 16)]
-        : [title];
+      const titleLines = planViralTitleLayout(title, undefined, forceTwoLines).lines;
       if (template.overlay === "outline") {
         const titleY = Math.round(height * 0.042 + (1 - introProgress) * height * 0.018);
         const titleScale = 0.9 + introProgress * 0.1;
@@ -3458,9 +3463,11 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       context.textBaseline = "middle";
       context.font = `800 ${subtitleSize}px "PingFang SC", "Microsoft YaHei", sans-serif`;
       const captionLineLength = isBoldYellowWhite ? 8 : 14;
-      const captionLines = currentCaption.text.length > captionLineLength
-        ? [currentCaption.text.slice(0, captionLineLength), currentCaption.text.slice(captionLineLength, captionLineLength * 2)]
-        : [currentCaption.text];
+      const captionLines = planViralCaptionLayout(
+        currentCaption.text,
+        currentCaption.captionLines,
+        captionLineLength,
+      ).lines;
       if (template.overlay === "outline") {
         context.lineJoin = "round";
         context.strokeStyle = "rgba(0,0,0,.94)";
@@ -3502,7 +3509,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
 
   async function uploadViralResult(blob: Blob, requestId: string, coverUrl = "") {
     const form = new FormData();
-    const resultName = viralTitle.trim() || "一键网感成片";
+    const resultName = plainViralTitle(viralTitle) || "一键网感成片";
     const extension = blob.type.includes("mp4") ? "mp4" : "webm";
     form.append("file", new File([blob], `${resultName}.${extension}`, { type: blob.type || "video/webm" }));
     form.append("id", stableAssetId(`${requestId}|${resultName}`));
@@ -3536,7 +3543,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     sourceObjectKey = "",
     coverObjectKey = "",
   ) {
-    const resultName = viralTitle.trim() || "一键网感成片";
+    const resultName = plainViralTitle(viralTitle) || "一键网感成片";
     const response = await fetch("/api/member/assets", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3596,11 +3603,32 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
     return new File([blob], viralFiles[0] || "source.mp4", { type: contentType });
   }
 
+  function workerCanReadSourceUrl(source: URL) {
+    if (source.origin === window.location.origin) return false;
+    const hostname = source.hostname.replace(/^\[|\]$/g, "").toLowerCase();
+    if (!hostname || hostname === "localhost" || hostname.endsWith(".localhost") || hostname.endsWith(".local") || hostname === "::1") {
+      return false;
+    }
+    const parts = hostname.split(".").map(Number);
+    if (parts.length === 4 && parts.every((part) => Number.isInteger(part) && part >= 0 && part <= 255)) {
+      const [first, second] = parts;
+      if (
+        first === 0
+        || first === 10
+        || first === 127
+        || (first === 100 && second >= 64 && second <= 127)
+        || (first === 169 && second === 254)
+        || (first === 172 && second >= 16 && second <= 31)
+        || (first === 192 && second === 168)
+      ) return false;
+    }
+    return true;
+  }
+
   async function appendWorkerSource(form: FormData) {
     if (!viralSourceFile && /^https?:\/\//i.test(viralVideoPreviewUrl)) {
       const source = new URL(viralVideoPreviewUrl);
-      const protectedMemberAsset = source.origin === window.location.origin && source.pathname.startsWith("/api/member/assets/");
-      if (!protectedMemberAsset) {
+      if (workerCanReadSourceUrl(source)) {
         form.append("source_url", source.toString());
         form.append("source_name", viralFiles[0] || "source.mp4");
         return;
@@ -4907,7 +4935,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => viralCaptions.length ? openViralTranscriptReview() : void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `AI 正在排版 · ${viralTranscriptProgress}%` : viralCaptions.length ? "查看并修改文案" : "AI 识别并排版"}</button>
             </header>
             {viralCaptions.length ? <div className={`viral-transcript-status ${viralCaptionsConfirmed ? "is-confirmed" : ""}`}>
-              <span><b>{viralCaptionsConfirmed ? "标题与字幕已确认" : "AI 排版已完成，等待确认"}</b><small>{viralTitle || `${viralCaptions.length} 段字幕`}</small></span>
+              <span><b>{viralCaptionsConfirmed ? "标题与字幕已确认" : "AI 排版已完成，等待确认"}</b><small>{plainViralTitle(viralTitle) || `${viralCaptions.length} 段字幕`}</small></span>
               <button type="button" onClick={openViralTranscriptReview}>{viralCaptionsConfirmed ? "修改" : "确认"}</button>
             </div> : null}
             {viralTranscriptError ? <div className="video-agent-error viral-transcript-error" role="alert">{viralTranscriptError}</div> : null}

@@ -88,18 +88,27 @@ function encodeCosValue(value: string) {
   return encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
 }
 
-function cosAuthorization(method: string, pathname: string, headers: Record<string, string>, expiresIn = 3600) {
+function normalizedCosParameters(parameters: Record<string, string>) {
+  return Object.entries(parameters)
+    .map(([key, value]) => [key.toLowerCase(), value] as const)
+    .sort(([left], [right]) => left.localeCompare(right));
+}
+
+function cosAuthorization(method: string, pathname: string, headers: Record<string, string>, expiresIn = 3600, parameters: Record<string, string> = {}) {
   const config = requireConfig();
   const now = Math.floor(Date.now() / 1000);
   const keyTime = `${Math.max(0, now - 60)};${now + expiresIn}`;
   const normalized = Object.entries(headers).map(([key, value]) => [key.toLowerCase(), value.trim()] as const).sort(([left], [right]) => left.localeCompare(right));
+  const normalizedParameters = normalizedCosParameters(parameters);
   const headerList = normalized.map(([key]) => key).join(";");
+  const parameterList = normalizedParameters.map(([key]) => key).join(";");
   const httpHeaders = normalized.map(([key, value]) => `${encodeCosValue(key)}=${encodeCosValue(value)}`).join("&");
-  const httpString = `${method.toLowerCase()}\n${pathname}\n\n${httpHeaders}\n`;
+  const httpParameters = normalizedParameters.map(([key, value]) => `${encodeCosValue(key)}=${encodeCosValue(value)}`).join("&");
+  const httpString = `${method.toLowerCase()}\n${pathname}\n${httpParameters}\n${httpHeaders}\n`;
   const signKey = createHmac("sha1", config.secretKey).update(keyTime).digest("hex");
   const stringToSign = `sha1\n${keyTime}\n${createHash("sha1").update(httpString).digest("hex")}\n`;
   const signature = createHmac("sha1", signKey).update(stringToSign).digest("hex");
-  return `q-sign-algorithm=sha1&q-ak=${encodeCosValue(config.secretId)}&q-sign-time=${keyTime}&q-key-time=${keyTime}&q-header-list=${headerList}&q-url-param-list=&q-signature=${signature}`;
+  return `q-sign-algorithm=sha1&q-ak=${encodeCosValue(config.secretId)}&q-sign-time=${keyTime}&q-key-time=${keyTime}&q-header-list=${headerList}&q-url-param-list=${parameterList}&q-signature=${signature}`;
 }
 
 function cosHost(config: TencentMpsConfig) {
@@ -154,12 +163,14 @@ export async function putCosObject(objectKey: string, bytes: Buffer, contentType
   }
 }
 
-export function signedCosObjectUrl(objectKey: string, expiresIn = 2 * 60 * 60) {
+export function signedCosObjectUrl(objectKey: string, expiresIn = 2 * 60 * 60, parameters: Record<string, string> = {}) {
   const config = requireConfig();
   const host = cosHost(config);
   const pathname = encodeCosPath(objectKey);
-  const authorization = cosAuthorization("GET", pathname, { host }, Math.max(300, Math.min(expiresIn, 24 * 60 * 60)));
-  return `https://${host}${pathname}?${authorization}`;
+  const normalizedParameters = normalizedCosParameters(parameters);
+  const requestParameters = normalizedParameters.map(([key, value]) => `${encodeCosValue(key)}=${encodeCosValue(value)}`).join("&");
+  const authorization = cosAuthorization("GET", pathname, { host }, Math.max(300, Math.min(expiresIn, 24 * 60 * 60)), parameters);
+  return `https://${host}${pathname}?${requestParameters ? `${requestParameters}&` : ""}${authorization}`;
 }
 
 export function signedCosUploadUrl(objectKey: string, expiresIn = 30 * 60) {

@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { lk888Fetch } from "../../../../lib/lk888";
 import { sanitizeViralCaptionPlan, type ViralCaptionPlanItem } from "../../../../lib/viral-workflow";
+import { planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 
 type ProviderResponse = {
   choices?: Array<{ message?: { content?: unknown } }>;
@@ -77,17 +78,23 @@ function localNode(text: string, index: number, total: number): ViralCaptionPlan
 }
 
 function localPlan(captions: ViralCaptionPlanItem[], script: string) {
-  const planned = captions.map((caption, index) => ({
-    ...caption,
-    keyword: localKeyword(caption.text),
-    contentNode: localNode(caption.text, index, captions.length),
-    contentWeight: index === 0 || index === captions.length - 1 ? 0.9 : 0.55,
-    keywordOrigin: "local" as const,
-  }));
+  const planned = captions.map((caption, index) => {
+    const lineLayout = planViralCaptionLayout(caption.text, caption.captionLines, 10);
+    return {
+      ...caption,
+      keyword: localKeyword(caption.text),
+      contentNode: localNode(caption.text, index, captions.length),
+      contentWeight: index === 0 || index === captions.length - 1 ? 0.9 : 0.55,
+      keywordOrigin: "local" as const,
+      captionLineMode: lineLayout.mode,
+      captionLines: lineLayout.lines,
+    };
+  });
   const first = (script || captions.map((caption) => caption.text).join(""))
     .split(/[。！？!?\n]/, 1)[0]
     ?.replace(/\s+/g, "") || "";
-  return { title: first.slice(0, 16) || "口播重点", captions: planned };
+  const titleLayout = planViralTitleLayout(first.slice(0, 16) || "口播重点");
+  return { title: titleLayout.serializedTitle, titleLines: titleLayout.lines, captions: planned };
 }
 
 export async function POST(request: Request) {
@@ -107,7 +114,8 @@ export async function POST(request: Request) {
 3. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting。
 4. translation输出自然简短英文字幕；原文为英文时输出简短中文。
 5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头。
-只返回JSON：{"title":"标题","items":[{"id":0,"corrected_text":"原句","keyword":"关键词","translation":"English caption","content_node":"hook","weight":0.9}]}。`;
+6. title_lines必须把title按完整语义分为1到2行；caption_lines只负责同一条字幕内部的视觉换行，最多2行。各行拼接必须与原文字完全一致，禁止拆开品牌名、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。
+只返回JSON：{"title":"标题","title_lines":["第一行","第二行"],"items":[{"id":0,"corrected_text":"原句","caption_lines":["第一行","第二行"],"keyword":"关键词","translation":"English caption","content_node":"hook","weight":0.9}]}。`;
   try {
     const response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
       method: "POST",
@@ -139,6 +147,7 @@ export async function POST(request: Request) {
       const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
         ? raw.content_node as ViralCaptionPlanItem["contentNode"]
         : localNode(text, index, source.length);
+      const lineLayout = planViralCaptionLayout(text, raw.caption_lines, 10);
       return {
         ...caption,
         text,
@@ -147,13 +156,17 @@ export async function POST(request: Request) {
         contentNode: node,
         contentWeight: Math.max(0, Math.min(1, Number(raw.weight) || 0.5)),
         keywordOrigin: keyword ? "ai" as const : "none" as const,
+        captionLineMode: lineLayout.mode,
+        captionLines: lineLayout.lines,
       };
     });
-    const title = typeof parsed.title === "string" && parsed.title.trim()
+    const rawTitle = typeof parsed.title === "string" && parsed.title.trim()
       ? parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40)
       : fallback.title;
+    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
+    const title = titleLayout.serializedTitle;
     const planReady = captions.every((caption) => Boolean(caption.contentNode && caption.translation));
-    return Response.json({ title, captions, planReady, degraded: !planReady, model: MODEL });
+    return Response.json({ title, titleLines: titleLayout.lines, captions, planReady, degraded: !planReady, model: MODEL });
   } catch (error) {
     console.warn("Fast viral caption plan fell back to local rules", error);
     return Response.json({ ...fallback, planReady: false, degraded: true, model: "local-fast-plan" });

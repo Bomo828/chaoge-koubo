@@ -1542,6 +1542,13 @@ def validate_remote_video_url(value: str) -> str:
         raise ValueError("视频来源地址无效。")
     if parsed.username or parsed.password:
         raise ValueError("视频来源地址不能包含账号信息。")
+    # Tencent Cloud resolves a COS public endpoint to an RFC1918 address when
+    # the worker and bucket are in the same region. That is expected and keeps
+    # the transfer on Tencent's backbone. Only the exact configured bucket is
+    # trusted; every other hostname still goes through the SSRF checks below.
+    configured_cos_host = cos_host().lower() if TENCENT_MPS_COS_BUCKET and TENCENT_MPS_COS_REGION else ""
+    if configured_cos_host and parsed.hostname.lower() == configured_cos_host:
+        return candidate
     try:
         addresses = {
             result[4][0]
@@ -2023,6 +2030,14 @@ def split_title_lines(
     text = normalize_speech_text(value).strip("，。！？、,.!?;: ")
     if not text:
         return ["真实内容", "值得看见"]
+    explicit_lines = [
+        part.strip("，。！？、,.!?;: ")
+        for part in re.split(r"[｜|]", text)
+        if part.strip("，。！？、,.!?;: ")
+    ]
+    if len(explicit_lines) >= 2:
+        separator = " " if speech_language("".join(explicit_lines)) == "en" else ""
+        return [explicit_lines[0], separator.join(explicit_lines[1:])]
     if speech_language(text) == "en":
         words = text.split()
         if len(words) <= 5 and not (force_two_lines and len(words) >= 4):
@@ -2032,10 +2047,54 @@ def split_title_lines(
     text = text[:max_chars]
     if len(text) <= 9 and not (force_two_lines and len(text) >= 6):
         return [text]
-    preferred_breaks = [match.end() for match in re.finditer(r"[，、：｜|]", text)]
-    target = len(text) // 2
-    split_at = min(preferred_breaks, key=lambda item: abs(item - target)) if preferred_breaks else target
-    split_at = max(5, min(len(text) - 4, split_at))
+    target = len(text) / 2
+    minimum_side = max(2, min(4, len(text) // 3))
+    protected_phrases = (
+        "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+        "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
+        "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
+        "市场动态", "会员中心", "短视频", "供应链", "创作平台",
+        "酒店景区旅行社", "酒店", "景区", "旅行社", "体育场馆",
+    )
+    protected_ranges: list[tuple[int, int]] = []
+    for phrase in protected_phrases:
+        cursor = text.find(phrase)
+        while cursor >= 0:
+            protected_ranges.append((cursor, cursor + len(phrase)))
+            cursor = text.find(phrase, cursor + 1)
+    semantic_markers = (
+        "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+        "如果", "但是", "不过", "所以", "然后", "因为", "同时", "以及",
+        "而且", "而是", "就是", "可以", "需要", "通过", "这样", "比如",
+        "例如", "首先", "其次", "最后", "想要", "怎么", "如何", "为什么",
+        "商家", "用户", "客户", "品牌", "平台", "机会", "政策", "活动",
+    )
+    semantic_positions: set[int] = set()
+    for marker in semantic_markers:
+        cursor = text.find(marker)
+        while cursor >= 0:
+            if cursor > 0:
+                semantic_positions.add(cursor)
+            if cursor + len(marker) < len(text):
+                semantic_positions.add(cursor + len(marker))
+            cursor = text.find(marker, cursor + 1)
+    candidates = [
+        position
+        for position in range(minimum_side, len(text) - minimum_side + 1)
+        if not any(start < position < end for start, end in protected_ranges)
+    ]
+    invalid_left = ("的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及")
+    invalid_right = ("的", "和", "与", "就", "都", "也", "才", "了", "着", "过")
+    split_at = min(
+        candidates or [max(1, min(len(text) - 1, round(target)))],
+        key=lambda position: (
+            max(0, position - max_chars) + max(0, len(text) - position - max_chars)
+        ) * 12
+        + abs(position - target)
+        + (10 if text[:position].endswith(invalid_left) else 0)
+        + (10 if text[position:].startswith(invalid_right) else 0)
+        - (7 if position in semantic_positions else 0),
+    )
     return [text[:split_at].strip("，、：｜|"), text[split_at:].strip("，、：｜|")]
 
 
@@ -2117,6 +2176,16 @@ def plan_adaptive_caption_lines(
         item = dict(raw)
         text = re.sub(r"\s+", "", str(item.get("text") or "")).strip()
         characters = list(text)
+        directed_lines = [
+            re.sub(r"\s+", "", str(line or "")).strip()
+            for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:2]
+            if re.sub(r"\s+", "", str(line or "")).strip()
+        ]
+        if directed_lines and "".join(directed_lines) == text:
+            item["captionLineMode"] = "two-line" if len(directed_lines) == 2 else "single"
+            item["captionLines"] = directed_lines
+            prepared.append(item)
+            continue
         if len(characters) <= maximum:
             item["captionLineMode"] = "single"
             item["captionLines"] = [text] if text else []
@@ -2144,8 +2213,26 @@ def plan_adaptive_caption_lines(
         keyword_start = text.find(keyword) if keyword else -1
         keyword_end = keyword_start + len(keyword) if keyword_start >= 0 else -1
 
+        protected_phrases = (
+            "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+            "华为", "商家", "入驻", "机会", "酒店景区旅行社", "体育场馆",
+            "小红书", "朋友圈", "直播间", "微信支付", "人工智能",
+            "对口型", "一键网感", "超级剪辑", "市场动态", "会员中心",
+            "短视频", "供应链", "用户", "客户", "品牌", "平台", "政策",
+            "活动", "方案", "功能", "服务", "视频", "内容", "账号", "作品",
+        )
+        protected_ranges: list[tuple[int, int]] = []
+        for phrase in protected_phrases:
+            cursor = text.find(phrase)
+            while cursor >= 0:
+                protected_ranges.append((cursor, cursor + len(phrase)))
+                cursor = text.find(phrase, cursor + 1)
+
         def split_is_safe(position: int) -> bool:
-            return not (keyword_start >= 0 and keyword_start < position < keyword_end)
+            return (
+                not (keyword_start >= 0 and keyword_start < position < keyword_end)
+                and not any(start < position < end for start, end in protected_ranges)
+            )
 
         fallback_positions = range(minimum_side, len(characters) - minimum_side + 1)
         valid_candidates = [position for position in candidates if split_is_safe(position)]
@@ -3662,6 +3749,14 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
         keyword_origin = str(item.get("keywordOrigin") or "").strip()
         if keyword_origin in {"ai", "local", "none"}:
             normalized["keywordOrigin"] = keyword_origin
+        caption_lines = [
+            re.sub(r"\s+", "", str(line or "")).strip("，。！？；：、,.!?;: ")
+            for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:2]
+            if re.sub(r"\s+", "", str(line or "")).strip("，。！？；：、,.!?;: ")
+        ]
+        if caption_lines and caption_plain_text("".join(caption_lines)) == caption_plain_text(text):
+            normalized["captionLineMode"] = "two-line" if len(caption_lines) == 2 else "single"
+            normalized["captionLines"] = caption_lines
         captions.append(normalized)
     return sorted(captions, key=lambda item: (float(item["start"]), float(item["end"])))
 

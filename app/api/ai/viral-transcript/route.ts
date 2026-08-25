@@ -1,11 +1,14 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { repairEnglishWordFragments, segmentViralCaptions } from "../../../../lib/viral-caption-segmentation";
+import { planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 
 type Caption = {
   start: number;
   end: number;
   text: string;
+  captionLineMode?: "single" | "two-line";
+  captionLines?: string[];
 };
 
 type ProviderResponse = {
@@ -270,6 +273,25 @@ function normalizedAiCaptions(value: unknown, source: Caption[], duration: numbe
   return segmented;
 }
 
+function captionsWithSemanticLines(captions: Caption[], rawCaptions: unknown) {
+  const rawItems = Array.isArray(rawCaptions) ? rawCaptions : [];
+  return captions.map((caption, index) => {
+    const raw = rawItems.length === captions.length && rawItems[index] && typeof rawItems[index] === "object"
+      ? rawItems[index] as Record<string, unknown>
+      : {};
+    const rawText = typeof raw.text === "string" ? phraseText(raw.text) : "";
+    const preferredLines = rawText && plainText(rawText) === plainText(caption.text)
+      ? raw.caption_lines
+      : undefined;
+    const layout = planViralCaptionLayout(caption.text, preferredLines, 10);
+    return {
+      ...caption,
+      captionLineMode: layout.mode,
+      captionLines: layout.lines,
+    };
+  });
+}
+
 export async function POST(request: Request) {
   const member = await getMemberSession();
   if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
@@ -299,7 +321,9 @@ export async function POST(request: Request) {
 5. 输出句子的纯文字按顺序拼接后，应与原始口播基本一致。
 6. 标题必须先理解完整口播的主题、对象和最终结论后再提炼，保持原语言，不能截取第一句，也不能把开头两段机械拼接。中文标题8到15字；英文标题3到12个单词。标题必须可以独立阅读，不能停在连接词或半句话处。
 7. 避免残句：上一条不能停在“的、和、与、就、都、也、在、让、属于、无论”等未完成词语，下一条不能以“的、就、都、也、才、属于、想念的”等承接词开头。“也有让人一吃就想念的经典风味”“无论是早餐午餐还是下午茶”这类结构必须保持完整。
-8. 16秒口播通常整理为5到9条，32秒口播通常整理为9到16条；宁可一条稍长，也不要拆成莫名其妙的半句话。只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能"}]}。`;
+8. 16秒口播通常整理为5到9条，32秒口播通常整理为9到16条；宁可一条稍长，也不要拆成莫名其妙的半句话。
+9. title_lines必须把title按完整语义分为1到2行；caption_lines只负责同一条字幕内部的视觉换行，最多2行。各行拼接必须与原文字完全一致，禁止拆开品牌名、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。
+只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"]}]}。`;
     const content = [
       {
         type: "text",
@@ -346,11 +370,12 @@ export async function POST(request: Request) {
       }
     }
     const aiCaptions = normalizedAiCaptions(parsed.captions, sourceCaptions, duration);
-    const captions = aiCaptions.length
+    const baseCaptions = aiCaptions.length
       ? aiCaptions
       : sourceLanguage === "en"
         ? segmentViralCaptions(sourceCaptions)
         : localSentenceCaptions(sourceCaptions);
+    const captions = captionsWithSemanticLines(baseCaptions, parsed.captions);
     const titleCandidates = [
       parsed.title,
       ...(Array.isArray(parsed.titleCandidates) ? parsed.titleCandidates : []),
@@ -358,9 +383,12 @@ export async function POST(request: Request) {
     const aiTitle = titleCandidates
       .map(completeTitle)
       .find((candidate) => candidate && languageOf(candidate) === sourceLanguage) || "";
-    const title = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : "");
+    const rawTitle = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : "");
+    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
+    const title = titleLayout.serializedTitle;
     return Response.json({
       title,
+      titleLines: titleLayout.lines,
       summary: typeof parsed.summary === "string"
         ? parsed.summary.trim().slice(0, 180)
         : response

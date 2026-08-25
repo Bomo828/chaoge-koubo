@@ -25,10 +25,8 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const { id } = await context.params;
   const cover = new URL(request.url).searchParams.get("cover") === "1";
   const download = new URL(request.url).searchParams.get("download") === "1";
-  if (!download) {
-    const directUrl = getMemberAssetDirectUrl(member, id, cover);
-    if (directUrl) return Response.redirect(directUrl, 307);
-  }
+  const directUrl = getMemberAssetDirectUrl(member, id, cover, download);
+  if (directUrl) return Response.redirect(directUrl, 307);
   if (cover) {
     const image = await getMemberAssetCover(member, id);
     if (!image) return Response.json({ error: "没有找到这个视频封面。" }, { status: 404 });

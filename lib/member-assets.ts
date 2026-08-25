@@ -326,12 +326,21 @@ export async function saveCosMemberAsset(member: MemberSession, input: {
   });
 }
 
-export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover = false) {
+function safeDownloadFilename(row: MemberAssetRow) {
+  const safeName = row.name.replace(/[\\/:*?"<>|\u0000-\u001f]+/g, "-").trim().slice(0, 140) || "会员资产";
+  return /\.[a-z0-9]{2,5}$/i.test(safeName) ? safeName : `${safeName}.${extensionFor(row.content_type, row.kind)}`;
+}
+
+export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover = false, download = false) {
   const source = getActiveAssetRow(member.id, id);
   if (!source || source.storage_provider !== "cos") return "";
   const row = mapRow(source);
   const objectKey = cover ? row.cover_object_key : row.object_key;
-  return objectKey ? signedCosObjectUrl(objectKey, 60 * 60) : "";
+  if (!objectKey) return "";
+  const parameters: Record<string, string> = download
+    ? { "response-content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(safeDownloadFilename(row))}` }
+    : {};
+  return signedCosObjectUrl(objectKey, 60 * 60, parameters);
 }
 
 export async function saveMemberAsset(member: MemberSession, input: {

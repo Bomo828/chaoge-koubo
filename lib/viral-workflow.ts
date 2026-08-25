@@ -7,6 +7,8 @@ export type ViralCaptionPlanItem = {
   contentNode?: "hook" | "pain_reversal" | "core_viewpoint" | "number_benefit" | "example_step" | "brand_entity" | "cta" | "supporting";
   contentWeight?: number;
   keywordOrigin?: "ai" | "local" | "none";
+  captionLineMode?: "single" | "two-line";
+  captionLines?: string[];
 };
 
 export type ViralWorkflowManifest = {
@@ -53,6 +55,17 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
     const origin = ["ai", "local", "none"].includes(String(record.keywordOrigin))
       ? record.keywordOrigin as ViralCaptionPlanItem["keywordOrigin"]
       : undefined;
+    const compactText = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:]/g, "");
+    const captionLines = Array.isArray(record.captionLines)
+      ? record.captionLines
+        .filter((line): line is string => typeof line === "string")
+        .map((line) => line.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:]/g, "").trim())
+        .filter(Boolean)
+        .slice(0, 2)
+      : [];
+    const validCaptionLines = captionLines.length > 0 && captionLines.join("") === compactText
+      ? captionLines
+      : [];
     return [{
       start: Number(start.toFixed(3)),
       end: Number(end.toFixed(3)),
@@ -62,6 +75,10 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
       ...(node ? { contentNode: node } : {}),
       ...(Number.isFinite(Number(record.contentWeight)) ? { contentWeight: Math.max(0, Math.min(1, Number(record.contentWeight))) } : {}),
       ...(origin ? { keywordOrigin: origin } : {}),
+      ...(validCaptionLines.length ? {
+        captionLineMode: validCaptionLines.length === 2 ? "two-line" as const : "single" as const,
+        captionLines: validCaptionLines,
+      } : {}),
     }];
   }).sort((left, right) => left.start - right.start || left.end - right.end);
 }

@@ -138,16 +138,49 @@ const splitOpeningTitle = (value: string) => {
   if (compact.length <= 9) return [compact];
   const middle = compact.length / 2;
   const candidates = new Set<number>();
-  const markers = ["如何", "怎么", "为什么", "从哪", "从哪里", "坚持", "就是", "让", "更", "培训", "一定", "千万"];
+  const markers = [
+    "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+    "如何", "怎么", "为什么", "从哪", "从哪里", "坚持", "就是", "让",
+    "更", "培训", "一定", "千万", "如果", "但是", "所以", "可以",
+    "需要", "通过", "商家", "用户", "客户", "品牌", "平台", "机会",
+  ];
+  const protectedPhrases = [
+    "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+    "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
+    "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
+    "市场动态", "会员中心", "短视频", "供应链", "创作平台",
+  ];
+  const protectedRanges = protectedPhrases.flatMap((phrase) => {
+    const ranges: Array<[number, number]> = [];
+    let cursor = compact.indexOf(phrase);
+    while (cursor >= 0) {
+      ranges.push([cursor, cursor + phrase.length]);
+      cursor = compact.indexOf(phrase, cursor + 1);
+    }
+    return ranges;
+  });
+  const safe = (position: number) => !protectedRanges.some(([start, end]) => start < position && position < end);
   markers.forEach((marker) => {
     let cursor = compact.indexOf(marker);
-    while (cursor > 0) {
-      if (cursor >= 4 && compact.length - cursor >= 4) candidates.add(cursor);
+    while (cursor >= 0) {
+      if (cursor >= 3 && compact.length - cursor >= 3 && safe(cursor)) candidates.add(cursor);
+      const after = cursor + marker.length;
+      if (after >= 3 && compact.length - after >= 3 && safe(after)) candidates.add(after);
       cursor = compact.indexOf(marker, cursor + 1);
     }
   });
-  const fallback = Math.max(5, Math.min(compact.length - 4, Math.round(middle)));
-  const splitAt = [...candidates].sort((a, b) => Math.abs(a - middle) - Math.abs(b - middle))[0] ?? fallback;
+  const fallbackCandidates = Array.from({length: Math.max(1, compact.length - 5)}, (_, index) => index + 3)
+    .filter((position) => position <= compact.length - 3 && safe(position));
+  const invalidLeft = ["的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及"];
+  const invalidRight = ["的", "和", "与", "就", "都", "也", "才", "了", "着", "过"];
+  const splitAt = ([...candidates].length ? [...candidates] : fallbackCandidates)
+    .sort((a, b) => {
+      const score = (position: number) => Math.abs(position - middle)
+        + (invalidLeft.some((item) => compact.slice(0, position).endsWith(item)) ? 10 : 0)
+        + (invalidRight.some((item) => compact.slice(position).startsWith(item)) ? 10 : 0)
+        - (candidates.has(position) ? 7 : 0);
+      return score(a) - score(b);
+    })[0] ?? Math.max(3, Math.min(compact.length - 3, Math.round(middle)));
   return [compact.slice(0, splitAt), compact.slice(splitAt)];
 };
 
@@ -433,7 +466,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const compact = compactCaptionText(caption.text);
   const keyword = resolvedKeyword(caption, compact);
   const keywordStart = keyword ? compact.indexOf(keyword) : -1;
-  const lines = splitCaptionLines(compact, Math.max(6, Math.min(9, timeline.theme.captionLineMaxChars ?? 8)));
+  const lines = adaptiveCaptionLines(caption, compact, Math.max(6, Math.min(9, timeline.theme.captionLineMaxChars ?? 8)));
   const enter = spring({frame, fps, config: {damping: style.id === 4 ? 11 : 18, stiffness: style.id === 4 ? 280 : 180, mass: .58}});
   const fadeOut = interpolate(frame, [Math.max(4, durationFrames - 7), durationFrames], [1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
   const leftAligned = style.id === 3 || style.id === 7;
@@ -443,7 +476,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const panel = style.id === 3 || style.id === 6 || style.id === 7;
   if (style.id === 12) {
     const compactTranslation = String(caption.translation ?? "").trim();
-    const captionLines = splitCaptionLines(compact, Math.max(6, Math.min(10, timeline.theme.captionLineMaxChars ?? 9)));
+    const captionLines = adaptiveCaptionLines(caption, compact, Math.max(6, Math.min(10, timeline.theme.captionLineMaxChars ?? 9)));
     const strong = caption.emphasis === "strong" || caption.role === "focus";
     const plain = caption.captionStyle === "plain" || caption.captionStyle === "focus-lower";
     const baseFontSize = strong ? 140 : 122;
@@ -475,7 +508,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   }
   if (style.id === 11) {
     const compactTranslation = String(caption.translation ?? "").trim();
-    const captionLines = splitCaptionLines(compact, Math.max(8, Math.min(11, timeline.theme.captionLineMaxChars ?? 10)));
+    const captionLines = adaptiveCaptionLines(caption, compact, Math.max(8, Math.min(11, timeline.theme.captionLineMaxChars ?? 10)));
     const baseFontSize = 106;
     const keywordFontSize = 128;
     const svgHeight = captionLines.length * 132 + 12;
