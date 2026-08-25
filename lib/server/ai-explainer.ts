@@ -5,7 +5,15 @@ type ChatResponse = {
   usage?: { input_tokens?: number; output_tokens?: number; total_tokens?: number };
 };
 
-export type ExplainerMaterial = { id: string; name: string; kind: string };
+export type ExplainerMaterial = {
+  id: string;
+  name: string;
+  kind: string;
+  width: number;
+  height: number;
+  duration: number;
+  aspectRatio: number;
+};
 export type ExplainerCaption = { start: number; end: number; text: string };
 
 export type ExplainerMediaInput = {
@@ -93,11 +101,45 @@ export function normalizeExplainerInput(payload: Record<string, unknown>): Expla
       const record = item as Record<string, unknown>;
       const id = safeText(record.id, 120);
       if (!id) return [];
-      return [{ id, name: safeText(record.name, 200), kind: safeText(record.kind, 20) }];
+      const width = Math.max(0, Math.min(12_000, Math.round(Number(record.width) || 0)));
+      const height = Math.max(0, Math.min(12_000, Math.round(Number(record.height) || 0)));
+      const materialDuration = Math.max(0, Math.min(3600, Number(record.duration) || 0));
+      const aspectRatio = width > 0 && height > 0 ? width / height : Math.max(0, Math.min(10, Number(record.aspect_ratio) || 0));
+      return [{ id, name: safeText(record.name, 200), kind: safeText(record.kind, 20), width, height, duration: materialDuration, aspectRatio }];
     }),
     references: safeReferences,
     referenceRoles: referenceRoles.map((item) => safeText(item, 300)).filter(Boolean),
   };
+}
+
+function estimatedTextTokens(value: unknown) {
+  return Math.ceil(JSON.stringify(value ?? {}).length / 2);
+}
+
+/** Reserve from semantic text and metadata only. Base64 reference bytes are not language tokens. */
+export function estimateExplainerContentUnits(input: ExplainerMediaInput) {
+  const semanticPayload = {
+    sourceName: input.sourceName,
+    transcript: input.transcript,
+    captions: input.captions,
+    materials: input.materials,
+    referenceRoles: input.referenceRoles,
+  };
+  const estimatedTokens = 2400 + estimatedTextTokens(semanticPayload) + input.references.length * 450;
+  return Math.max(1, Math.ceil(estimatedTokens / 1000));
+}
+
+export function estimateExplainerDirectorUnits(input: ExplainerMediaInput, contentBrief: Record<string, unknown>) {
+  const semanticPayload = {
+    sourceName: input.sourceName,
+    transcript: input.transcript,
+    captions: input.captions,
+    materials: input.materials,
+    referenceRoles: input.referenceRoles,
+    contentBrief,
+  };
+  const estimatedTokens = 2800 + estimatedTextTokens(semanticPayload) + input.references.length * 450;
+  return Math.max(1, Math.ceil(estimatedTokens / 1000));
 }
 
 async function chatJson(system: string, prompt: string, references: string[], temperature: number) {
@@ -125,7 +167,7 @@ async function chatJson(system: string, prompt: string, references: string[], te
 }
 
 export async function createExplainerContentBrief(input: ExplainerMediaInput) {
-  const materialLines = input.materials.map((item) => `- id=${item.id}; name=${item.name}; type=${item.kind}`).join("\n") || "- 无上传素材";
+  const materialLines = input.materials.map((item) => `- id=${item.id}; name=${item.name}; type=${item.kind}; size=${item.width || "?"}x${item.height || "?"}; ratio=${item.aspectRatio ? item.aspectRatio.toFixed(3) : "?"}; duration=${item.duration ? item.duration.toFixed(2) : "?"}s`).join("\n") || "- 无上传素材";
   const transcriptBlock = input.transcript || "当前未提供可用转写，只能根据口播抽帧、素材画面和文件名保守分析，不得编造具体台词。";
   const timelineBlock = input.captions.length
     ? JSON.stringify(input.captions).slice(0, 20_000)
@@ -191,7 +233,7 @@ ${input.referenceRoles.join("\n") || "- 图1为口播人物，其余按素材顺
 
 export async function createExplainerDirectorPlan(input: ExplainerMediaInput, contentBrief: Record<string, unknown>) {
   if (!safeText(contentBrief.topic, 120)) throw new AiProviderError("缺少本次上传内容的共享分析简报。", 400);
-  const materialLines = input.materials.map((item) => `- id=${item.id}; name=${item.name}; type=${item.kind}`).join("\n") || "- 无上传素材";
+  const materialLines = input.materials.map((item) => `- id=${item.id}; name=${item.name}; type=${item.kind}; size=${item.width || "?"}x${item.height || "?"}; ratio=${item.aspectRatio ? item.aspectRatio.toFixed(3) : "?"}; duration=${item.duration ? item.duration.toFixed(2) : "?"}s`).join("\n") || "- 无上传素材";
   if (!input.captions.length || !input.transcript) {
     throw new AiProviderError("没有取得原片的真实口播时间轴，不能进行内容匹配剪辑。", 400);
   }
@@ -209,17 +251,21 @@ ${input.referenceRoles.join("\n") || "- 图1为口播人物，其余按素材顺
 
 导演规则：
 1. 前3秒和最后3秒优先保留口播人物；总时长不足8秒时按比例缩短保护区。
-2. 每个素材只在真正匹配某句口播时出现。start/end 必须落在对应口播句子的真实时间范围内，单次1.2到4秒。
-3. mode 只能是 full、pip、strip。细节用 full；保留人物表达用 pip；人物和素材比较用 strip。
+2. 每个素材最多使用一次，而且只在真正匹配某句口播时出现。start/end 必须落在对应口播句子的真实时间范围内，单次1.2到4秒。
+3. mode 只能是 full、pip、strip。界面、表格、文字、横屏截图等信息密集素材优先 full 或 strip；人物表达必须保留时才用 pip。
 4. 素材视频只作为无声画面，不能改变口播音频和总时长。
 5. 不得编造不存在的素材 ID，不得让镜头重叠。
 6. 至少安排一个素材镜头；不要求平均使用所有素材。宁可少用，也不能把不相关素材硬塞进成片。
 7. reason 必须写出该镜头对应的原口播短句；semantic_match 用一句话说明素材画面为什么与这句口播匹配。
+8. fit 只能是 contain 或 cover。带文字、界面、表格、海报和横屏录屏必须用 contain，完整保留四边信息；纯场景或人物照片才可用 cover。
+9. size 只能是 large 或 medium，默认 large，禁止小画中画。position 只能是 top_left、top_right、bottom_left、bottom_right，应避开画面主体和字幕区域。
 
 只返回 JSON：
-{"summary":"一句话导演思路","shots":[{"asset_id":"素材id","start":3.2,"end":6.2,"mode":"pip","reason":"对应的原口播短句","semantic_match":"素材与口播的匹配依据"}]}`;
+{"summary":"一句话导演思路","shots":[{"asset_id":"素材id","start":3.2,"end":6.2,"mode":"pip","fit":"contain","size":"large","position":"top_right","reason":"对应的原口播短句","semantic_match":"素材与口播的匹配依据"}]}`;
   const { result, usage } = await chatJson("你只输出严格 JSON，是可以直接执行的短视频导演。", prompt, input.references, 0.2);
   const allowedIds = new Set(input.materials.map((item) => item.id));
+  const materialMap = new Map(input.materials.map((item) => [item.id, item]));
+  const usedAssetIds = new Set<string>();
   const safeEdge = input.duration > 8 ? 3 : Math.max(0.35, input.duration * 0.08);
   let previousEnd = safeEdge;
   const shots = (Array.isArray(result.shots) ? result.shots : [])
@@ -227,18 +273,27 @@ ${input.referenceRoles.join("\n") || "- 图1为口播人物，其余按素材顺
     .sort((left, right) => Number(left.start || 0) - Number(right.start || 0))
     .flatMap((shot) => {
       const assetId = safeText(shot.asset_id, 120);
-      if (!allowedIds.has(assetId)) return [];
+      if (!allowedIds.has(assetId) || usedAssetIds.has(assetId)) return [];
       let start = Math.max(safeEdge, Math.min(Number(shot.start) || safeEdge, input.duration - safeEdge));
       start = Math.max(start, previousEnd);
       const end = Math.max(start + 1.2, Math.min(Number(shot.end) || start + 3, start + 4, input.duration - safeEdge));
       if (end > input.duration - safeEdge + 0.001 || end - start < 1) return [];
+      usedAssetIds.add(assetId);
       previousEnd = end;
       const requestedMode = safeText(shot.mode, 10);
+      const material = materialMap.get(assetId);
+      const requestedFit = safeText(shot.fit, 12);
+      const requestedPosition = safeText(shot.position, 20);
+      const informationDense = /界面|截图|表格|海报|文档|页面|屏幕|录屏|ppt|excel/i.test(material?.name || "") || (material?.aspectRatio || 0) >= 1.25;
+      const normalizedMode = requestedMode === "full" || requestedMode === "strip" ? requestedMode : "pip";
       return [{
         asset_id: assetId,
         start: Number(start.toFixed(2)),
         end: Number(end.toFixed(2)),
-        mode: requestedMode === "full" || requestedMode === "strip" ? requestedMode : "pip",
+        mode: informationDense && normalizedMode === "pip" ? "strip" : normalizedMode,
+        fit: informationDense || requestedFit === "contain" ? "contain" : "cover",
+        size: safeText(shot.size, 12) === "medium" && !informationDense ? "medium" : "large",
+        position: ["top_left", "top_right", "bottom_left", "bottom_right"].includes(requestedPosition) ? requestedPosition : "top_right",
         reason: safeText(shot.reason, 200) || "AI 导演匹配",
         semantic_match: safeText(shot.semantic_match, 300),
       }];

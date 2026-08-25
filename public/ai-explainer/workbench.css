@@ -540,6 +540,13 @@ body:not(.editor-open) #generateButton {
   text-align: center;
 }
 
+.director-stage-action > .director-cost {
+  color: #f2cb49;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.4;
+}
+
 .results-sheet {
   margin-top: 14px;
   overflow: hidden;
