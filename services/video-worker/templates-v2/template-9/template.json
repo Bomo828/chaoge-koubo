@@ -1,5 +1,5 @@
 {
-  "version": 22,
+  "version": 25,
   "package_contract_version": 3,
   "id": "template-9",
   "name": "红白双语",
@@ -178,10 +178,34 @@
     "sfx_gain": 0.26,
     "sfx": {
       "mode": "template-owned-semantic-pool",
-      "selection_policy": "node-pool-stable-rotation-v3",
+      "selection_policy": "node-highlight-stable-rotation-v4",
       "sparse_semantic_only": false,
-      "minimum_gap_seconds": 1.85,
-      "maximum_hits_per_minute": 14,
+      "minimum_gap_seconds": 1.8,
+      "maximum_hits_per_minute": 18,
+      "keyword_emphasis_enabled": true,
+      "keyword_min_confidence": 0.62,
+      "maximum_cue_volume": 0.46,
+      "role_gain_map": {
+        "opening": 1.4,
+        "hook": 1.85,
+        "reversal": 1.85,
+        "conclusion": 1.7,
+        "number": 2.05,
+        "step": 1.9,
+        "brand": 1.85,
+        "cta": 1.95,
+        "accent": 1.9,
+        "transition": 1.18,
+        "ending": 1.5
+      },
+      "keyword_category_roles": {
+        "benefit": "number",
+        "number": "number",
+        "action": "step",
+        "contrast": "reversal",
+        "entity": "brand",
+        "cta": "cta"
+      },
       "opening_pool": [
         "sfx/template-9/semantic-pop.wav",
         "sfx/template-9/soft-pop.wav"
@@ -190,21 +214,36 @@
         "sfx/template-9/semantic-pop.wav",
         "sfx/template-9/soft-blip.wav"
       ],
-      "reversal_pool": ["sfx/template-9/semantic-water-drop.wav"],
+      "reversal_pool": [
+        "sfx/template-9/semantic-water-drop.wav",
+        "sfx/template-9/soft-swish.wav"
+      ],
       "conclusion_pool": [
         "sfx/template-9/semantic-water-drop.wav",
         "sfx/template-9/soft-blip.wav"
       ],
-      "number_pool": ["sfx/template-9/semantic-bell.wav"],
+      "number_pool": [
+        "sfx/template-9/semantic-bell.wav",
+        "sfx/template-9/semantic-pop.wav"
+      ],
       "step_pool": [
         "sfx/template-9/semantic-click.wav",
         "sfx/template-9/semantic-water-drop.wav"
+      ],
+      "brand_pool": [
+        "sfx/template-9/soft-blip.wav",
+        "sfx/template-9/semantic-click.wav"
       ],
       "cta_pool": [
         "sfx/template-9/semantic-bell.wav",
         "sfx/template-9/soft-pop-echo.wav"
       ],
-      "accent_pool": ["sfx/template-9/semantic-water-drop.wav"],
+      "accent_pool": [
+        "sfx/template-9/semantic-water-drop.wav",
+        "sfx/template-9/semantic-click.wav",
+        "sfx/template-9/soft-blip.wav",
+        "sfx/template-9/soft-pop.wav"
+      ],
       "transition_pool": ["sfx/template-9/soft-swish.wav"],
       "ending_pool": ["sfx/template-9/soft-pop-echo.wav"],
       "level_map": {

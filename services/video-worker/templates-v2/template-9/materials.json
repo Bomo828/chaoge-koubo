@@ -81,19 +81,19 @@
     {
       "file": "sfx/template-9/semantic-pop.wav",
       "sha256": "f3c1adb104fc34a3d306eabcc249980ca90ce19d1994d04d3fe6307160b5d747",
-      "role": "开场钩子与轻强调",
+      "role": "开场钩子、数字利益点与轻强调",
       "source": "A080 商用素材包/MG动画音效合集02/popnew01.wav"
     },
     {
       "file": "sfx/template-9/semantic-water-drop.wav",
       "sha256": "f629ac3f9059d883b8dc1068eec4d0e89944aaaf83a3254db110654afeb05d57",
-      "role": "反差、观点确认与轻提示",
+      "role": "反差、观点确认与通用关键词轻提示",
       "source": "A080 商用素材包/其他收集的音效/水滴.WAV"
     },
     {
       "file": "sfx/template-9/semantic-click.wav",
       "sha256": "ec1bbc0b8a1aaa3439fea2f7610708bac09465b489f7ddc1729782c7d7f03220",
-      "role": "步骤与操作节点",
+      "role": "步骤、品牌实体与通用关键词轻提示",
       "source": "A080 商用素材包/MG动画音效合集02/clicksharp1.wav"
     },
     {
