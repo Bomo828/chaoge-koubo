@@ -7,8 +7,32 @@ export type ViralCaptionPlanItem = {
   contentNode?: "hook" | "pain_reversal" | "core_viewpoint" | "number_benefit" | "example_step" | "brand_entity" | "cta" | "supporting";
   contentWeight?: number;
   keywordOrigin?: "ai" | "local" | "none";
+  keywordSfx?: boolean;
+  keywordImportance?: "primary" | "regular";
   captionLineMode?: "single" | "two-line";
   captionLines?: string[];
+  cameraIntent?: "hold" | "push-in" | "pull-back" | "reframe" | "close-up" | "wide";
+  transitionIntent?: "none" | "cut" | "matched-reframe" | "focus-bridge" | "foreground-occlusion";
+  sfxRole?: "none" | "hook" | "reversal" | "viewpoint" | "number" | "step" | "brand" | "cta";
+};
+
+export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-fast-v1";
+
+export type ViralDirectorPlan = {
+  version: typeof VIRAL_DIRECTOR_PLAN_VERSION;
+  kind: "viral-director-plan";
+  promptVersion: string;
+  templateId: string;
+  title: string;
+  titleLines: string[];
+  duration: number;
+  captions: ViralCaptionPlanItem[];
+  bgmMood: "calm" | "warm" | "professional" | "uplifting" | "neutral";
+  source: "ai" | "cache" | "local-fallback" | "user-confirmed";
+  model: string;
+  degraded: boolean;
+  plannedAt: number;
 };
 
 export type ViralWorkflowManifest = {
@@ -32,6 +56,70 @@ const CONTENT_NODES = new Set<ViralCaptionPlanItem["contentNode"]>([
   "cta",
   "supporting",
 ]);
+
+const CAMERA_INTENTS = new Set<ViralCaptionPlanItem["cameraIntent"]>([
+  "hold", "push-in", "pull-back", "reframe", "close-up", "wide",
+]);
+
+const TRANSITION_INTENTS = new Set<ViralCaptionPlanItem["transitionIntent"]>([
+  "none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion",
+]);
+
+const SFX_ROLES = new Set<ViralCaptionPlanItem["sfxRole"]>([
+  "none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta",
+]);
+
+const KEYWORD_SFX_NODE_SCORE: Record<NonNullable<ViralCaptionPlanItem["contentNode"]>, number> = {
+  hook: 4.2,
+  pain_reversal: 4.0,
+  core_viewpoint: 3.8,
+  number_benefit: 4.6,
+  example_step: 3.4,
+  brand_entity: 3.2,
+  cta: 3.9,
+  supporting: 1.2,
+};
+
+/**
+ * Keep visual highlights richer than the sound track. Every confirmed keyword
+ * can remain highlighted, but only a sparse, well-spaced subset becomes a
+ * sound-effect keyword shared by templates 9-12.
+ */
+export function markViralKeywordSfx(captions: ViralCaptionPlanItem[], duration?: number) {
+  const result = captions.map((caption) => ({ ...caption }));
+  const totalDuration = Math.max(
+    1,
+    Number(duration) || Math.max(...result.map((caption) => caption.end), 1),
+  );
+  const maximum = Math.max(1, Math.min(5, Math.ceil(totalDuration / 14)));
+  const minimumGap = 4.2;
+  const candidates = result.flatMap((caption, index) => {
+    const keyword = String(caption.keyword || "").trim();
+    if (!keyword || !caption.text.replace(/\s+/g, "").includes(keyword.replace(/\s+/g, ""))) return [];
+    if (caption.keywordSfx === false) return [];
+    const node = caption.contentNode || "supporting";
+    const score = KEYWORD_SFX_NODE_SCORE[node]
+      + Math.max(0, Math.min(1, Number(caption.contentWeight) || 0.45)) * 2
+      + (caption.keywordSfx === true ? 100 : 0);
+    return [{ index, start: caption.start, score, manual: caption.keywordSfx === true }];
+  });
+  const selected: number[] = [];
+  for (const candidate of [...candidates].sort((left, right) => right.score - left.score || left.start - right.start)) {
+    if (selected.length >= maximum) break;
+    if (candidate.start < 1.15 || candidate.start > totalDuration - 1.0) continue;
+    if (selected.some((index) => Math.abs(result[index].start - candidate.start) < minimumGap)) continue;
+    selected.push(candidate.index);
+  }
+  // Very short clips may have their only meaningful keyword inside the opening
+  // protection window. Keep one explicit key word rather than returning none.
+  if (!selected.length && candidates.length) selected.push(candidates.sort((a, b) => b.score - a.score)[0].index);
+  const selectedSet = new Set(selected);
+  return result.map((caption, index) => ({
+    ...caption,
+    keywordSfx: selectedSet.has(index),
+    keywordImportance: selectedSet.has(index) ? "primary" as const : "regular" as const,
+  }));
+}
 
 function shortText(value: unknown, max: number) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
@@ -75,10 +163,23 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
       ...(node ? { contentNode: node } : {}),
       ...(Number.isFinite(Number(record.contentWeight)) ? { contentWeight: Math.max(0, Math.min(1, Number(record.contentWeight))) } : {}),
       ...(origin ? { keywordOrigin: origin } : {}),
+      ...(typeof record.keywordSfx === "boolean" ? { keywordSfx: record.keywordSfx } : {}),
+      ...(record.keywordImportance === "primary" || record.keywordImportance === "regular"
+        ? { keywordImportance: record.keywordImportance as ViralCaptionPlanItem["keywordImportance"] }
+        : {}),
       ...(validCaptionLines.length ? {
         captionLineMode: validCaptionLines.length === 2 ? "two-line" as const : "single" as const,
         captionLines: validCaptionLines,
       } : {}),
+      ...(CAMERA_INTENTS.has(record.cameraIntent as ViralCaptionPlanItem["cameraIntent"])
+        ? { cameraIntent: record.cameraIntent as ViralCaptionPlanItem["cameraIntent"] }
+        : {}),
+      ...(TRANSITION_INTENTS.has(record.transitionIntent as ViralCaptionPlanItem["transitionIntent"])
+        ? { transitionIntent: record.transitionIntent as ViralCaptionPlanItem["transitionIntent"] }
+        : {}),
+      ...(SFX_ROLES.has(record.sfxRole as ViralCaptionPlanItem["sfxRole"])
+        ? { sfxRole: record.sfxRole as ViralCaptionPlanItem["sfxRole"] }
+        : {}),
     }];
   }).sort((left, right) => left.start - right.start || left.end - right.end);
 }
@@ -98,7 +199,67 @@ export function sanitizeViralWorkflowManifest(value: unknown): ViralWorkflowMani
     duration,
     captions,
     planReady: Boolean(record.planReady)
-      && captions.every((caption) => Boolean(caption.contentNode && caption.keywordOrigin && caption.translation)),
+      && captions.every((caption) => Boolean(caption.contentNode && caption.keywordOrigin)),
     plannedAt: Math.max(0, Number(record.plannedAt) || Date.now()),
   };
+}
+
+export function buildViralDirectorPlan(input: {
+  templateId: string;
+  title: string;
+  titleLines?: unknown;
+  duration: number;
+  captions: unknown;
+  bgmMood?: ViralDirectorPlan["bgmMood"];
+  source?: ViralDirectorPlan["source"];
+  model?: string;
+  degraded?: boolean;
+  plannedAt?: number;
+}): ViralDirectorPlan {
+  const duration = Math.max(1, Math.min(600, Number(input.duration) || 600));
+  const captions = sanitizeViralCaptionPlan(input.captions, duration);
+  const title = shortText(input.title, 40);
+  const titleLines = Array.isArray(input.titleLines)
+    ? input.titleLines.filter((line): line is string => typeof line === "string").map((line) => line.trim()).filter(Boolean).slice(0, 2)
+    : [];
+  const bgmMood = ["calm", "warm", "professional", "uplifting", "neutral"].includes(String(input.bgmMood))
+    ? input.bgmMood as ViralDirectorPlan["bgmMood"]
+    : "professional";
+  return {
+    version: VIRAL_DIRECTOR_PLAN_VERSION,
+    kind: "viral-director-plan",
+    promptVersion: VIRAL_DIRECTOR_PROMPT_VERSION,
+    templateId: shortText(input.templateId, 64) || "template-9",
+    title,
+    titleLines: titleLines.length ? titleLines : title.split("\n").map((line) => line.trim()).filter(Boolean).slice(0, 2),
+    duration,
+    captions,
+    bgmMood,
+    source: input.source || "local-fallback",
+    model: shortText(input.model, 80) || "local-director",
+    degraded: Boolean(input.degraded),
+    plannedAt: Math.max(0, Number(input.plannedAt) || Date.now()),
+  };
+}
+
+export function sanitizeViralDirectorPlan(value: unknown): ViralDirectorPlan | null {
+  if (!value || typeof value !== "object") return null;
+  const record = value as Record<string, unknown>;
+  if (record.kind !== "viral-director-plan") return null;
+  const plan = buildViralDirectorPlan({
+    templateId: shortText(record.templateId, 64),
+    title: shortText(record.title, 40),
+    titleLines: record.titleLines,
+    duration: Number(record.duration) || 600,
+    captions: record.captions,
+    bgmMood: record.bgmMood as ViralDirectorPlan["bgmMood"],
+    source: ["ai", "cache", "local-fallback", "user-confirmed"].includes(String(record.source))
+      ? record.source as ViralDirectorPlan["source"]
+      : "local-fallback",
+    model: shortText(record.model, 80),
+    degraded: Boolean(record.degraded),
+    plannedAt: Number(record.plannedAt) || Date.now(),
+  });
+  if (!plan.captions.length) return null;
+  return plan;
 }

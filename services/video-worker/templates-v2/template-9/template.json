@@ -1,9 +1,9 @@
 {
-  "version": 25,
+  "version": 30,
   "package_contract_version": 3,
   "id": "template-9",
   "name": "红白双语",
-  "status": "approved-local",
+  "status": "review-required",
   "approved_style_version": "V22",
   "approved_at": "2026-08-18T00:00:00+08:00",
   "approval_note": "用户确认：模板9、10、11定版了。模板9以V22锁定。",
@@ -60,19 +60,25 @@
     "caption_safe_inset": 72,
     "caption_max_width": 850,
     "transition_trigger": "semantic-role-or-scene-change-or-long-pause",
+    "transition_style": "director-shot-language-v2",
     "transition_pool": [
-      {"style": "editorial-cut", "duration": 0.18, "intensity": 0.1, "roles": ["reversal"], "nodes": ["pain_reversal"]},
-      {"style": "editorial-wipe", "duration": 0.2, "intensity": 0.08, "roles": ["conclusion"], "nodes": ["core_viewpoint"]},
-      {"style": "soft-flash", "duration": 0.18, "intensity": 0.08, "roles": ["cta"], "nodes": ["cta"]}
+      {"style": "camera-punch-in", "duration": 0.42, "intensity": 0.84, "nodes": ["hook", "number_benefit"]},
+      {"style": "jump-reframe", "duration": 0.30, "intensity": 0.78, "nodes": ["pain_reversal"]},
+      {"style": "focus-rack", "duration": 0.46, "intensity": 0.76, "nodes": ["core_viewpoint", "brand_entity"]},
+      {"style": "pullback-reset", "duration": 0.22, "intensity": 0.72, "nodes": ["example_step"]},
+      {"style": "pullback-reset", "duration": 0.46, "intensity": 0.58, "nodes": ["supporting"]},
+      {"style": "closing-push", "duration": 0.56, "intensity": 0.82, "nodes": ["cta"]}
     ],
     "rhythm_interval_seconds": 7,
-    "minimum_transition_gap_seconds": 7,
+    "minimum_transition_gap_seconds": 3.2,
     "scene_threshold": 0.31,
-    "maximum_effects_per_minute": 4,
+    "maximum_effects_per_minute": 12,
     "camera_motion": "semantic-step-cut-with-brief-wide-reset",
+    "camera_scale_steps": [1.0, 1.18, 1.08, 1.24],
+    "camera_origin_steps": ["50% 43%", "47% 42%", "53% 43%", "50% 41.5%"],
     "camera_scale_min": 1.0,
-    "camera_scale_max": 1.17,
-    "camera_reset_seconds": 0.12
+    "camera_scale_max": 1.24,
+    "camera_reset_seconds": 0.06
   },
   "content_director": {
     "mode": "ai-grounded-whole-video-director",
@@ -91,6 +97,35 @@
       "cta",
       "supporting"
     ]
+  },
+  "typography_direction": {
+    "policy": "approved-style-locked",
+    "title": "red-white-two-line-persistent",
+    "captions": "serif-bilingual-with-semantic-red-keyword",
+    "keyword": "one-phrase-one-accent-keep-source-meaning"
+  },
+  "camera_language": {
+    "identity": "editorial-red-white-decisive",
+    "protect_source_scene_changes": true,
+    "style_states": {
+      "camera-punch-in": {"scale": 1.20, "origin": "50% 41.5%", "move": "cut", "ease_seconds": 0.06},
+      "jump-reframe": {"scale": 1.12, "origins": ["47% 42%", "53% 42%"], "move": "cut", "ease_seconds": 0.06},
+      "focus-rack": {"scale": 1.24, "origin": "50% 41.5%", "move": "snap", "ease_seconds": 0.15},
+      "focus-lock": {"scale": 1.15, "origin": "50% 42%", "move": "snap", "ease_seconds": 0.12},
+      "pullback-reset": {"scale": 1.0, "origin": "50% 43%", "move": "snap", "ease_seconds": 0.18},
+      "closing-push": {"scale": 1.18, "origin": "50% 41.5%", "move": "smooth", "ease_seconds": 0.30}
+    }
+  },
+  "transition_direction": {
+    "policy": "semantic-node-plus-source-cut",
+    "forbidden": ["brush-wipe", "random-sweep", "single-style-loop"],
+    "coverage_cycle": [
+      {"ratio": 0.18, "style": "camera-punch-in", "reason": "建立近景", "duration": 0.42, "intensity": 0.82},
+      {"ratio": 0.38, "style": "jump-reframe", "reason": "观点换向", "duration": 0.30, "intensity": 0.76},
+      {"ratio": 0.60, "style": "pullback-reset", "reason": "解释段退回全景", "duration": 0.22, "intensity": 0.72},
+      {"ratio": 0.80, "style": "focus-rack", "reason": "重点段切入特写", "duration": 0.22, "intensity": 0.74}
+    ],
+    "dedupe_cycle": ["pullback-reset", "jump-reframe", "focus-rack"]
   },
   "ending": {
     "min_seconds": 0.6,
@@ -124,6 +159,7 @@
   "audio": {
     "preserve_source": true,
     "speech_gain": 1,
+    "mix": {"standard": "speech-first-v2", "speech_target_lufs": -17, "music_reference_lufs": -14, "bgm_speech_volume": 0.085, "gap_lift": 1.18, "true_peak_ceiling_db": -1.5},
     "music": {
       "enabled": true,
       "mode": "template-owned-content-matched-pool",
@@ -179,6 +215,7 @@
     "sfx": {
       "mode": "template-owned-semantic-pool",
       "selection_policy": "node-highlight-stable-rotation-v4",
+      "mix_standard": "speech-first-v2",
       "sparse_semantic_only": false,
       "minimum_gap_seconds": 1.8,
       "maximum_hits_per_minute": 18,

@@ -1,10 +1,23 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "template_id": "template-9",
-  "items": [
-    {"style": "editorial-cut", "duration": 0.18, "intensity": 0.1, "nodes": ["pain_reversal"]},
-    {"style": "editorial-wipe", "duration": 0.2, "intensity": 0.08, "nodes": ["core_viewpoint"]},
-    {"style": "soft-flash", "duration": 0.18, "intensity": 0.08, "nodes": ["cta"]}
+  "policy": "semantic-input-aware",
+  "design_version": "director-shot-language-v3-red-white-editorial",
+  "minimum_gap_seconds": 3.2,
+  "maximum_effects_per_minute": 12,
+  "input_adaptation": {
+    "static_talking_head": "允许语义景别变化",
+    "edited_source": "保留原片切换并降低模板转场密度",
+    "wide_source": "完整画面加柔化背景，不做破坏性居中裁切"
+  },
+  "transitions": [
+    {"id": "source-cut", "nodes": ["source-scene-change"], "reason": "沿用原片镜头切换"},
+    {"id": "camera-punch-in", "nodes": ["hook", "number_benefit"], "reason": "钩子和数字节点快速推近"},
+    {"id": "jump-reframe", "nodes": ["pain_reversal"], "reason": "反差节点跳切并改变构图"},
+    {"id": "focus-rack", "nodes": ["core_viewpoint", "brand_entity"], "reason": "核心观点和实体名执行焦点切换"},
+    {"id": "pullback-reset", "nodes": ["example_step"], "reason": "举例和步骤节点退回全景换章"},
+    {"id": "pullback-reset", "nodes": ["supporting"], "reason": "解释段拉远复位释放视觉压力"},
+    {"id": "closing-push", "nodes": ["cta"], "reason": "行动号召缓慢推近收束"}
   ],
-  "rule": "取消规律性软推近；只在反差、核心观点、行动号召或真实场景变化时使用低强度编辑切换。"
+  "forbidden": ["decorative-brush-wipe", "single-transition-only", "random-transition", "transition-on-every-caption"]
 }

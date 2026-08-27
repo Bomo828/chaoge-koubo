@@ -1,8 +1,27 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "template_id": "template-12",
-  "transitions": [],
+  "policy": "semantic-input-aware",
+  "design_version": "director-shot-language-v3-black-yellow-focus-drama",
+  "minimum_gap_seconds": 3.5,
+  "maximum_effects_per_minute": 11,
+  "input_adaptation": {
+    "static_talking_head": "低频语义景别变化并保留聚焦效果",
+    "edited_source": "优先保留原片切换，模板只补必要节点",
+    "wide_source": "完整画面加柔化背景，不做破坏性居中裁切"
+  },
+  "transitions": [
+    {"id": "source-cut", "nodes": ["source-scene-change"], "reason": "沿用原片镜头切换"},
+    {"id": "camera-punch-in", "nodes": ["hook"], "reason": "黑黄钩子快速推近建立冲击"},
+    {"id": "pullback-reset", "nodes": ["pain_reversal"], "reason": "反差节点先拉远再重新组织画面"},
+    {"id": "focus-rack", "nodes": ["core_viewpoint", "brand_entity"], "reason": "核心观点和实体名以焦点切换强调"},
+    {"id": "focus-lock", "nodes": ["number_benefit"], "reason": "数字利益点锁定中心焦点"},
+    {"id": "pullback-reset", "nodes": ["example_step"], "reason": "举例和步骤节点退回全景换章"},
+    {"id": "pullback-reset", "nodes": ["supporting"], "reason": "解释段拉远复位"},
+    {"id": "closing-push", "nodes": ["cta"], "reason": "行动号召缓推收束"}
+  ],
   "dedicated_effects": [
     {"style": "radial-spotlight", "trigger": "single-contiguous-example-step-cluster", "duration_seconds": [3.2, 4.5], "radius_percent": 31, "position": [50, 52], "edge": "soft"}
-  ]
+  ],
+  "forbidden": ["single-iris-transition-only", "single-transition-only", "random-transition", "transition-on-every-caption"]
 }

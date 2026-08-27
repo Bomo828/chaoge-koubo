@@ -18,6 +18,11 @@ export type CaptionCue = {
   keywordLocked?: boolean;
   keywordCategory?: string;
   keywordConfidence?: number;
+  keywordSfx?: boolean;
+  keywordImportance?: "primary" | "regular";
+  cameraIntent?: "hold" | "push-in" | "pull-back" | "reframe" | "close-up" | "wide";
+  transitionIntent?: "none" | "cut" | "matched-reframe" | "focus-bridge" | "foreground-occlusion";
+  sfxRole?: "none" | "hook" | "reversal" | "viewpoint" | "number" | "step" | "brand" | "cta";
   contentNode?: "hook" | "pain_reversal" | "core_viewpoint" | "number_benefit" | "example_step" | "brand_entity" | "cta" | "supporting";
   effectLevel?: "normal" | "subtle";
   stepNumber?: number;
@@ -44,6 +49,10 @@ export type CameraCue = {
   end: number;
   scale: number;
   origin?: string;
+  style?: string;
+  move?: "cut" | "snap" | "smooth";
+  easeDuration?: number;
+  reason?: string;
 };
 
 export type FocusCue = {
@@ -58,8 +67,33 @@ export type FocusCue = {
 export type TransitionCue = {
   start: number;
   duration?: number;
-  style: "soft-punch" | "drift-left" | "drift-right" | "soft-flash" | "editorial-cut" | "editorial-wipe";
+  style: "soft-punch" | "drift-left" | "drift-right" | "soft-flash" | "editorial-cut" | "editorial-wipe" | "source-cut" | "semantic-cut" | "depth-push" | "contrast-cut" | "clean-wipe" | "red-white-snap" | "yellow-brush-wipe" | "cyan-panel-slide" | "focus-iris-cut" | "camera-punch-in" | "closing-push" | "pullback-reset" | "jump-reframe" | "focus-rack" | "focus-lock" | "page-turn" | "reframe-cut";
   intensity?: number;
+  reason?: string;
+  trigger?: string;
+};
+
+export type SourceLayout = {
+  sourceFit?: "cover" | "contain-blur";
+  activity?: "static-talking-head" | "balanced-source" | "dynamic-source" | "legacy";
+  aspectRatio?: number;
+  sceneChangeCount?: number;
+  sceneChangesPerMinute?: number;
+  cameraStrength?: number;
+  transitionDensity?: number;
+  preserveSourceCuts?: boolean;
+};
+
+export type AudioMixProfile = {
+  standard?: "speech-first-v1" | string;
+  speechTargetLufs?: number;
+  speechMeasuredLufs?: number | null;
+  sourceVolume?: number;
+  bgmReferenceLufs?: number;
+  bgmMeasuredLufs?: number | null;
+  bgmSpeechVolume?: number;
+  bgmGapVolume?: number;
+  sfxBusVolume?: number;
 };
 
 export type SfxCue = {
@@ -113,9 +147,12 @@ export type ViralTimeline = {
   version: 1 | 2;
   sourceFile: string;
   sourceVolume?: number;
+  sourceLayout?: SourceLayout;
+  audioMix?: AudioMixProfile;
   bgmFile?: string;
   bgmTrackId?: string;
   bgmVolume?: number;
+  bgmGapVolume?: number;
   bgmLoop?: boolean;
   sfxFile?: string;
   sfxVolume?: number;

@@ -1,9 +1,9 @@
 {
-  "version": 12,
+  "version": 17,
   "package_contract_version": 3,
   "id": "template-12",
   "name": "黑黄聚焦双语",
-  "status": "approved-local",
+  "status": "review-required",
   "approved_at": "2026-08-18T18:04:07+08:00",
   "style_lock": true,
   "package_mode": "isolated",
@@ -23,15 +23,25 @@
     "pause_split_seconds": 0.42,
     "bilingual": true,
     "word_highlight": true,
-    "transition_trigger": "semantic-focus-only",
-    "transition_pool": [],
-    "rhythm_interval_seconds": 99,
-    "minimum_transition_gap_seconds": 99,
-    "scene_threshold": 1,
-    "maximum_effects_per_minute": 2,
+    "transition_trigger": "semantic-director-shot-language",
+    "transition_pool": [
+      {"style": "camera-punch-in", "duration": 0.42, "intensity": 0.84, "nodes": ["hook", "number_benefit"]},
+      {"style": "pullback-reset", "duration": 0.36, "intensity": 0.68, "nodes": ["pain_reversal"]},
+      {"style": "focus-rack", "duration": 0.48, "intensity": 0.82, "nodes": ["core_viewpoint", "brand_entity"]},
+      {"style": "focus-lock", "duration": 0.42, "intensity": 0.80, "nodes": ["number_benefit"]},
+      {"style": "pullback-reset", "duration": 0.24, "intensity": 0.70, "nodes": ["example_step"]},
+      {"style": "pullback-reset", "duration": 0.48, "intensity": 0.56, "nodes": ["supporting"]},
+      {"style": "closing-push", "duration": 0.58, "intensity": 0.82, "nodes": ["cta"]}
+    ],
+    "rhythm_interval_seconds": 8,
+    "minimum_transition_gap_seconds": 3.5,
+    "scene_threshold": 0.31,
+    "maximum_effects_per_minute": 11,
     "camera_mode": "semantic-stepped-with-single-radial-focus",
+    "camera_scale_steps": [1.0, 1.18, 1.08, 1.24],
+    "camera_origin_steps": ["50% 43%", "47.5% 42%", "52.5% 43%", "50% 41.5%"],
     "camera_scale_min": 1.0,
-    "camera_scale_max": 1.1,
+    "camera_scale_max": 1.24,
     "radial_focus_seconds": [3.2, 4.5]
   },
   "ending": {"min_seconds": 0.4, "max_seconds": 0.8, "mode": "source-hold"},
@@ -67,18 +77,57 @@
       ]
     },
     "speech_gain": 1.0,
-    "sfx_gain": 0.34,
+    "mix": {"standard": "speech-first-v2", "speech_target_lufs": -17, "music_reference_lufs": -14, "bgm_speech_volume": 0.085, "gap_lift": 1.18, "true_peak_ceiling_db": -1.5},
+    "sfx_gain": 0.38,
     "sfx": {
       "mode": "template-owned-adaptive-pool",
-      "minimum_gap_seconds": 2.8,
-      "maximum_hits_per_minute": 10,
+      "selection_policy": "shared-node-highlight-stable-rotation-v2",
+      "mix_standard": "speech-first-v2",
+      "minimum_gap_seconds": 2.4,
+      "maximum_hits_per_minute": 14,
+      "keyword_emphasis_enabled": true,
+      "keyword_min_confidence": 0.62,
+      "maximum_cue_volume": 0.46,
+      "role_gain_map": {"opening": 1.45, "hook": 1.68, "reversal": 1.62, "conclusion": 1.60, "number": 1.88, "step": 1.75, "brand": 1.62, "cta": 1.82, "accent": 1.70, "transition": 1.45, "ending": 1.48},
       "opening_pool": ["sfx/template-12/open-impact.ogg"],
-      "accent_pool": ["sfx/template-12/caption-pop.ogg", "sfx/template-12/keyword-tick.ogg"],
+      "hook_pool": ["sfx/template-12/open-impact.ogg"],
+      "reversal_pool": ["sfx/template-12/focus-pop.wav", "sfx/template-12/focus-swish.ogg"],
+      "conclusion_pool": ["sfx/template-12/focus-pop.wav", "sfx/template-12/focus-chime.wav"],
+      "number_pool": ["sfx/template-12/focus-chime.wav"],
+      "step_pool": ["sfx/template-12/focus-pop.wav"],
+      "brand_pool": ["sfx/template-12/focus-pop.wav", "sfx/template-12/focus-chime.wav"],
+      "cta_pool": ["sfx/template-12/end-confirm.ogg"],
+      "accent_pool": ["sfx/template-12/focus-pop.wav", "sfx/template-12/focus-chime.wav"],
       "transition_pool": ["sfx/template-12/focus-swish.ogg"],
-      "ending_pool": ["sfx/template-12/end-confirm.ogg"]
+      "ending_pool": ["sfx/template-12/end-confirm.ogg"],
+      "level_map": {"sfx/template-12/open-impact.ogg": 0.20, "sfx/template-12/focus-pop.wav": 0.19, "sfx/template-12/focus-chime.wav": 0.20, "sfx/template-12/focus-swish.ogg": 0.19, "sfx/template-12/end-confirm.ogg": 0.20}
     }
   },
   "quality": {"video_codec": "h264", "crf": 18, "fps": 30, "render_concurrency": 1, "supersampling": 2, "scale_filter": "lanczos"},
   "quality_gate": {"frame_analysis": "every-decoded-frame", "caption_text_coverage_min": 0.95, "speech_time_coverage_min": 0.94, "decoded_frame_match_required": true, "maximum_corrupt_frames": 0, "cross_template_fallback_allowed": false, "minimum_test_videos": 2},
-  "content_director": {"enabled": true, "preserve_camera": false, "camera_policy": "semantic-node-stepped-plus-single-radial-focus", "title_policy": "two-line-persistent-except-focus", "caption_policy": "semantic-bilingual-black-yellow", "audio_policy": "speech-safe-bgm-sparse-cues"}
+  "content_director": {"enabled": true, "preserve_camera": false, "camera_policy": "semantic-node-stepped-plus-single-radial-focus", "title_policy": "two-line-persistent-except-focus", "caption_policy": "semantic-bilingual-black-yellow", "audio_policy": "speech-safe-bgm-sparse-cues"},
+  "typography_direction": {"policy": "approved-style-locked", "title": "black-yellow-persistent-focus", "captions": "bold-bilingual-black-yellow", "keyword": "yellow-scale-and-focus-lock"},
+  "camera_language": {
+    "identity": "black-yellow-focus-drama",
+    "protect_source_scene_changes": true,
+    "style_states": {
+      "camera-punch-in": {"scale": 1.22, "origin": "50% 41.5%", "move": "cut", "ease_seconds": 0.06},
+      "jump-reframe": {"scale": 1.13, "origins": ["47.5% 42%", "52.5% 42%"], "move": "cut", "ease_seconds": 0.06},
+      "focus-rack": {"scale": 1.24, "origin": "50% 41.5%", "move": "snap", "ease_seconds": 0.14},
+      "focus-lock": {"scale": 1.17, "origin": "50% 42%", "move": "snap", "ease_seconds": 0.12},
+      "pullback-reset": {"scale": 1.0, "origin": "50% 43%", "move": "snap", "ease_seconds": 0.18},
+      "closing-push": {"scale": 1.20, "origin": "50% 41.5%", "move": "smooth", "ease_seconds": 0.28}
+    }
+  },
+  "transition_direction": {
+    "policy": "focus-contrast-with-chapter-change",
+    "forbidden": ["brush-wipe", "random-sweep", "single-style-loop"],
+    "coverage_cycle": [
+      {"ratio": 0.18, "style": "camera-punch-in", "reason": "黑黄强开场", "duration": 0.42, "intensity": 0.84},
+      {"ratio": 0.40, "style": "focus-rack", "reason": "重点聚焦", "duration": 0.48, "intensity": 0.80},
+      {"ratio": 0.62, "style": "pullback-reset", "reason": "重点后回到全景", "duration": 0.24, "intensity": 0.70},
+      {"ratio": 0.80, "style": "jump-reframe", "reason": "收束前换构图", "duration": 0.30, "intensity": 0.72}
+    ],
+    "dedupe_cycle": ["pullback-reset", "focus-rack", "jump-reframe"]
+  }
 }

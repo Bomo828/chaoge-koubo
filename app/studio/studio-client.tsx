@@ -14,7 +14,7 @@ import { MarketDynamics } from "./market-dynamics";
 import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
-import type { ViralCaptionPlanItem, ViralWorkflowManifest } from "../../lib/viral-workflow";
+import { buildViralDirectorPlan, markViralKeywordSfx, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
 
 type ImagePriceQuote = {
@@ -2094,11 +2094,20 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
   function confirmViralTranscriptReview() {
     const plainTitle = viralReviewTitle.trim();
     const title = planViralTitleLayout(plainTitle).serializedTitle;
-    const captions = viralReviewCaptions.map((caption) => {
+    const reviewedCaptions = viralReviewCaptions.map((caption) => {
       const text = caption.text.trim();
       const layout = planViralCaptionLayout(text, caption.captionLines, 10);
-      return { ...caption, text, captionLineMode: layout.mode, captionLines: layout.lines };
+      const keyword = String(caption.keyword || "").trim();
+      const keywordStillGrounded = keyword && text.replace(/\s+/g, "").includes(keyword.replace(/\s+/g, ""));
+      return {
+        ...caption,
+        text,
+        ...(keywordStillGrounded ? { keyword } : { keyword: undefined, keywordSfx: false, keywordImportance: "regular" as const }),
+        captionLineMode: layout.mode,
+        captionLines: layout.lines,
+      };
     });
+    const captions = markViralKeywordSfx(reviewedCaptions);
     if (!plainTitle || !captions.length || captions.some((caption) => !caption.text)) return;
     const captionsChanged = captions.some((caption, index) => caption.text !== viralCaptions[index]?.text)
       || captions.length !== viralCaptions.length;
@@ -2895,7 +2904,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           const planResponse = await fetch("/api/ai/viral-caption-plan", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ script, duration: speechAudioDuration || data.audioDuration || 600, captions: sourceCaptions }),
+            body: JSON.stringify({ script, duration: speechAudioDuration || data.audioDuration || 600, captions: sourceCaptions, templateId: viralTemplate }),
           });
           const planData = await planResponse.json() as {
             title?: string;
@@ -3220,7 +3229,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           const aiResponse = await fetch("/api/ai/viral-transcript", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ captions, frames, duration: sourceDuration }),
+            body: JSON.stringify({ captions, frames, duration: sourceDuration, templateId: viralTemplate }),
           });
           const aiData = await aiResponse.json() as {
             error?: string;
@@ -3228,6 +3237,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
             summary?: string;
             captions?: ViralCaption[];
             degraded?: boolean;
+            planReady?: boolean;
           };
           if (!aiResponse.ok) throw new Error(aiData.error || "大模型口播整理失败。");
           if (Array.isArray(aiData.captions) && aiData.captions.length) {
@@ -3235,13 +3245,13 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
           }
           aiTitle = aiData.title || "";
           aiSummary = aiData.summary || "大模型已完成口播错字校正与完整句整理。";
+          setViralCaptionPlanReady(Boolean(aiData.planReady));
         } catch (error) {
           aiSummary = `${error instanceof Error ? error.message : "大模型校对暂时不可用"} 已保留真实语音识别结果，并按完整句整理。`;
         }
       }
       setViralCaptions(sentenceCaptions);
       setViralCaptionsConfirmed(false);
-      setViralCaptionPlanReady(false);
       setViralSubtitle(sentenceCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
       const transcriptLanguage = viralSpeechLanguage(sentenceCaptions.map((caption) => caption.text).join(" "));
       const titleCandidate = aiTitle || job.title || "";
@@ -3779,7 +3789,19 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       form.append("template_id", viralTemplate);
       form.append("title", generatedTitle);
       form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
-      form.append("caption_plan_ready", viralCaptionPlanReady ? "true" : "false");
+      const directorPlan = buildViralDirectorPlan({
+        templateId: viralTemplate,
+        title: generatedTitle,
+        duration: Math.max(1, viralCaptions.at(-1)?.end || 1),
+        captions: viralCaptions,
+        source: viralCaptionPlanReady ? "ai" : "user-confirmed",
+        model: viralCaptionPlanReady ? "app-precomputed" : "local-confirmed",
+        degraded: !viralCaptionPlanReady,
+      });
+      form.append("director_plan_json", JSON.stringify(directorPlan));
+      // The confirmed immutable plan is complete even when the AI timed out;
+      // its local semantic fallback is intentionally render-ready.
+      form.append("caption_plan_ready", viralCaptionsConfirmed && directorPlan.captions.length ? "true" : "false");
       form.append("include_sfx", viralIncludeSfx ? "true" : "false");
       form.append("include_bgm", viralIncludeBgm ? "true" : "false");
       const createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {
@@ -5017,10 +5039,21 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
               <div><input autoFocus type="text" maxLength={viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralReviewTitle} onChange={(event) => setViralReviewTitle(event.target.value)} /><em>{viralReviewTitle.trim().length}/{viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em></div>
             </label>
             <div className="viral-dialog-caption-list" aria-label="AI 排版字幕">
-              {viralReviewCaptions.map((caption, index) => <label key={`${caption.start}-${index}`}>
+              {viralReviewCaptions.map((caption, index) => <div className="viral-dialog-caption-row" key={`${caption.start}-${index}`}>
                 <span>{viralTimestamp(caption.start)}–{viralTimestamp(caption.end)}</span>
                 <input type="text" value={caption.text} aria-label={`第${index + 1}段字幕`} onChange={(event) => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item))} />
-              </label>)}
+                {caption.keyword ? <button
+                  type="button"
+                  className={caption.keywordSfx ? "is-keyword-sfx" : ""}
+                  aria-pressed={Boolean(caption.keywordSfx)}
+                  title={caption.keywordSfx ? `重点词“${caption.keyword}”将触发音效` : `提亮词“${caption.keyword}”只做视觉强调`}
+                  onClick={() => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? {
+                    ...item,
+                    keywordSfx: !item.keywordSfx,
+                    keywordImportance: !item.keywordSfx ? "primary" : "regular",
+                  } : item))}
+                >{caption.keywordSfx ? "重点词" : "普通提亮"}</button> : <em>无提亮</em>}
+              </div>)}
             </div>
           </div>
           <footer>

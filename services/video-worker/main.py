@@ -70,6 +70,10 @@ HIGHLIGHT_AI_MAX_ATTEMPTS = max(
     1,
     min(3, int(os.getenv("VIDEO_WORKER_HIGHLIGHT_AI_MAX_ATTEMPTS", "2"))),
 )
+DIRECTOR_AI_TIMEOUT_SECONDS = max(
+    4,
+    min(30, int(os.getenv("VIDEO_WORKER_DIRECTOR_AI_TIMEOUT_SECONDS", "12"))),
+)
 TENCENT_CLOUD_APP_ID = os.getenv("TENCENT_CLOUD_APP_ID", os.getenv("TENCENT_APP_ID", "")).strip()
 TENCENT_CLOUD_SECRET_ID = os.getenv(
     "TENCENT_CLOUD_SECRET_ID",
@@ -140,6 +144,8 @@ AUTHORING_SKILL_DIR = next(
 )
 ADMIN_TOKEN = os.getenv("VIDEO_WORKER_ADMIN_TOKEN", "").strip()
 CLEANUP_STATE: dict[str, Any] = {"last_run_at": 0, "removed_jobs": 0, "last_error": ""}
+DIRECTOR_PLAN_CACHE: dict[str, list[dict[str, Any]]] = {}
+DIRECTOR_PLAN_CACHE_LOCK = threading.Lock()
 
 
 def load_templates() -> dict[str, dict[str, Any]]:
@@ -193,8 +199,10 @@ def valid_template_package(value: Any, expected_id: str = "") -> bool:
             if not track_file.startswith(f"music/{template_id}/"):
                 return False
         sfx = audio.get("sfx") if isinstance(audio.get("sfx"), dict) else {}
-        for pool_name in ("opening_pool", "accent_pool", "transition_pool", "ending_pool"):
-            pool = sfx.get(pool_name) if isinstance(sfx.get(pool_name), list) else []
+        for pool_name, pool_value in sfx.items():
+            if not str(pool_name).endswith("_pool"):
+                continue
+            pool = pool_value if isinstance(pool_value, list) else []
             if any(not str(asset).startswith(f"sfx/{template_id}/") for asset in pool):
                 return False
     return True
@@ -556,10 +564,10 @@ def semantic_caption_plan(
             node = "hook"
         elif any(marker in text for marker in ("但是", "不过", "其实", "相反", "没想到", "结果却", "真正", "而是", "不是", "痛点", "难", "不会", "不知道", "担心", "问题")):
             node = "pain_reversal"
-        elif re.search(r"\d|\d+(?:\.\d+)?[%折元万+]|[一二三四五六七八九十百千万]+(?:个|类|项|种)|第[一二三四五六七八九十]", text) or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "实用", "帮你", "打扎实", "练熟", "竞争力")):
-            node = "number_benefit"
         elif any(marker in text for marker in ("比如", "例如", "举个例子", "第一", "第二", "第三", "首先", "其次", "下一步", "最后一步", "步骤", "怎么做", "如何")):
             node = "example_step"
+        elif re.search(r"\d|\d+(?:\.\d+)?[%折元万+]|[一二三四五六七八九十百千万]+(?:个|类|项|种)|第[一二三四五六七八九十]", text) or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "实用", "帮你", "打扎实", "练熟", "竞争力")):
+            node = "number_benefit"
         elif any(marker in text for marker in ("老师", "品牌", "公司", "门店", "产品", "钟智联", "我们是", "我是", "叫做", "型号", "AI课程")):
             node = "brand_entity"
         elif any(marker in text for marker in ("所以", "记住", "核心", "结论", "关键是", "这就是", "本质", "观点", "方法", "价值", "重点", "专业", "围绕", "会从")):
@@ -576,6 +584,15 @@ def semantic_caption_plan(
             else:
                 hard_node_count += 1
         route = dict(route_by_node[node])
+        camera_intent = str(caption.get("cameraIntent") or "").strip()
+        transition_intent = str(caption.get("transitionIntent") or "").strip()
+        sfx_role = str(caption.get("sfxRole") or "").strip()
+        if camera_intent in {"hold", "push-in", "pull-back", "reframe", "close-up", "wide"}:
+            route["camera"] = camera_intent
+        if transition_intent in {"none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"}:
+            route["transition"] = transition_intent
+        if sfx_role in {"none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"}:
+            route["sfx"] = sfx_role
         caption_style = select_caption_material(content_director, node, title, text, index, str(route["caption"]))
         route["caption"] = caption_style
         caption["contentNode"] = node
@@ -583,9 +600,11 @@ def semantic_caption_plan(
             "pain_reversal": "reversal", "core_viewpoint": "conclusion", "number_benefit": "number",
             "example_step": "step", "brand_entity": "brand", "supporting": "steady",
         }.get(node, node)
+        if sfx_role and sfx_role != "none":
+            caption["semanticRole"] = "conclusion" if sfx_role == "viewpoint" else sfx_role
         caption["animation"] = route["animation"]
         caption["captionStyle"] = caption_style
-        if effect_level == "subtle":
+        if effect_level == "subtle" and sfx_role not in {"hook", "reversal", "viewpoint", "number", "step", "brand", "cta"}:
             route["sfx"] = "none"
             route["transition"] = "none"
         caption["effectLevel"] = effect_level
@@ -600,6 +619,77 @@ def semantic_caption_plan(
             caption["stepNumber"] = step_number
         else:
             caption.pop("stepNumber", None)
+    return planned
+
+
+KEYWORD_SFX_NODE_SCORE = {
+    "hook": 4.2,
+    "pain_reversal": 4.0,
+    "core_viewpoint": 3.8,
+    "number_benefit": 4.6,
+    "example_step": 3.4,
+    "brand_entity": 3.2,
+    "cta": 3.9,
+    "supporting": 1.2,
+}
+
+
+def mark_keyword_sfx_emphasis(captions: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Mark a sparse subset of visual keywords as audible key words.
+
+    Visual highlighting and sound emphasis are intentionally separate layers:
+    every grounded keyword may keep its template styling, while only a few
+    semantically important, well-spaced words receive a sound effect.
+    Explicit True/False values coming from the confirmation UI are respected.
+    """
+    planned = [dict(item) for item in captions]
+    if not planned:
+        return planned
+    duration = max((float(item.get("end") or 0.0) for item in planned), default=1.0)
+    maximum = max(1, min(5, math.ceil(max(1.0, duration) / 14.0)))
+    minimum_gap = 4.2
+    candidates: list[dict[str, Any]] = []
+    for index, caption in enumerate(planned):
+        keyword = str(caption.get("keyword") or "").strip()
+        text = re.sub(r"\s+", "", str(caption.get("text") or ""))
+        if not keyword or re.sub(r"\s+", "", keyword) not in text:
+            continue
+        if caption.get("keywordSfx") is False:
+            continue
+        node = str(caption.get("contentNode") or "supporting")
+        try:
+            weight = max(0.0, min(1.0, float(caption.get("contentWeight") or 0.45)))
+        except (TypeError, ValueError):
+            weight = 0.45
+        explicit = caption.get("keywordSfx") is True
+        score = KEYWORD_SFX_NODE_SCORE.get(node, 1.2) + weight * 2.0 + (100.0 if explicit else 0.0)
+        candidates.append({
+            "index": index,
+            "start": float(caption.get("start") or 0.0),
+            "score": score,
+            "reason": "人工确认" if explicit else f"{node}·{weight:.2f}",
+        })
+    selected: list[dict[str, Any]] = []
+    for candidate in sorted(candidates, key=lambda item: (-float(item["score"]), float(item["start"]))):
+        if len(selected) >= maximum:
+            break
+        start = float(candidate["start"])
+        if start < 1.15 or start > duration - 1.0:
+            continue
+        if any(abs(float(item["start"]) - start) < minimum_gap for item in selected):
+            continue
+        selected.append(candidate)
+    if not selected and candidates:
+        selected.append(max(candidates, key=lambda item: float(item["score"])))
+    selected_by_index = {int(item["index"]): item for item in selected}
+    for index, caption in enumerate(planned):
+        selected_item = selected_by_index.get(index)
+        caption["keywordSfx"] = selected_item is not None
+        caption["keywordImportance"] = "primary" if selected_item is not None else "regular"
+        if selected_item is not None:
+            caption["keywordSfxReason"] = str(selected_item["reason"])
+        else:
+            caption.pop("keywordSfxReason", None)
     return planned
 
 
@@ -682,6 +772,8 @@ def kinetic_keyword(text: str) -> str:
 
 
 LOCAL_KEYWORD_CANDIDATES = (
+    "商家入驻机会", "商家入驻", "酒店景区", "体育场馆", "激励翻倍", "首批类目", "第一批类目",
+    "终端设备", "华为生态", "华为激励", "旅行社", "入驻机会", "华为", "生态",
     "效率提升", "岗位技能", "职场技能", "实用技能", "核心观点", "关键步骤", "解决问题",
     "人工智能", "数字化", "竞争力", "转化率", "获客", "成交", "利润", "成本",
     "效率", "提升", "增长", "收益", "优惠", "免费", "方法", "步骤", "重点",
@@ -757,13 +849,10 @@ def safe_director_keyword(text: str, keyword: str) -> str:
     selected = re.sub(r"[\s，。！？；：、,.!?;:]", "", keyword)
     if not selected or len(selected) > 8 or selected not in compact:
         return kinetic_keyword(compact)
-    covers_whole_line = selected == compact and len(compact) >= 4
-    covers_too_much = len(compact) >= 6 and len(selected) / max(1, len(compact)) > 0.6
-    if covers_whole_line or covers_too_much:
-        reduced = kinetic_keyword(compact)
-        if reduced == compact and len(compact) >= 4:
-            reduced = compact[-2:]
-        return reduced
+    covers_whole_line = selected == compact and len(compact) > 5
+    if covers_whole_line:
+        reduced = grounded_local_keyword(compact)
+        return reduced if reduced and reduced != compact else ""
     return selected
 
 
@@ -905,6 +994,248 @@ def ai_select_caption_highlights(
         return prepared, "grounded-local-keyword-fallback"
 
 
+DIRECTOR_ALLOWED_NODES = {
+    "hook", "pain_reversal", "core_viewpoint", "number_benefit",
+    "example_step", "brand_entity", "cta", "supporting",
+}
+DIRECTOR_CATEGORY_BY_NODE = {
+    "hook": "none",
+    "pain_reversal": "contrast",
+    "core_viewpoint": "none",
+    "number_benefit": "number",
+    "example_step": "action",
+    "brand_entity": "entity",
+    "cta": "cta",
+    "supporting": "none",
+}
+
+
+def apply_shared_director_items(
+    captions: list[dict[str, Any]],
+    directed_items: list[dict[str, Any]] | None,
+    title: str = "",
+    content_director: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Ground one whole-video director plan back onto immutable captions.
+
+    AI is only allowed to classify meaning and select a phrase already present
+    in the confirmed transcript.  Template-specific caption, SFX, transition
+    and camera implementations are applied afterwards by the local routers.
+    """
+    baseline = semantic_caption_plan(captions, title, content_director)
+    values = (
+        directed_items
+        if isinstance(directed_items, list) and len(directed_items) == len(baseline)
+        else []
+    )
+    maximum_highlights = max(1, math.ceil(len(baseline) * 0.65))
+    selected_count = 0
+    previous_keyword = ""
+    enriched: list[dict[str, Any]] = []
+    for index, source_caption in enumerate(baseline):
+        caption = dict(source_caption)
+        value = values[index] if values and isinstance(values[index], dict) else {}
+        text = re.sub(r"\s+", "", str(caption.get("text") or ""))
+        local_node = str(caption.get("contentNode") or "supporting")
+        node = str(value.get("content_node") or local_node)
+        if node not in DIRECTOR_ALLOWED_NODES:
+            node = local_node
+        if node == "number_benefit" and not (
+            re.search(r"\d|[%％折元万倍]", text)
+            or any(marker in text for marker in ("省", "提升", "增长", "效率", "收益", "优惠", "免费", "竞争力"))
+        ):
+            node = local_node
+        raw_keyword = str(value.get("keyword") or "")
+        try:
+            confidence = max(0.0, min(1.0, float(value.get("confidence", 0.0))))
+        except (TypeError, ValueError):
+            confidence = 0.0
+        keyword = validated_ai_keyword(text, raw_keyword, node) if raw_keyword else ""
+        keyword_origin = "ai"
+        if not values:
+            keyword = grounded_local_keyword(text, node)
+            confidence = 0.7 if keyword else 0.0
+            keyword_origin = "local"
+        elif raw_keyword and not keyword:
+            keyword = grounded_local_keyword(text, node)
+            keyword_origin = "grounded-local-repair"
+        if confidence < 0.62:
+            keyword = ""
+        if keyword and selected_count >= maximum_highlights and node == "supporting":
+            keyword = ""
+        if keyword and keyword == previous_keyword and node not in {"brand_entity", "number_benefit"}:
+            keyword = ""
+        if keyword:
+            selected_count += 1
+            previous_keyword = keyword
+        try:
+            importance = max(0.0, min(1.0, float(value.get("importance", 0.0))))
+        except (TypeError, ValueError):
+            importance = 0.0
+        if not values:
+            importance = 0.82 if node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"} else 0.45
+        requested_category = str(value.get("category") or "").strip().lower()
+        compatible_categories = {
+            "hook": {"none"},
+            "pain_reversal": {"contrast"},
+            "core_viewpoint": {"none"},
+            "number_benefit": {"number", "benefit"},
+            "example_step": {"action"},
+            "brand_entity": {"entity"},
+            "cta": {"cta"},
+            "supporting": {"none"},
+        }
+        category = (
+            requested_category
+            if requested_category in compatible_categories[node]
+            else DIRECTOR_CATEGORY_BY_NODE[node]
+        )
+        caption.update({
+            "contentNode": node,
+            "contentWeight": round(importance, 3),
+            "keyword": keyword,
+            "keywordLocked": True,
+            "keywordCategory": category,
+            "keywordConfidence": round(confidence, 3),
+            "keywordOrigin": keyword_origin if keyword else "none",
+        })
+        if str(value.get("layout") or "") in {"center", "stack-left", "stack-right", "impact"}:
+            caption["directorLayout"] = str(value["layout"])
+        enriched.append(caption)
+    # Some providers occasionally return a valid whole-video plan with almost
+    # every keyword empty.  Keep the AI's semantic classification, but backfill
+    # a restrained 40% floor using exact phrases from the confirmed transcript.
+    # This avoids both "no highlight" output and the old midpoint slicing that
+    # produced fragments such as “你是酒” or “年华为”.
+    minimum_highlights = min(len(enriched), max(1, math.ceil(len(enriched) * 0.4)))
+    selected_count = sum(bool(str(item.get("keyword") or "").strip()) for item in enriched)
+    if selected_count < minimum_highlights:
+        priority = sorted(
+            range(len(enriched)),
+            key=lambda item_index: (
+                str(enriched[item_index].get("contentNode") or "supporting") == "supporting",
+                -float(enriched[item_index].get("contentWeight") or 0.0),
+                item_index,
+            ),
+        )
+        for item_index in priority:
+            item = enriched[item_index]
+            if str(item.get("keyword") or "").strip():
+                continue
+            candidate = grounded_local_keyword(
+                str(item.get("text") or ""),
+                str(item.get("contentNode") or "supporting"),
+            )
+            if not candidate:
+                continue
+            item["keyword"] = candidate
+            item["keywordLocked"] = True
+            item["keywordConfidence"] = max(0.7, float(item.get("keywordConfidence") or 0.0))
+            item["keywordOrigin"] = "grounded-local-backfill"
+            selected_count += 1
+            if selected_count >= minimum_highlights:
+                break
+    return mark_keyword_sfx_emphasis(semantic_caption_plan(enriched, title, content_director))
+
+
+def ai_direct_shared_captions(
+    captions: list[dict[str, Any]],
+    title: str = "",
+    content_director: dict[str, Any] | None = None,
+) -> tuple[list[dict[str, Any]], str]:
+    """Classify the whole video once for all four published templates.
+
+    One cached request replaces the former template-9 director request plus a
+    second keyword request.  A short timeout and deterministic local fallback
+    keep AI planning from blocking rendering.
+    """
+    fallback = apply_shared_director_items(captions, None, title, content_director)
+    if not AI_API_KEY or not fallback:
+        return fallback, "shared-local-director"
+    source = [
+        {
+            "id": index,
+            "start": round(float(item.get("start") or 0.0), 3),
+            "end": round(float(item.get("end") or 0.0), 3),
+            "text": str(item.get("text") or "").strip(),
+        }
+        for index, item in enumerate(fallback)
+    ]
+    cache_key = hashlib.sha256(json.dumps({
+        "version": "shared-content-director-v2-highlight-floor",
+        "model": AI_TITLE_MODEL,
+        "title": title,
+        "captions": source,
+    }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()
+    with DIRECTOR_PLAN_CACHE_LOCK:
+        cached = DIRECTOR_PLAN_CACHE.get(cache_key)
+    if cached is not None:
+        return apply_shared_director_items(captions, cached, title, content_director), "shared-ai-director-cache"
+
+    prompt = f"""你是竖屏口播短视频的内容导演。一次性理解整条口播，只输出可供模板引擎执行的语义方案。
+禁止改写、删减、新增原文，禁止更改时间。AI不选择具体音效文件，也不决定字体和最终音量。
+
+标题：{title}
+字幕：{json.dumps(source, ensure_ascii=False)}
+
+每段输出：
+- id：与输入完全一致；
+- content_node：hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；
+- keyword：该段原文中连续出现的完整词组，通常2至5字，品牌最多8字；不重要则为空；
+- confidence：0到1；
+- category：benefit/action/number/contrast/entity/cta/none；
+- importance：0到1，只有钩子、反差、结论、数字利益和行动号召适合高于0.72；
+- layout：center/stack-left/stack-right/impact，仅是构图建议。
+
+不要为了热闹而强行强调，整条视频约40%至65%的字幕有关键词即可。只返回JSON：
+{{"items":[{{"id":0,"content_node":"hook","keyword":"原文词组","confidence":0.86,"category":"contrast","importance":0.9,"layout":"impact"}}]}}。"""
+    request = urllib.request.Request(
+        f"{AI_API_BASE_URL}/v1/chat/completions",
+        data=json.dumps({
+            "model": AI_TITLE_MODEL,
+            "temperature": 0.1,
+            "max_tokens": max(520, len(fallback) * 64),
+            "response_format": {"type": "json_object"},
+            "messages": [
+                {"role": "system", "content": "你只依据已确认口播输出严格、可验证的短视频语义导演JSON。"},
+                {"role": "user", "content": prompt},
+            ],
+        }, ensure_ascii=False).encode("utf-8"),
+        headers={"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=DIRECTOR_AI_TIMEOUT_SECONDS) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        raw = extract_provider_text(payload)
+        cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+        parsed = json.loads(cleaned)
+        values = parsed.get("items") if isinstance(parsed, dict) else None
+        if not isinstance(values, list) or len(values) != len(fallback):
+            raise ValueError("共享导演结果数量不一致")
+        for index, value in enumerate(values):
+            if not isinstance(value, dict) or int(value.get("id", -1)) != index:
+                raise ValueError("共享导演结果顺序不一致")
+        with DIRECTOR_PLAN_CACHE_LOCK:
+            if len(DIRECTOR_PLAN_CACHE) >= 128:
+                DIRECTOR_PLAN_CACHE.pop(next(iter(DIRECTOR_PLAN_CACHE)))
+            DIRECTOR_PLAN_CACHE[cache_key] = [dict(value) for value in values]
+        return (
+            apply_shared_director_items(captions, values, title, content_director),
+            f"shared-ai-director:{AI_TITLE_MODEL}",
+        )
+    except (
+        urllib.error.URLError, http.client.RemoteDisconnected, ConnectionError,
+        TimeoutError, OSError, json.JSONDecodeError, ValueError, TypeError,
+    ) as error:
+        print(
+            f"shared director fallback: {type(error).__name__}: {error}",
+            file=sys.stderr,
+            flush=True,
+        )
+        return fallback, "shared-local-director-fallback"
+
+
 def finalize_template9_director_plan(
     captions: list[dict[str, Any]],
     directed_items: list[dict[str, Any]] | None = None,
@@ -957,9 +1288,11 @@ def finalize_template9_director_plan(
         layout = str(value.get("layout") or "")
         if layout not in allowed_layouts:
             layout = "center" if node in {"hook", "core_viewpoint", "number_benefit", "cta"} else ("stack-left" if current_block % 2 == 0 else "stack-right")
-        keyword = safe_director_keyword(
-            text,
-            str(value.get("keyword") or caption.get("keyword") or kinetic_keyword(text)),
+        requested_keyword = str(value.get("keyword") or caption.get("keyword") or "")
+        keyword = (
+            safe_director_keyword(text, requested_keyword)
+            if requested_keyword
+            else grounded_local_keyword(text, node)
         )
         strong = str(value.get("emphasis") or "") == "strong" or node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"}
         caption.update({
@@ -970,6 +1303,7 @@ def finalize_template9_director_plan(
                 "brand_entity": "brand", "supporting": "steady",
             }.get(node, node),
             "keyword": keyword,
+            "keywordLocked": True,
             "blockId": current_block,
             "blockSlot": block_size,
             "layout": layout,
@@ -1012,69 +1346,437 @@ def ai_direct_template9_captions(
     title: str = "",
     content_director: dict[str, Any] | None = None,
 ) -> tuple[list[dict[str, Any]], str]:
-    """Direct the whole talking-head video in one grounded AI request."""
-    fallback = finalize_template9_director_plan(captions)
-    if not AI_API_KEY or not fallback:
-        return fallback, "local-director"
-    source = [
+    """Backward-compatible template-9 wrapper over the shared director."""
+    directed, source = ai_direct_shared_captions(captions, title, content_director)
+    items = [
         {
-            "id": index,
-            "start": round(float(item.get("start") or 0.0), 3),
-            "end": round(float(item.get("end") or 0.0), 3),
-            "text": str(item.get("text") or "").strip(),
+            "content_node": item.get("contentNode"),
+            "keyword": item.get("keyword"),
+            "layout": item.get("directorLayout"),
+            "emphasis": "strong" if float(item.get("contentWeight") or 0.0) >= 0.72 else "normal",
         }
-        for index, item in enumerate(fallback)
+        for item in directed
     ]
-    prompt = f"""你是专业竖屏口播短视频导演。请一次性理解整条口播，并为红白编辑叙事模板规划字幕构图。
-只做导演决策，禁止改写、删减或新增用户原文，禁止更改时间。
+    return finalize_template9_director_plan(directed, items), source
 
-标题：{title}
-字幕：{json.dumps(source, ensure_ascii=False)}
 
-每段输出：
-- id：与输入一致；
-- content_node：hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；
-- keyword：必须是该段 text 中原样连续出现的1至8个字；
-- block_id：从0开始连续递增，同一完整语义组合放同组，每组1至3段；
-- layout：center/stack-left/stack-right/impact；同组应形成清楚的左右或上下组合；
-- emphasis：normal/strong；只有钩子、反差、结论、数字利益、行动号召适合 strong。
+def build_input_adaptation_profile(
+    metadata: dict[str, Any],
+    scene_changes: list[float],
+) -> dict[str, Any]:
+    """Describe how strongly a template may reshape the supplied footage.
 
-节奏原则：不要每句话都强打；不要固定时间套效果；以语义转折换构图；开场和结尾应清晰；正文优先可读。
-只返回JSON：{{"items":[{{"id":0,"content_node":"hook","keyword":"原文词组","block_id":0,"layout":"center","emphasis":"strong"}}]}}。"""
-    request = urllib.request.Request(
-        f"{AI_API_BASE_URL}/v1/chat/completions",
-        data=json.dumps({
-            "model": AI_TITLE_MODEL,
-            "temperature": 0.12,
-            "max_tokens": max(700, len(fallback) * 88),
-            "response_format": {"type": "json_object"},
-            "messages": [
-                {"role": "system", "content": "你是严谨的短视频语义导演，只依据用户确认的原字幕输出结构化JSON。"},
-                {"role": "user", "content": prompt},
-            ],
-        }, ensure_ascii=False).encode("utf-8"),
-        headers={"Authorization": f"Bearer {AI_API_KEY}", "Content-Type": "application/json"},
-        method="POST",
+    A static talking-head source benefits from editorial reframing, while a
+    source that already contains frequent cuts should keep its own visual
+    grammar.  Non-portrait footage is fitted without destructive centre crops.
+    The returned profile is written into the timeline so the render and review
+    report can explain the decision instead of treating every upload alike.
+    """
+    width = max(1, int(metadata.get("width") or 1))
+    height = max(1, int(metadata.get("height") or 1))
+    duration = max(0.1, float(metadata.get("duration") or 0.1))
+    aspect_ratio = width / height
+    cuts_per_minute = len(scene_changes) / duration * 60
+    if cuts_per_minute >= 9:
+        activity = "dynamic-source"
+        camera_strength = 0.32
+        transition_density = 0.48
+    elif cuts_per_minute >= 4:
+        activity = "balanced-source"
+        camera_strength = 0.66
+        transition_density = 0.74
+    else:
+        activity = "static-talking-head"
+        camera_strength = 1.0
+        transition_density = 1.0
+    source_fit = "cover" if aspect_ratio <= 0.72 else "contain-blur"
+    return {
+        "activity": activity,
+        "sourceFit": source_fit,
+        "aspectRatio": round(aspect_ratio, 4),
+        "sceneChangeCount": len(scene_changes),
+        "sceneChangesPerMinute": round(cuts_per_minute, 2),
+        "cameraStrength": camera_strength,
+        "transitionDensity": transition_density,
+        "preserveSourceCuts": activity != "static-talking-head",
+    }
+
+
+def plan_semantic_transition_cues(
+    captions: list[dict[str, Any]],
+    scene_changes: list[float],
+    pause_candidates: list[float],
+    rhythm_candidates: list[float],
+    duration: float,
+    template: dict[str, Any],
+    adaptation: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Direct a mixed camera language from the spoken structure.
+
+    A transition is a change of shot intention, not a coloured overlay.  Each
+    semantic role therefore owns a camera action and a long video deliberately
+    alternates several actions.  Low-value phrase starts only fill large dead
+    zones, so the result stays alive without changing framing on every caption.
+    """
+    source_activity = str(adaptation.get("activity") or "legacy")
+    source_scene_count = int(adaptation.get("sceneChangeCount") or len(scene_changes))
+    transition_direction = template.get("transition_direction")
+    transition_direction = transition_direction if isinstance(transition_direction, dict) else {}
+    # A page turn only makes editorial sense when there is an actual visual
+    # chapter to reveal.  For a single-camera talking head it merely folds the
+    # same face over itself, so route that beat to a deliberate reframe cut.
+    # Page turns are opt-in.  They only read as an editorial transition when
+    # there are two genuinely different scenes to connect; folding one frame
+    # of a talking head over another is visually false and has been removed
+    # from the published 9-12 template language.
+    allow_page_turn = (
+        bool(transition_direction.get("allow_page_turn", False))
+        and source_activity != "static-talking-head"
+        and source_scene_count > 0
     )
+    default_node_rules = {
+        "pain_reversal": ("jump-reframe", "观点反转·跳切换构图", 94, 0.30, 0.82),
+        "core_viewpoint": ("focus-rack", "核心观点·焦点由虚到实", 92, 0.46, 0.78),
+        "number_benefit": ("camera-punch-in", "数字利益点·短促推近", 88, 0.42, 0.82),
+        "example_step": (
+            "page-turn" if allow_page_turn else "jump-reframe",
+            "举例步骤·翻页换章" if allow_page_turn else "举例步骤·换构图进入下一章",
+            86, 0.52 if allow_page_turn else 0.34, 0.76,
+        ),
+        "brand_entity": ("focus-lock", "品牌主体·重新居中锁焦", 80, 0.40, 0.70),
+        "cta": ("closing-push", "行动号召·缓慢推近收束", 90, 0.56, 0.82),
+    }
+    transition_profile = template.get("transition_profile")
+    transition_profile = transition_profile if isinstance(transition_profile, list) else []
+    reason_by_node = {
+        "hook": "开场钩子·建立主镜头",
+        "pain_reversal": "观点反转·切换构图",
+        "core_viewpoint": "核心观点·重新锁定焦点",
+        "number_benefit": "数字利益点·短促强调",
+        "example_step": "举例步骤·进入下一章节",
+        "brand_entity": "品牌主体·居中确认",
+        "cta": "行动号召·收束镜头",
+        "supporting": "补充信息·恢复呼吸",
+    }
+    priority_by_node = {
+        "hook": 96, "pain_reversal": 94, "core_viewpoint": 92,
+        "number_benefit": 88, "example_step": 86, "brand_entity": 80,
+        "cta": 90, "supporting": 48,
+    }
+    node_rules = dict(default_node_rules)
+    for configured in transition_profile:
+        if not isinstance(configured, dict):
+            continue
+        style = str(configured.get("style") or "").strip()
+        if style == "page-turn" and not allow_page_turn:
+            style = "jump-reframe"
+        nodes = configured.get("nodes") if isinstance(configured.get("nodes"), list) else []
+        if not style:
+            continue
+        for node in nodes:
+            node_name = str(node).strip()
+            if not node_name:
+                continue
+            node_rules[node_name] = (
+                style,
+                reason_by_node.get(node_name, "语义节点·导演换镜"),
+                priority_by_node.get(node_name, 72),
+                max(.18, min(.72, float(configured.get("duration") or .42))),
+                max(.05, min(1.0, float(configured.get("intensity") or .68))),
+            )
+    explicit_transition_styles = {
+        "cut": ("jump-reframe", "AI导演·直接换构图", 98, .24, .78),
+        "matched-reframe": ("reframe-cut", "AI导演·匹配重构图", 97, .30, .76),
+        "focus-bridge": ("focus-rack", "AI导演·焦点桥接", 97, .46, .76),
+        # The renderer has no fake brush/page overlay for this intent. A short
+        # focus lock reads as an occluding foreground passing the lens without
+        # covering the speaker with a decorative wipe.
+        "foreground-occlusion": ("focus-lock", "AI导演·前景遮挡后锁焦", 96, .38, .72),
+    }
+    camera_intent_styles = {
+        "push-in": ("camera-punch-in", "AI导演·推近重点", 93, .42, .76),
+        "close-up": ("camera-punch-in", "AI导演·切入近景", 93, .38, .80),
+        "pull-back": ("pullback-reset", "AI导演·拉远复位", 91, .44, .66),
+        "wide": ("pullback-reset", "AI导演·建立宽景", 90, .44, .64),
+        "reframe": ("jump-reframe", "AI导演·重新构图", 92, .30, .72),
+    }
+    candidates: list[dict[str, Any]] = []
+    for point in scene_changes:
+        candidates.append({
+            "start": float(point), "style": "source-cut", "reason": "原片镜头切换",
+            "trigger": "source-scene-change", "priority": 100, "duration": 0.20, "intensity": 0.28,
+        })
+    for caption in captions:
+        node = str(caption.get("contentNode") or "")
+        transition_intent = str(caption.get("transitionIntent") or "").strip()
+        camera_intent = str(caption.get("cameraIntent") or "").strip()
+        if transition_intent in explicit_transition_styles:
+            style, reason, priority, cue_duration, intensity = explicit_transition_styles[transition_intent]
+        elif transition_intent == "none" and camera_intent in {"", "hold"}:
+            continue
+        elif camera_intent in camera_intent_styles:
+            style, reason, priority, cue_duration, intensity = camera_intent_styles[camera_intent]
+        elif node in node_rules:
+            style, reason, priority, cue_duration, intensity = node_rules[node]
+        else:
+            continue
+        candidates.append({
+            "start": float(caption.get("start") or 0.0), "style": style, "reason": reason,
+            "trigger": transition_intent or camera_intent or node,
+            "priority": priority, "duration": cue_duration, "intensity": intensity,
+        })
+    for point in pause_candidates:
+        candidates.append({
+            "start": float(point),
+            "style": "page-turn" if allow_page_turn else "jump-reframe",
+            "reason": "长停顿·翻页换章" if allow_page_turn else "长停顿·构图换章",
+            "trigger": "long-pause", "priority": 64,
+            "duration": 0.52 if allow_page_turn else 0.34, "intensity": 0.66,
+        })
+    for point in rhythm_candidates:
+        candidates.append({
+            "start": float(point), "style": "pullback-reset", "reason": "节奏补点·拉远复位",
+            "trigger": "rhythm", "priority": 26, "duration": 0.44, "intensity": 0.50,
+        })
+
+    # Guarantee a complete shot arc even when AI labels only one or two strong
+    # semantic nodes.  The points still snap to real phrase starts, never to a
+    # word in progress.  These candidates lose to explicit editorial nodes.
+    phrase_starts = sorted({
+        round(float(caption.get("start") or 0.0), 3)
+        for caption in captions
+        if 0.8 <= float(caption.get("start") or 0.0) <= duration - 0.8
+    })
+    coverage_styles = [
+        (0.20, "camera-punch-in", "导演补镜·建立近景", 0.40, 0.64),
+        (0.40, "page-turn", "导演补镜·进入下一章", 0.50, 0.62),
+        (0.60, "focus-rack", "导演补镜·重新锁定重点", 0.44, 0.60),
+        (0.78, "pullback-reset", "导演补镜·拉远复位", 0.46, 0.56),
+    ]
+    configured_coverage = transition_direction.get("coverage_cycle")
+    if isinstance(configured_coverage, list) and configured_coverage:
+        rebuilt_coverage = []
+        for index, configured in enumerate(configured_coverage[:4]):
+            if not isinstance(configured, dict) or not str(configured.get("style") or "").strip():
+                continue
+            rebuilt_coverage.append((
+                max(.12, min(.88, float(configured.get("ratio") or (.20 + index * .20)))),
+                str(configured.get("style")),
+                str(configured.get("reason") or "导演补镜·保持画面动态"),
+                max(.18, min(.72, float(configured.get("duration") or .44))),
+                max(.05, min(1.0, float(configured.get("intensity") or .60))),
+            ))
+        if rebuilt_coverage:
+            coverage_styles = rebuilt_coverage
+    for ratio, style, reason, cue_duration, intensity in coverage_styles:
+        if not phrase_starts:
+            break
+        if style == "page-turn" and not allow_page_turn:
+            style = "jump-reframe"
+            reason = "导演补镜·换构图进入下一章"
+            cue_duration = min(cue_duration, .34)
+        target = duration * ratio
+        point = min(phrase_starts, key=lambda value: abs(value - target))
+        candidates.append({
+            "start": point, "style": style, "reason": reason,
+            "trigger": "director-coverage", "priority": 48,
+            "duration": cue_duration, "intensity": intensity,
+        })
+
+    minimum_gap = max(2.4, float(template.get("minimum_transition_gap_seconds") or 4.8))
+    density = max(0.35, min(1.0, float(adaptation.get("transitionDensity") or 1.0)))
+    maximum = max(1, math.ceil(
+        max(1.0, duration) / 60
+        * float(template.get("maximum_effects_per_minute") or 7)
+        * density
+    ))
+    target_minimum = min(maximum, 2 if duration < 12 else 3 if duration < 18 else 5 if duration < 45 else 8)
+    usable = [item for item in candidates if 0.8 <= item["start"] <= duration - 0.8]
+    selected: list[dict[str, Any]] = []
+    # Higher-value editorial events claim a time slot first.  Source cuts win
+    # collisions, so the template never stacks a synthetic wipe on an existing
+    # edit from the uploaded video.
+    for candidate in sorted(usable, key=lambda item: (-int(item["priority"]), float(item["start"]))):
+        if any(abs(float(candidate["start"]) - float(item["start"])) < minimum_gap for item in selected):
+            continue
+        selected.append(candidate)
+        if len(selected) >= maximum:
+            break
+    if len(selected) < target_minimum:
+        for candidate in sorted(usable, key=lambda item: float(item["start"])):
+            if candidate in selected:
+                continue
+            relaxed_gap = max(1.9, minimum_gap * .72)
+            if any(abs(float(candidate["start"]) - float(item["start"])) < relaxed_gap for item in selected):
+                continue
+            selected.append(candidate)
+            if len(selected) >= target_minimum:
+                break
+
+    # A speech-led piece longer than 18 seconds needs at least one clear
+    # chapter change.  If the transcript contains no example/step label, use
+    # the nearest real phrase start around the first third of the video.  This
+    # keeps the edit varied without cutting through a spoken phrase.
+    if allow_page_turn and duration >= 18 and not any(str(item.get("style")) == "page-turn" for item in selected):
+        page_candidates = [item for item in usable if str(item.get("style")) == "page-turn" and item not in selected]
+        for candidate in sorted(page_candidates, key=lambda item: abs(float(item["start"]) - duration * .36)):
+            if any(abs(float(candidate["start"]) - float(item["start"])) < 1.9 for item in selected):
+                continue
+            if len(selected) < maximum:
+                selected.append(candidate)
+            else:
+                replaceable = next((
+                    item for item in selected
+                    if str(item.get("style")) not in {"source-cut", "closing-push"}
+                    and sum(str(peer.get("style")) == str(item.get("style")) for peer in selected) > 1
+                ), None)
+                if replaceable is None:
+                    replaceable = min(
+                        (
+                            item for item in selected
+                            if str(item.get("style")) not in {"source-cut", "closing-push"}
+                            and abs(float(item.get("start") or 0.0) - float(candidate["start"])) >= 1.9
+                        ),
+                        key=lambda item: (int(item.get("priority") or 0), -abs(float(item["start"]) - duration * .36)),
+                        default=None,
+                    )
+                if replaceable is not None:
+                    selected.remove(replaceable)
+                    selected.append(candidate)
+            break
+
+    selected = sorted(selected, key=lambda item: float(item["start"]))
+    # Never repeat one synthetic camera action back-to-back.  Reframe/reset is
+    # the neutral alternate when the transcript contains repeated node types.
+    neutral_cycle = transition_direction.get("dedupe_cycle")
+    if not isinstance(neutral_cycle, list) or not neutral_cycle:
+        neutral_cycle = ["pullback-reset", "jump-reframe", "focus-rack"]
+    neutral_cycle = [str(item) for item in neutral_cycle if str(item).strip()]
+    previous_style = ""
+    neutral_index = 0
+    for item in selected:
+        style = str(item["style"])
+        if style == previous_style and style != "source-cut":
+            replacement = neutral_cycle[neutral_index % len(neutral_cycle)]
+            neutral_index += 1
+            item["style"] = replacement
+            item["reason"] = f"镜头节奏去重·{replacement}"
+        previous_style = str(item["style"])
+    # Five visible beats should not collapse into one repeated camera move.
+    # Prefer an unused framing action while preserving source cuts and the
+    # closing push.  This makes a static talking-head input feel directed
+    # instead of mechanically zooming in and out on a loop.
+    used_styles: set[str] = set()
+    for item in selected:
+        style = str(item["style"])
+        if style in used_styles and style not in {"source-cut", "closing-push"}:
+            replacement = next((
+                candidate for candidate in neutral_cycle
+                if candidate not in used_styles
+                and candidate != "page-turn"
+                and candidate != style
+            ), "")
+            if replacement:
+                item["style"] = replacement
+                item["reason"] = f"导演镜头去重·{replacement}"
+                item["duration"] = min(float(item.get("duration") or .42), .34) \
+                    if replacement in {"jump-reframe", "reframe-cut"} \
+                    else max(float(item.get("duration") or .42), .44)
+                style = replacement
+        used_styles.add(style)
+    if allow_page_turn and duration >= 18 and not any(str(item.get("style")) == "page-turn" for item in selected):
+        chapter_item = min(
+            (
+                item for item in selected
+                if str(item.get("style")) not in {"source-cut", "closing-push"}
+                and duration * .28 <= float(item.get("start") or 0.0) <= duration * .68
+            ),
+            # Prefer a low-value supporting/coverage beat near the chapter
+            # boundary.  Explicit source cuts and the final CTA stay intact.
+            key=lambda item: (
+                0 if str(item.get("trigger")) in {"director-coverage", "supporting", "rhythm"} else 1,
+                int(item.get("priority") or 0),
+                abs(float(item["start"]) - duration * .44),
+            ),
+            default=None,
+        )
+        if chapter_item is not None:
+            chapter_item["style"] = "page-turn"
+            chapter_item["duration"] = 0.52
+            chapter_item["reason"] = "导演补镜·翻页换章"
+    return [
+        {
+            "start": round(float(item["start"]), 3),
+            "style": str(item["style"]),
+            "reason": str(item["reason"]),
+            "trigger": str(item["trigger"]),
+            "duration": round(float(item["duration"]), 3),
+            "intensity": round(float(item["intensity"]), 3),
+        }
+        for item in selected
+    ]
+
+
+def measure_integrated_loudness(source: Path, seconds: float = 20.0) -> float | None:
+    """Quickly sample integrated loudness without adding a full decode pass."""
+    if not source.is_file() or not shutil.which("ffmpeg"):
+        return None
     try:
-        with urllib.request.urlopen(request, timeout=55) as response:
-            payload = json.loads(response.read().decode("utf-8"))
-        raw = extract_provider_text(payload)
-        cleaned = raw.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
-        parsed = json.loads(cleaned)
-        values = parsed.get("items") if isinstance(parsed, dict) else None
-        if not isinstance(values, list) or len(values) != len(fallback):
-            raise ValueError("导演结果数量不一致")
-        for index, value in enumerate(values):
-            if not isinstance(value, dict) or int(value.get("id", -1)) != index:
-                raise ValueError("导演结果顺序不一致")
-            keyword = re.sub(r"[\s，。！？；：、,.!?;:]", "", str(value.get("keyword") or ""))
-            text = re.sub(r"\s+", "", str(fallback[index].get("text") or ""))
-            if not keyword or len(keyword) > 8 or keyword not in text:
-                raise ValueError("导演强调词不在原文中")
-        return finalize_template9_director_plan(captions, values), f"ai-director:{AI_TITLE_MODEL}"
-    except (urllib.error.URLError, http.client.RemoteDisconnected, ConnectionError, TimeoutError, OSError, json.JSONDecodeError, ValueError, TypeError):
-        return fallback, "local-director-fallback"
+        completed = subprocess.run(
+            [
+                check_binary("ffmpeg"), "-hide_banner", "-nostats", "-t", f"{max(3.0, seconds):.2f}",
+                "-i", str(source), "-vn",
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11:print_format=json",
+                "-f", "null", "-",
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=max(15.0, seconds * 2.0),
+        )
+        match = re.search(r'"input_i"\s*:\s*"([+-]?(?:\d+(?:\.\d+)?|inf))"', completed.stderr or "")
+        if not match or "inf" in match.group(1).lower():
+            return None
+        return float(match.group(1))
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return None
+
+
+def build_audio_mix_profile(
+    source: Path,
+    sfx_file: Path,
+    selected_bgm: dict[str, Any] | None,
+    template: dict[str, Any],
+) -> dict[str, Any]:
+    """Create one speech-first loudness policy shared by templates 9-12."""
+    mix_direction = template.get("mix_direction")
+    mix_direction = mix_direction if isinstance(mix_direction, dict) else {}
+    speech_lufs = measure_integrated_loudness(source)
+    speech_target = max(-20.0, min(-14.0, float(mix_direction.get("speech_target_lufs") or -17.0)))
+    speech_adjustment = 1.0 if speech_lufs is None else 10 ** ((speech_target - speech_lufs) / 20)
+    source_volume = max(0.72, min(1.35, speech_adjustment * float(template.get("speech_gain") or 1.0)))
+    music_file = str((selected_bgm or {}).get("file") or "").strip()
+    music_path = (REMOTION_WORKER_DIR / "public" / music_file).resolve() if music_file else Path()
+    music_lufs = measure_integrated_loudness(music_path) if music_file else None
+    music_reference = max(-20.0, min(-10.0, float(mix_direction.get("music_reference_lufs") or -14.0)))
+    music_adjustment = 1.0 if music_lufs is None else 10 ** ((music_reference - music_lufs) / 20)
+    # All templates now share the same speech-safe bed.  Asset loudness only
+    # contributes a bounded correction; a template may no longer be twice as
+    # loud merely because its source MP3 was mastered differently.
+    bgm_base = max(.04, min(.16, float(mix_direction.get("bgm_speech_volume") or .085)))
+    bgm_speech_volume = max(0.055, min(0.115, bgm_base * music_adjustment))
+    return {
+        "standard": str(mix_direction.get("standard") or "speech-first-v2"),
+        "speechTargetLufs": speech_target,
+        "speechMeasuredLufs": speech_lufs,
+        "sourceVolume": round(source_volume, 3),
+        "bgmReferenceLufs": music_reference,
+        "bgmMeasuredLufs": music_lufs,
+        "bgmSpeechVolume": round(bgm_speech_volume, 3),
+        "bgmGapVolume": round(min(0.13, bgm_speech_volume * max(1.0, min(1.35, float(mix_direction.get("gap_lift") or 1.18)))), 3),
+        "truePeakCeilingDb": max(-3.0, min(-.5, float(mix_direction.get("true_peak_ceiling_db") or -1.5))),
+        "sfxBusVolume": 1.0 if sfx_file.is_file() else 0.0,
+    }
 
 
 def build_remotion_timeline(
@@ -1090,6 +1792,8 @@ def build_remotion_timeline(
     include_bgm: bool = False,
     sfx_cues: list[dict[str, Any]] | None = None,
     transition_points: list[float] | None = None,
+    transition_plan: list[dict[str, Any]] | None = None,
+    input_adaptation: dict[str, Any] | None = None,
 ) -> Path:
     current_template = template_profile(template_id)
     usable_captions = [dict(item) for item in captions if str(item.get("text") or "").strip()]
@@ -1159,7 +1863,25 @@ def build_remotion_timeline(
             caption["sectionEmphasis"] = bool(index == 0 or index % 5 == 0)
     elif template_id in {"viral-pulse", "template-2", "template-3", "template-4", "template-5", "template-6", "template-7", "template-8", "template-9", "template-10", "template-11", "template-12"}:
         if template_id == "template-9" and not all(item.get("blockId") is not None for item in usable_captions):
-            usable_captions, _ = ai_direct_template9_captions(usable_captions, title, current_template.get("content_director"))
+            # Rendering is deterministic: a missing block layout is repaired
+            # locally from the already-confirmed director plan. The render
+            # node never makes a late model request.
+            shared_captions = apply_shared_director_items(
+                usable_captions,
+                None,
+                title,
+                current_template.get("content_director"),
+            )
+            directed_items = [
+                {
+                    "content_node": item.get("contentNode"),
+                    "keyword": item.get("keyword"),
+                    "layout": item.get("directorLayout"),
+                    "emphasis": "strong" if float(item.get("contentWeight") or 0.0) >= .72 else "normal",
+                }
+                for item in shared_captions
+            ]
+            usable_captions = finalize_template9_director_plan(shared_captions, directed_items)
         elif template_id == "template-10":
             usable_captions = finalize_template10_director_plan(usable_captions)
         elif not all(str(item.get("contentNode") or "").strip() for item in usable_captions):
@@ -1198,33 +1920,117 @@ def build_remotion_timeline(
         })
     camera_cues = []
     camera_motion = str(current_template.get("camera_motion") or "none")
-    if template_id == "template-9":
-        blocks: list[list[dict[str, Any]]] = []
-        for caption in usable_captions:
-            block_id = int(caption.get("blockId") or 0)
-            if not blocks or int(blocks[-1][0].get("blockId") or 0) != block_id:
-                blocks.append([caption])
-            else:
-                blocks[-1].append(caption)
-        block_scales = [1.0, 1.012, 1.006, 1.016]
-        block_origins = ["50% 43%", "49% 43%", "51% 43%", "50% 42.5%"]
-        for block_index, block in enumerate(blocks):
+    if template_id in {"template-9", "template-10", "template-11", "template-12"}:
+        # A transition must change the composition, not merely flash for a few
+        # frames.  Keep one camera framing until the next semantic transition
+        # and cut to a visibly different scale/origin at that exact timestamp.
+        # This also gives templates 11 and 12 the camera cues they previously
+        # never received.
+        configured_scales = current_template.get("camera_scale_steps")
+        configured_origins = current_template.get("camera_origin_steps")
+        configured_camera_max = max(1.0, min(1.32, float(current_template.get("camera_scale_max") or 1.24)))
+        camera_scales = (
+            [max(1.0, min(configured_camera_max, float(value))) for value in configured_scales]
+            if isinstance(configured_scales, list) and configured_scales
+            else [1.0, 1.065, 1.025, 1.085]
+        )
+        camera_origins = (
+            [str(value) for value in configured_origins if str(value).strip()]
+            if isinstance(configured_origins, list) and configured_origins
+            else ["50% 43%", "47% 42%", "53% 43%", "50% 41.5%"]
+        )
+        camera_strength = max(0.25, min(1.0, float((input_adaptation or {}).get("cameraStrength") or 1.0)))
+        camera_scales = [round(1.0 + (value - 1.0) * camera_strength, 4) for value in camera_scales]
+        section_points = sorted({
+            max(0.0, min(duration, float(point)))
+            for point in (
+                [float(item.get("start") or 0.0) for item in transition_plan]
+                if transition_plan
+                else (transition_points or [])
+            )
+            if 0.18 < float(point) < duration - 0.18
+        })
+        transition_by_start = {
+            round(float(item.get("start") or 0.0), 3): item
+            for item in (transition_plan or [])
+        }
+        if not transition_by_start:
+            configured_camera_transitions = current_template.get("transition_profile")
+            configured_camera_transitions = (
+                configured_camera_transitions
+                if isinstance(configured_camera_transitions, list)
+                else []
+            )
+            configured_camera_styles = [
+                str(item.get("style") or "")
+                for item in configured_camera_transitions
+                if isinstance(item, dict) and str(item.get("style") or "").strip()
+            ]
+            if configured_camera_styles:
+                transition_by_start = {
+                    round(point, 3): {"style": configured_camera_styles[index % len(configured_camera_styles)]}
+                    for index, point in enumerate(section_points)
+                }
+        section_starts = [0.0, *section_points]
+        section_ends = [*section_points, duration]
+        current_scale = camera_scales[0]
+        current_origin = camera_origins[0]
+        camera_language = current_template.get("camera_language")
+        camera_language = camera_language if isinstance(camera_language, dict) else {}
+        style_states = camera_language.get("style_states")
+        style_states = style_states if isinstance(style_states, dict) else {}
+        for section_index, (section_start, section_end) in enumerate(zip(section_starts, section_ends)):
+            if section_end - section_start < 0.08:
+                continue
+            transition_item = transition_by_start.get(round(section_start, 3), {})
+            transition_item = transition_item if isinstance(transition_item, dict) else {"style": str(transition_item)}
+            transition_style = str(transition_item.get("style") or "")
+            direction = -1 if section_index % 2 else 1
+            configured_state = style_states.get(transition_style)
+            camera_move = "snap"
+            camera_ease = .14
+            if isinstance(configured_state, dict):
+                configured_scale = max(1.0, min(configured_camera_max, float(configured_state.get("scale") or current_scale)))
+                current_scale = round(1.0 + (configured_scale - 1.0) * camera_strength, 4)
+                origins = configured_state.get("origins")
+                if isinstance(origins, list) and origins:
+                    current_origin = str(origins[section_index % len(origins)])
+                else:
+                    current_origin = str(configured_state.get("origin") or current_origin)
+                camera_move = str(configured_state.get("move") or "snap")
+                if camera_move not in {"cut", "snap", "smooth"}:
+                    camera_move = "snap"
+                camera_ease = max(.04, min(.42, float(configured_state.get("ease_seconds") or (.06 if camera_move == "cut" else .14 if camera_move == "snap" else .30))))
+            elif transition_style in {"camera-punch-in", "closing-push"}:
+                current_scale = min(1.14, max(current_scale + .045, 1.065))
+                current_origin = "50% 42%"
+            elif transition_style == "focus-rack":
+                current_scale = max(1.035, min(current_scale, 1.075))
+                current_origin = "50% 42.5%"
+            elif transition_style == "focus-lock":
+                current_scale = 1.04
+                current_origin = "50% 43%"
+            elif transition_style == "page-turn":
+                current_scale = 1.018 if current_scale > 1.055 else 1.065
+                current_origin = "48% 42%" if direction < 0 else "52% 42%"
+            elif transition_style in {"jump-reframe", "reframe-cut"}:
+                current_scale = 1.045
+                current_origin = "47% 42%" if direction < 0 else "53% 42%"
+            elif transition_style == "pullback-reset":
+                current_scale = 1.008
+                current_origin = "50% 43%"
+            elif transition_style == "source-cut":
+                current_scale = min(current_scale, 1.025)
+                current_origin = "50% 43%"
             camera_cues.append({
-                "start": round(max(0.0, float(block[0].get("start") or 0.0)), 3),
-                "end": round(min(duration, float(block[-1].get("end") or duration)), 3),
-                "scale": block_scales[block_index % len(block_scales)],
-                "origin": block_origins[block_index % len(block_origins)],
-            })
-    elif template_id == "template-10":
-        block_scales = [1.0, 1.012, 1.006, 1.018]
-        block_origins = ["50% 43%", "49.5% 43%", "50.5% 43%", "50% 42.5%"]
-        for block_index, caption in enumerate(usable_captions[::2]):
-            end_caption = usable_captions[min(block_index * 2 + 1, len(usable_captions) - 1)]
-            camera_cues.append({
-                "start": round(max(0.0, float(caption.get("start") or 0.0)), 3),
-                "end": round(min(duration, float(end_caption.get("end") or duration)), 3),
-                "scale": block_scales[block_index % len(block_scales)],
-                "origin": block_origins[block_index % len(block_origins)],
+                "start": round(section_start, 3),
+                "end": round(section_end, 3),
+                "scale": round(current_scale, 4),
+                "origin": current_origin,
+                "style": transition_style or "wide-hold",
+                "move": camera_move if transition_style else "cut",
+                "easeDuration": round(camera_ease if transition_style else .04, 3),
+                "reason": str(transition_item.get("reason") or "保持当前景别")[:40],
             })
     elif template_id == "viral-pulse":
         # Template 1 keeps the energetic caption treatment, but camera changes
@@ -1276,38 +2082,57 @@ def build_remotion_timeline(
         ]
     allowed_transition_styles = {
         "soft-punch", "drift-left", "drift-right", "soft-flash",
-        "editorial-cut", "editorial-wipe",
+        "editorial-cut", "editorial-wipe", "source-cut", "semantic-cut",
+        "depth-push", "contrast-cut", "clean-wipe",
+        "red-white-snap", "yellow-brush-wipe", "cyan-panel-slide", "focus-iris-cut",
+        "camera-punch-in", "closing-push", "pullback-reset", "jump-reframe",
+        "focus-rack", "focus-lock", "page-turn", "reframe-cut",
     }
     transition_cues: list[dict[str, Any]] = []
-    transition_rng = random.Random(f"{folder.name}:{title}:{duration:.3f}:transition-v14")
-    transition_offset = transition_rng.randrange(len(configured_transitions))
-    for index, point in enumerate(transition_points or []):
-        nearby_caption = next((caption for caption in usable_captions if abs(float(caption.get("start") or 0) - float(point)) < .55), None)
-        semantic_role = str((nearby_caption or {}).get("semanticRole") or "")
-        content_node = str((nearby_caption or {}).get("contentNode") or "")
-        role_matches = [
-            item for item in configured_transitions
-            if isinstance(item, dict)
-            and (semantic_role in (item.get("roles") or []) or content_node in (item.get("nodes") or []))
-        ]
-        configured = role_matches[0] if role_matches else configured_transitions[(transition_offset + index) % len(configured_transitions)]
-        configured = configured if isinstance(configured, dict) else {}
-        style = str(configured.get("style") or "soft-punch")
-        if style not in allowed_transition_styles:
-            style = "soft-punch"
-        minimum_intensity = .05 if template_id in {"template-9", "template-10", "template-11", "template-12", "viral-pulse"} else .3
-        transition_cues.append({
-            "start": round(float(point), 3),
-            "duration": round(max(.18, min(.48, float(configured.get("duration") or .32))), 3),
-            "style": style,
-            "intensity": round(max(minimum_intensity, min(1.0, float(configured.get("intensity") or .7))), 3),
-        })
+    if transition_plan:
+        for cue in transition_plan:
+            style = str(cue.get("style") or "semantic-cut")
+            transition_cues.append({
+                "start": round(float(cue.get("start") or 0.0), 3),
+                "duration": round(max(.18, min(.56, float(cue.get("duration") or .26))), 3),
+                "style": style if style in allowed_transition_styles else "semantic-cut",
+                "intensity": round(max(.05, min(1.0, float(cue.get("intensity") or .55))), 3),
+                "reason": str(cue.get("reason") or "语义换章")[:40],
+                "trigger": str(cue.get("trigger") or "semantic")[:40],
+            })
+    else:
+        transition_rng = random.Random(f"{folder.name}:{title}:{duration:.3f}:transition-v14")
+        transition_offset = transition_rng.randrange(len(configured_transitions))
+        for index, point in enumerate(transition_points or []):
+            nearby_caption = next((caption for caption in usable_captions if abs(float(caption.get("start") or 0) - float(point)) < .55), None)
+            semantic_role = str((nearby_caption or {}).get("semanticRole") or "")
+            content_node = str((nearby_caption or {}).get("contentNode") or "")
+            role_matches = [
+                item for item in configured_transitions
+                if isinstance(item, dict)
+                and (semantic_role in (item.get("roles") or []) or content_node in (item.get("nodes") or []))
+            ]
+            configured = role_matches[0] if role_matches else configured_transitions[(transition_offset + index) % len(configured_transitions)]
+            configured = configured if isinstance(configured, dict) else {}
+            style = str(configured.get("style") or "soft-punch")
+            if style not in allowed_transition_styles:
+                style = "soft-punch"
+            minimum_intensity = .05 if template_id in {"template-9", "template-10", "template-11", "template-12", "viral-pulse"} else .3
+            transition_cues.append({
+                "start": round(float(point), 3),
+                "duration": round(max(.18, min(.48, float(configured.get("duration") or .32))), 3),
+                "style": style,
+                "intensity": round(max(minimum_intensity, min(1.0, float(configured.get("intensity") or .7))), 3),
+                "reason": "兼容模板节奏点",
+                "trigger": content_node or semantic_role or "legacy",
+            })
     bgm_tracks = current_template.get("bgm_tracks")
     if not isinstance(bgm_tracks, list):
         bgm_tracks = []
     selected_bgm = None
     if include_bgm:
         selected_bgm = select_content_music(bgm_tracks, title, usable_captions, f"{folder.name}:{duration:.3f}")
+    audio_mix = build_audio_mix_profile(source, sfx_file, selected_bgm, current_template)
     focus_cues: list[dict[str, Any]] = []
     if template_id == "template-12" and usable_captions:
         semantic_candidates = [
@@ -1328,20 +2153,24 @@ def build_remotion_timeline(
                     caption["captionStyle"] = "focus-lower"
                     caption["emphasis"] = "normal"
                     caption["role"] = "anchor"
-                    caption["keyword"] = ""
+                    # The spotlight changes the composition, but it must not
+                    # erase the content director's confirmed keyword accent.
     timeline = {
         "version": 2,
         "sourceFile": source.name,
-        "sourceVolume": float(current_template.get("speech_gain") or 1.0),
+        "sourceVolume": float(audio_mix["sourceVolume"]),
+        "sourceLayout": input_adaptation or {"sourceFit": "cover", "activity": "legacy"},
+        "audioMix": audio_mix,
         "bgmFile": str((selected_bgm or {}).get("file") or current_template.get("bgm_file") or "") if include_bgm else "",
         "bgmTrackId": str((selected_bgm or {}).get("id") or current_template.get("music_track_id") or "") if include_bgm else "",
-        "bgmVolume": float((selected_bgm or {}).get("volume") or current_template.get("bgm_volume") or 0.05),
+        "bgmVolume": float(audio_mix["bgmSpeechVolume"]),
+        "bgmGapVolume": float(audio_mix["bgmGapVolume"]),
         "bgmLoop": bool(current_template.get("bgm_loop", True)),
         # Use the mixed track assembled from the selected template sound pool.
         # This guarantees that effects reach the exported MP4 and also avoids
         # playing the same cue twice.
         "sfxFile": sfx_file.name if include_sfx and sfx_file.exists() else "",
-        "sfxVolume": 0.9,
+        "sfxVolume": float(audio_mix["sfxBusVolume"]),
         "sfxCues": [],
         "duration": round(duration, 3),
         "fps": 30,
@@ -1495,6 +2324,9 @@ def upload_file_to_cos(source: Path, object_key: str, content_type: str) -> None
 
 def public_job(job: dict[str, Any]) -> dict[str, Any]:
     result = {**job}
+    # The immutable plan can be large and is an internal render contract. Keep
+    # status polling lightweight; expose only the summary written by process_job.
+    result.pop("director_plan", None)
     if cos_configured() and result.get("result_object_key"):
         result["result_url"] = signed_cos_url(str(result["result_object_key"]), 2 * 60 * 60)
     if cos_configured() and result.get("cover_object_key"):
@@ -1920,7 +2752,11 @@ def ass_text(value: str) -> str:
 
 def template_profile(template_id: str) -> dict[str, Any]:
     refresh_remote_template_registry()
-    profile = {**DEFAULT_TEMPLATE_VALUES, **TEMPLATES.get(template_id, TEMPLATES["template-9"])}
+    profile = {
+        **DEFAULT_TEMPLATE_VALUES,
+        **TEMPLATES.get(template_id, TEMPLATES["template-9"]),
+        "id": template_id,
+    }
     package = TEMPLATE_PACKAGES.get(template_id)
     if not package:
         return profile
@@ -1988,6 +2824,12 @@ def template_profile(template_id: str) -> dict[str, Any]:
         "enable_chapters": body.get("enable_chapters", False),
         "enable_cards": body.get("enable_cards", False),
         "camera_motion": body.get("camera_motion", "none"),
+        "camera_mode": body.get("camera_mode", ""),
+        "camera_scale_steps": body.get("camera_scale_steps", []),
+        "camera_origin_steps": body.get("camera_origin_steps", []),
+        "camera_language": package.get("camera_language", {}) if isinstance(package.get("camera_language"), dict) else {},
+        "transition_direction": package.get("transition_direction", {}) if isinstance(package.get("transition_direction"), dict) else {},
+        "typography_direction": package.get("typography_direction", {}) if isinstance(package.get("typography_direction"), dict) else {},
         "content_director": package.get("content_director", {}) if isinstance(package.get("content_director"), dict) else {},
         "ending_mode": ending.get("mode", "none"),
         "ending_seconds": ending.get("max_seconds", 0.0),
@@ -1998,6 +2840,7 @@ def template_profile(template_id: str) -> dict[str, Any]:
         "sfx_gain": audio.get("sfx_gain", 0.14),
         "speech_gain": max(0.2, min(1.0, float(audio.get("speech_gain") or 1.0))),
         "sfx_profile": audio.get("sfx", {}) if isinstance(audio.get("sfx"), dict) else {},
+        "mix_direction": audio.get("mix", {}) if isinstance(audio.get("mix"), dict) else {},
         "bgm_file": music.get("file", "") if music.get("enabled", False) else "",
         "bgm_tracks": [
             {
@@ -3749,6 +4592,9 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
         keyword_origin = str(item.get("keywordOrigin") or "").strip()
         if keyword_origin in {"ai", "local", "none"}:
             normalized["keywordOrigin"] = keyword_origin
+        if isinstance(item.get("keywordSfx"), bool):
+            normalized["keywordSfx"] = bool(item["keywordSfx"])
+            normalized["keywordImportance"] = "primary" if item["keywordSfx"] else "regular"
         caption_lines = [
             re.sub(r"\s+", "", str(line or "")).strip("，。！？；：、,.!?;: ")
             for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:2]
@@ -3757,8 +4603,66 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
         if caption_lines and caption_plain_text("".join(caption_lines)) == caption_plain_text(text):
             normalized["captionLineMode"] = "two-line" if len(caption_lines) == 2 else "single"
             normalized["captionLines"] = caption_lines
+        camera_intent = str(item.get("cameraIntent") or "").strip()
+        if camera_intent in {"hold", "push-in", "pull-back", "reframe", "close-up", "wide"}:
+            normalized["cameraIntent"] = camera_intent
+        transition_intent = str(item.get("transitionIntent") or "").strip()
+        if transition_intent in {"none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"}:
+            normalized["transitionIntent"] = transition_intent
+        sfx_role = str(item.get("sfxRole") or "").strip()
+        if sfx_role in {"none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"}:
+            normalized["sfxRole"] = sfx_role
         captions.append(normalized)
     return sorted(captions, key=lambda item: (float(item["start"]), float(item["end"])))
+
+
+def normalized_director_plan(
+    value: Any,
+    duration: float,
+    template_id: str,
+    edited_captions: list[dict[str, Any]],
+) -> dict[str, Any] | None:
+    """Validate the immutable app-side director contract without executing it.
+
+    The worker accepts semantic intent only. It still owns exact camera curves,
+    transition implementations, sound files, loudness and render parameters.
+    """
+    if not isinstance(value, dict) or value.get("kind") != "viral-director-plan":
+        return None
+    if str(value.get("templateId") or "") != template_id:
+        return None
+    captions = normalized_edited_captions(value.get("captions"), duration)
+    if not captions or len(captions) != len(edited_captions):
+        return None
+    for planned, confirmed in zip(captions, edited_captions):
+        if abs(float(planned["start"]) - float(confirmed["start"])) > 0.08:
+            return None
+        if abs(float(planned["end"]) - float(confirmed["end"])) > 0.08:
+            return None
+        if caption_plain_text(str(planned["text"])) != caption_plain_text(str(confirmed["text"])):
+            return None
+    bgm_mood = str(value.get("bgmMood") or "professional")
+    if bgm_mood not in {"calm", "warm", "professional", "uplifting", "neutral"}:
+        bgm_mood = "professional"
+    source = str(value.get("source") or "local-fallback")
+    if source not in {"ai", "cache", "local-fallback", "user-confirmed"}:
+        source = "local-fallback"
+    return {
+        "version": 1,
+        "kind": "viral-director-plan",
+        "promptVersion": str(value.get("promptVersion") or "viral-director-fast-v1")[:80],
+        "templateId": template_id,
+        "title": str(value.get("title") or "")[:40],
+        "titleLines": [str(line).strip()[:40] for line in value.get("titleLines", [])[:2] if str(line).strip()]
+        if isinstance(value.get("titleLines"), list) else [],
+        "duration": round(max(0.1, min(600.0, duration)), 3),
+        "captions": captions,
+        "bgmMood": bgm_mood,
+        "source": source,
+        "model": str(value.get("model") or "local-director")[:80],
+        "degraded": bool(value.get("degraded")),
+        "plannedAt": max(0, int(value.get("plannedAt") or int(time.time() * 1000))),
+    }
 
 
 def build_template_video_graph(
@@ -3878,7 +4782,16 @@ def process_job(job_id: str) -> None:
             float(current_template.get("cover_time_seconds") or 0.8),
         )
         edited_captions = normalized_edited_captions(job.get("edited_captions"), metadata["duration"])
-        caption_plan_ready = bool(job.get("caption_plan_ready")) and bool(edited_captions)
+        template_id = str(job.get("template_id") or "template-9")
+        director_plan = normalized_director_plan(
+            job.get("director_plan"),
+            metadata["duration"],
+            template_id,
+            edited_captions,
+        )
+        if director_plan:
+            edited_captions = [{**item} for item in director_plan["captions"]]
+        caption_plan_ready = bool(edited_captions) and (bool(job.get("caption_plan_ready")) or bool(director_plan))
         info: Any = None
         words: list[dict[str, Any]] = []
         if edited_captions:
@@ -3909,13 +4822,13 @@ def process_job(job_id: str) -> None:
                 if isinstance(raw_words, list):
                     words.extend(dict(word) for word in raw_words if isinstance(word, dict))
             analysis_mode = "tencent_flash_asr"
-            write_job(job_id, stage="script", progress=34, message="口播识别完成，正在用大模型校正错字并按语义重新断句…")
-            segments, caption_segments, caption_source = ai_correct_and_segment_captions(
+            write_job(job_id, stage="script", progress=34, message="口播识别完成，正在按完整语义快速断句…")
+            caption_segments = local_semantic_caption_segments(
                 segments,
                 int(current_template.get("caption_min_chars") or 4),
                 int(current_template["caption_max_chars"]),
             )
-            caption_source = f"tencent-flash:{caption_source}"
+            caption_source = "tencent-flash:local-semantic"
         asr_segments = [{**segment} for segment in segments]
         caption_completeness = caption_completeness_report(asr_segments, caption_segments)
         if (
@@ -3952,20 +4865,12 @@ def process_job(job_id: str) -> None:
             title = confirmed_title
             title_source = "user-confirmed"
         else:
-            fallback_title = derive_title(caption_segments, confirmed_title)
-            title, title_source = ai_title_from_transcript(
-                transcript,
-                fallback_title,
-                current_template,
-            )
-        translations_ready = caption_plan_ready and all(str(item.get("translation") or "").strip() for item in caption_segments)
-        if current_template.get("caption_bilingual") and not translations_ready:
-            write_job(job_id, stage="translate", progress=44, message="正在生成中英双语字幕，接口异常时会自动使用中文字幕继续…")
-            translations = ai_translate_caption_segments(caption_segments)
-            for segment, translation in zip(caption_segments, translations):
-                segment["translation"] = translation
+            title = derive_title(caption_segments, confirmed_title)
+            title_source = "local-transcript"
+        # Translation is optional in the immutable plan. A missing translation
+        # renders as clean Chinese-only captions instead of blocking the job
+        # behind another model request.
         highlight_source = "not-required"
-        template_id = str(job.get("template_id") or "template-9")
         if caption_plan_ready and template_id == "template-9":
             directed_items = [
                 {
@@ -3977,38 +4882,72 @@ def process_job(job_id: str) -> None:
             ]
             caption_segments = finalize_template9_director_plan(caption_segments, directed_items)
             highlight_source = "precomputed-lip-sync-plan"
-        elif template_id == "template-9":
-            write_job(job_id, stage="director", progress=48, message="AI 正在统一规划内容节点、字幕组合与镜头节奏…")
-            caption_segments, highlight_source = ai_direct_template9_captions(
-                caption_segments,
-                title,
-                current_template.get("content_director"),
-            )
-        elif template_id == "template-10":
+        elif caption_plan_ready and template_id == "template-10":
             write_job(job_id, stage="director", progress=48, message="正在规划黄白双语字幕、语义大字与镜头节奏…")
             caption_segments = finalize_template10_director_plan(caption_segments)
-            highlight_source = "precomputed-lip-sync-plan" if caption_plan_ready else "template-10-local-director"
-        elif template_id in {"template-11", "template-12"}:
+            highlight_source = "precomputed-lip-sync-plan"
+        elif caption_plan_ready and template_id in {"template-11", "template-12"}:
             caption_segments = semantic_caption_plan(
                 caption_segments,
                 title,
                 current_template.get("content_director"),
             )
-            if caption_plan_ready:
-                highlight_source = "precomputed-lip-sync-plan"
-        if not caption_plan_ready and template_id in {"template-9", "template-10", "template-11", "template-12"}:
-            write_job(job_id, stage="director", progress=49, message="AI 正在结合整条口播判断需要提亮的完整关键词…")
-            caption_segments, keyword_source = ai_select_caption_highlights(caption_segments, title)
-            highlight_source = (
-                f"{highlight_source}+{keyword_source}"
-                if highlight_source not in {"", "not-required"}
-                else keyword_source
+            highlight_source = "precomputed-lip-sync-plan"
+        elif template_id in {"template-9", "template-10", "template-11", "template-12"}:
+            write_job(
+                job_id,
+                stage="director",
+                progress=48,
+                message="正在应用已确认的导演规则与本地安全兜底…",
+            )
+            shared_captions = apply_shared_director_items(
+                caption_segments, None, title, current_template.get("content_director")
+            )
+            highlight_source = "shared-local-director"
+            if template_id == "template-9":
+                directed_items = [
+                    {
+                        "content_node": item.get("contentNode"),
+                        "keyword": item.get("keyword"),
+                        "layout": item.get("directorLayout"),
+                        "emphasis": "strong" if float(item.get("contentWeight") or 0.0) >= 0.72 else "normal",
+                    }
+                    for item in shared_captions
+                ]
+                caption_segments = finalize_template9_director_plan(shared_captions, directed_items)
+            elif template_id == "template-10":
+                caption_segments = finalize_template10_director_plan(shared_captions)
+            else:
+                caption_segments = shared_captions
+        if not director_plan:
+            director_plan = {
+                "version": 1,
+                "kind": "viral-director-plan",
+                "promptVersion": "viral-director-fast-v1",
+                "templateId": template_id,
+                "title": title,
+                "titleLines": [line for line in str(title).split("\n") if line][:2],
+                "duration": round(float(metadata["duration"]), 3),
+                "captions": [{**item} for item in caption_segments],
+                "bgmMood": "professional",
+                "source": "local-fallback",
+                "model": "worker-local-director",
+                "degraded": True,
+                "plannedAt": int(time.time() * 1000),
+            }
+        director_plan_file = folder / "director-plan.json"
+        if not director_plan_file.exists():
+            director_plan_file.write_text(
+                json.dumps(director_plan, ensure_ascii=False, indent=2),
+                "utf-8",
             )
         if template_id in {"template-9", "template-10", "template-11", "template-12"} and current_template.get("caption_long_text_mode") == "adaptive-two-line":
             caption_segments = plan_adaptive_caption_lines(
                 caption_segments,
                 int(current_template.get("caption_line_max_chars") or 8),
             )
+        if template_id in {"template-9", "template-10", "template-11", "template-12"}:
+            caption_segments = mark_keyword_sfx_emphasis(caption_segments)
         highlighted_caption_count = sum(
             bool(str(item.get("keyword") or "").strip())
             for item in caption_segments
@@ -4047,31 +4986,20 @@ def process_job(job_id: str) -> None:
                 if str(caption.get("contentNode") or "")
                 in {"pain_reversal", "core_viewpoint", "number_benefit", "example_step", "cta"}
             ]
-            if template_id in {"template-9", "template-10"}
+            if template_id in {"template-9", "template-10", "template-11", "template-12"}
             else []
         )
-        transition_candidates = [] if template_id in {"template-11", "template-12"} else sorted(
-            scene_changes
-            + pause_candidates
-            + node_transition_candidates
-            + ([] if node_transition_candidates else rhythm_candidates)
+        input_adaptation = build_input_adaptation_profile(metadata, scene_changes)
+        transition_plan = plan_semantic_transition_cues(
+            caption_segments,
+            scene_changes,
+            pause_candidates,
+            [] if node_transition_candidates else rhythm_candidates,
+            metadata["duration"],
+            current_template,
+            input_adaptation,
         )
-        transition_points: list[float] = []
-        minimum_transition_gap = float(current_template.get("minimum_transition_gap_seconds") or 3.0)
-        for point in transition_candidates:
-            if point < 0.8 or point > metadata["duration"] - 0.8:
-                continue
-            if not transition_points or point - transition_points[-1] >= minimum_transition_gap:
-                transition_points.append(round(point, 3))
-        maximum_effects = max(
-            1,
-            math.ceil(
-                metadata["duration"]
-                / 60
-                * float(current_template.get("maximum_effects_per_minute") or 18)
-            ),
-        )
-        transition_points = transition_points[:maximum_effects]
+        transition_points = [float(item["start"]) for item in transition_plan]
         create_ass(
             subtitle_file,
             output_size[0],
@@ -4111,6 +5039,8 @@ def process_job(job_id: str) -> None:
             include_bgm=include_bgm,
             sfx_cues=sfx_cues,
             transition_points=transition_points,
+            transition_plan=transition_plan,
+            input_adaptation=input_adaptation,
         )
         use_remotion = remotion_renderer_available()
         active_output_size = (1080, 1920) if use_remotion else output_size
@@ -4135,6 +5065,12 @@ def process_job(job_id: str) -> None:
             word_count=len(words),
             scene_changes=scene_changes,
             transition_points=transition_points,
+            transition_plan=transition_plan,
+            input_adaptation=input_adaptation,
+            director_plan_version=int(director_plan.get("version") or 1),
+            director_plan_source=str(director_plan.get("source") or "local-fallback"),
+            director_plan_model=str(director_plan.get("model") or "local-director"),
+            director_plan_file="director-plan.json",
             output_width=active_output_size[0],
             output_height=active_output_size[1],
             renderer="remotion-vertical-v1" if use_remotion else "ffmpeg-fallback",
@@ -4837,6 +5773,7 @@ async def create_job(
     title: str = Form(""),
     merchant_json: str = Form("{}"),
     captions_json: str = Form("[]"),
+    director_plan_json: str = Form("{}"),
     caption_plan_ready: str = Form("false"),
     include_sfx: str = Form("true"),
     include_bgm: str = Form("false"),
@@ -4884,6 +5821,10 @@ async def create_job(
         edited_captions = json.loads(captions_json)
     except json.JSONDecodeError:
         edited_captions = []
+    try:
+        director_plan = json.loads(director_plan_json)
+    except json.JSONDecodeError:
+        director_plan = {}
     now = int(time.time() * 1000)
     job = {
         "id": job_id,
@@ -4895,6 +5836,7 @@ async def create_job(
         "title": title.strip()[:40],
         "merchant": merchant if isinstance(merchant, dict) else {},
         "edited_captions": edited_captions if isinstance(edited_captions, list) else [],
+        "director_plan": director_plan if isinstance(director_plan, dict) else {},
         "caption_plan_ready": form_boolean(caption_plan_ready, False),
         "include_sfx": form_boolean(include_sfx, True),
         "include_bgm": form_boolean(include_bgm, False),
@@ -4909,10 +5851,10 @@ async def create_job(
     }
     job_file(job_id).write_text(json.dumps(job, ensure_ascii=False, indent=2), "utf-8")
     EXECUTOR.submit(process_job, job_id)
-    return {
+    return public_job({
         **job,
         "status_url": str(request.base_url).rstrip("/") + f"/v1/jobs/{job_id}",
-    }
+    })
 
 
 @app.get("/v1/jobs/{job_id}")

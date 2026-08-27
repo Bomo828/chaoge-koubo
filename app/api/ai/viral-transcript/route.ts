@@ -1,25 +1,52 @@
+import { createHash } from "node:crypto";
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
 import { repairEnglishWordFragments, segmentViralCaptions } from "../../../../lib/viral-caption-segmentation";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
+import {
+  buildViralDirectorPlan,
+  markViralKeywordSfx,
+  type ViralCaptionPlanItem,
+} from "../../../../lib/viral-workflow";
 
-type Caption = {
-  start: number;
-  end: number;
-  text: string;
-  captionLineMode?: "single" | "two-line";
-  captionLines?: string[];
-};
+type Caption = ViralCaptionPlanItem;
 
 type ProviderResponse = {
   choices?: Array<{ message?: { content?: unknown } }>;
   output_text?: string;
 };
 
-// The transcript has already been produced by Tencent Flash ASR.  Use the
-// smaller model first for the lightweight correction/segmentation pass and
-// reserve the larger model for a single fallback attempt.
-const TRANSCRIPT_MODELS = ["gpt-5.4-mini", "gpt-5.5"] as const;
+// The transcript has already been produced by Tencent Flash ASR. One short AI
+// pass is enough; render workers must never repeat this request.
+const TRANSCRIPT_MODEL = "gpt-5.4-mini";
+const TRANSCRIPT_TIMEOUT_MS = 8_000;
+const TRANSCRIPT_CACHE_MAX = 96;
+const transcriptCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>();
+
+function transcriptCacheKey(value: unknown) {
+  return createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function readTranscriptCache(key: string) {
+  const entry = transcriptCache.get(key);
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    transcriptCache.delete(key);
+    return null;
+  }
+  transcriptCache.delete(key);
+  transcriptCache.set(key, entry);
+  return entry.value;
+}
+
+function writeTranscriptCache(key: string, value: Record<string, unknown>) {
+  transcriptCache.set(key, { expiresAt: Date.now() + 24 * 60 * 60 * 1000, value });
+  while (transcriptCache.size > TRANSCRIPT_CACHE_MAX) {
+    const oldest = transcriptCache.keys().next().value;
+    if (!oldest) break;
+    transcriptCache.delete(oldest);
+  }
+}
 
 function extractText(value: unknown): string {
   if (typeof value === "string") return value.trim();
@@ -117,6 +144,16 @@ function fallbackEnglishTitle(captions: Caption[]) {
     .map((caption) => caption.text.replace(/[.!?]+$/g, "").replace(/\s+/g, " ").trim())
     .find((text) => textUnits(text) >= 3 && textUnits(text) <= 12) || "";
   return completeTitle(candidate);
+}
+
+function fallbackChineseTitle(captions: Caption[]) {
+  const phrases = captions
+    .map((caption) => phraseText(caption.text))
+    .filter(Boolean);
+  const standalone = phrases.find((text) => text.length >= 6 && text.length <= 16);
+  if (standalone) return standalone;
+  const combined = phrases.slice(0, 2).join("");
+  return combined.length >= 6 ? combined.slice(0, 15) : combined;
 }
 
 function chunkPhrase(value: string, maxChars = 15, minTailChars = 5) {
@@ -292,6 +329,65 @@ function captionsWithSemanticLines(captions: Caption[], rawCaptions: unknown) {
   });
 }
 
+function localNode(text: string, index: number, total: number): ViralCaptionPlanItem["contentNode"] {
+  const value = text.replace(/\s+/g, "");
+  if (index === 0 || /为什么|千万|别再|很多人|你知道|想不想/.test(value)) return "hook";
+  if (index === total - 1 && /欢迎|咨询|预约|点击|联系|关注|留言/.test(value)) return "cta";
+  if (/但是|不过|其实|相反|而是|不是|问题|难|担心/.test(value)) return "pain_reversal";
+  if (/\d|提升|增长|效率|收益|优惠|免费|省/.test(value)) return "number_benefit";
+  if (/比如|例如|第一|第二|第三|首先|其次|步骤|如何|怎么/.test(value)) return "example_step";
+  if (/老师|品牌|公司|门店|产品|我们是|我是/.test(value)) return "brand_entity";
+  if (/所以|记住|核心|结论|关键|本质|重点|方法|价值/.test(value)) return "core_viewpoint";
+  return "supporting";
+}
+
+function localKeyword(text: string) {
+  const value = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
+  const match = value.match(/\d+(?:\.\d+)?[%折元万+]?|[一二三四五六七八九十百千万]+(?:个|类|项|种)|效率|提升|关键|核心|方法|步骤|技能|专业|免费|优惠|结果|问题|价值|马上|现在/);
+  if (match?.[0]) return match[0].slice(0, 8);
+  if (value.length <= 4) return value;
+  return value.slice(Math.max(0, Math.floor(value.length * 0.5) - 2), Math.max(0, Math.floor(value.length * 0.5) - 2) + 4);
+}
+
+function localIntents(node: ViralCaptionPlanItem["contentNode"], weight: number) {
+  return {
+    cameraIntent: (node === "hook" ? "push-in" : node === "number_benefit" ? "close-up" : node === "example_step" ? "reframe" : node === "cta" ? "pull-back" : weight >= 0.72 ? "push-in" : "hold") as ViralCaptionPlanItem["cameraIntent"],
+    transitionIntent: (node === "hook" ? "cut" : node === "pain_reversal" ? "focus-bridge" : node === "example_step" ? "matched-reframe" : node === "cta" ? "foreground-occlusion" : "none") as ViralCaptionPlanItem["transitionIntent"],
+    sfxRole: ({ hook: "hook", pain_reversal: "reversal", core_viewpoint: "viewpoint", number_benefit: "number", example_step: "step", brand_entity: "brand", cta: "cta", supporting: "none" } as const)[node || "supporting"],
+  };
+}
+
+function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: number) {
+  const rawItems = Array.isArray(rawCaptions) ? rawCaptions : [];
+  const enriched = captions.map((caption, index) => {
+    const midpoint = (caption.start + caption.end) / 2;
+    const raw = rawItems.find((item) => {
+      if (!item || typeof item !== "object") return false;
+      const record = item as Record<string, unknown>;
+      return midpoint >= Number(record.start) - 0.2 && midpoint <= Number(record.end) + 0.2;
+    }) as Record<string, unknown> | undefined || {};
+    const node = ["hook", "pain_reversal", "core_viewpoint", "number_benefit", "example_step", "brand_entity", "cta", "supporting"].includes(String(raw.content_node))
+      ? raw.content_node as ViralCaptionPlanItem["contentNode"]
+      : localNode(caption.text, index, captions.length);
+    const weight = Math.max(0, Math.min(1, Number(raw.weight) || (index === 0 || index === captions.length - 1 ? 0.9 : 0.55)));
+    const candidate = typeof raw.keyword === "string" ? raw.keyword.replace(/\s+/g, "").slice(0, 8) : "";
+    const keyword = candidate && plainText(caption.text).includes(plainText(candidate)) ? candidate : localKeyword(caption.text);
+    const local = localIntents(node, weight);
+    return {
+      ...caption,
+      keyword,
+      translation: typeof raw.translation === "string" ? raw.translation.trim().slice(0, 240) : "",
+      contentNode: node,
+      contentWeight: weight,
+      keywordOrigin: candidate ? "ai" as const : "local" as const,
+      cameraIntent: ["hold", "push-in", "pull-back", "reframe", "close-up", "wide"].includes(String(raw.camera_intent)) ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"] : local.cameraIntent,
+      transitionIntent: ["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"].includes(String(raw.transition_intent)) ? raw.transition_intent as ViralCaptionPlanItem["transitionIntent"] : local.transitionIntent,
+      sfxRole: ["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"].includes(String(raw.sfx_role)) ? raw.sfx_role as ViralCaptionPlanItem["sfxRole"] : local.sfxRole,
+    };
+  });
+  return markViralKeywordSfx(enriched, duration);
+}
+
 export async function POST(request: Request) {
   const member = await getMemberSession();
   if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
@@ -301,6 +397,7 @@ export async function POST(request: Request) {
       captions?: unknown;
       frames?: unknown;
       duration?: unknown;
+      templateId?: unknown;
     };
     const duration = Math.max(1, Math.min(600, Number(body.duration) || 60));
     const sourceCaptions = normalizeSourceCaptions(body.captions, duration);
@@ -312,6 +409,17 @@ export async function POST(request: Request) {
       : [];
     const sourceLanguage = languageOf(sourceCaptions.map((item) => item.text).join(" "));
     const sourceText = sourceCaptions.map((item) => item.text).join(sourceLanguage === "en" ? " " : "");
+    const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
+    const cacheKey = transcriptCacheKey({
+      version: "viral-transcript-director-v1",
+      model: TRANSCRIPT_MODEL,
+      templateId,
+      duration,
+      sourceCaptions,
+      frameHashes: frames.map((frame) => transcriptCacheKey(frame)),
+    });
+    const cached = readTranscriptCache(cacheKey);
+    if (cached) return Response.json({ ...cached, cache: "hit" });
     const system = `你是多语言短视频口播校对师。输入已经包含从视频人声识别出的原始文字和真实时间轴，另有视频关键帧供你核对专有名词。
 要求：
 1. 保留原口播的全部有效信息，不总结、不缩写、不加入营销文案，不虚构原片没有说过的内容。
@@ -323,7 +431,10 @@ export async function POST(request: Request) {
 7. 避免残句：上一条不能停在“的、和、与、就、都、也、在、让、属于、无论”等未完成词语，下一条不能以“的、就、都、也、才、属于、想念的”等承接词开头。“也有让人一吃就想念的经典风味”“无论是早餐午餐还是下午茶”这类结构必须保持完整。
 8. 16秒口播通常整理为5到9条，32秒口播通常整理为9到16条；宁可一条稍长，也不要拆成莫名其妙的半句话。
 9. title_lines必须把title按完整语义分为1到2行；caption_lines只负责同一条字幕内部的视觉换行，最多2行。各行拼接必须与原文字完全一致，禁止拆开品牌名、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。
-只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"]}]}。`;
+10. 在同一次请求中为每条字幕补充keyword、content_node、weight、camera_intent、transition_intent、sfx_role和translation。镜头与转场只表达语义意图，不输出具体时间和像素。
+11. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；camera_intent只能是hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。普通承接句不要强加音效。
+12. bgm_mood只能是calm/warm/professional/uplifting/neutral。
+只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","bgm_mood":"professional","captions":[{"start":0,"end":2.1,"text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"],"keyword":"提升","translation":"Improve your skills","content_node":"hook","weight":0.9,"camera_intent":"push-in","transition_intent":"cut","sfx_role":"hook"}]}。`;
     const content = [
       {
         type: "text",
@@ -335,29 +446,26 @@ export async function POST(request: Request) {
     let endpoint: "chat-completions" | "local" = "local";
     let selectedModel: string = "local-segmentation";
     let response: ProviderResponse | null = null;
-    for (const model of TRANSCRIPT_MODELS) {
-      try {
-        response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
-          method: "POST",
-          signal: AbortSignal.timeout(28_000),
-          body: JSON.stringify({
-            model,
-            temperature: 0.05,
-            max_tokens: tokenBudget,
-            response_format: { type: "json_object" },
-            messages: [
-              { role: "system", content: system },
-              { role: "user", content },
-            ],
-          }),
-        });
-        if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
-        endpoint = "chat-completions";
-        selectedModel = model;
-        break;
-      } catch {
-        response = null;
-      }
+    try {
+      response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
+        method: "POST",
+        signal: AbortSignal.timeout(TRANSCRIPT_TIMEOUT_MS),
+        body: JSON.stringify({
+          model: TRANSCRIPT_MODEL,
+          temperature: 0.05,
+          max_tokens: tokenBudget,
+          response_format: { type: "json_object" },
+          messages: [
+            { role: "system", content: system },
+            { role: "user", content },
+          ],
+        }),
+      });
+      if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
+      endpoint = "chat-completions";
+      selectedModel = TRANSCRIPT_MODEL;
+    } catch {
+      response = null;
     }
     let parsed: Record<string, unknown> = {};
     if (response) {
@@ -375,7 +483,7 @@ export async function POST(request: Request) {
       : sourceLanguage === "en"
         ? segmentViralCaptions(sourceCaptions)
         : localSentenceCaptions(sourceCaptions);
-    const captions = captionsWithSemanticLines(baseCaptions, parsed.captions);
+    const captions = directedCaptions(captionsWithSemanticLines(baseCaptions, parsed.captions), parsed.captions, duration);
     const titleCandidates = [
       parsed.title,
       ...(Array.isArray(parsed.titleCandidates) ? parsed.titleCandidates : []),
@@ -383,10 +491,21 @@ export async function POST(request: Request) {
     const aiTitle = titleCandidates
       .map(completeTitle)
       .find((candidate) => candidate && languageOf(candidate) === sourceLanguage) || "";
-    const rawTitle = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : "");
+    const rawTitle = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : fallbackChineseTitle(captions));
     const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
     const title = titleLayout.serializedTitle;
-    return Response.json({
+    const directorPlan = buildViralDirectorPlan({
+      templateId,
+      title,
+      titleLines: titleLayout.lines,
+      duration,
+      captions,
+      bgmMood: parsed.bgm_mood as "calm" | "warm" | "professional" | "uplifting" | "neutral",
+      source: response ? "ai" : "local-fallback",
+      model: selectedModel,
+      degraded: !response || !aiCaptions.length,
+    });
+    const result = {
       title,
       titleLines: titleLayout.lines,
       summary: typeof parsed.summary === "string"
@@ -394,11 +513,16 @@ export async function POST(request: Request) {
         : response
           ? "AI 已完成英文口播校对与整句分段。"
           : "AI 模型繁忙，已自动使用完整单词与停顿分段，可继续编辑。",
-      captions,
+      captions: directorPlan.captions,
+      directorPlan,
+      planReady: true,
       model: selectedModel,
       endpoint,
       degraded: !response || !aiCaptions.length,
-    });
+      cache: "miss",
+    };
+    writeTranscriptCache(cacheKey, result);
+    return Response.json(result);
   } catch (error) {
     return aiErrorResponse(error);
   }

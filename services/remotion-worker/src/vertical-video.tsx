@@ -478,7 +478,10 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
     const compactTranslation = String(caption.translation ?? "").trim();
     const captionLines = adaptiveCaptionLines(caption, compact, Math.max(6, Math.min(10, timeline.theme.captionLineMaxChars ?? 9)));
     const strong = caption.emphasis === "strong" || caption.role === "focus";
-    const plain = caption.captionStyle === "plain" || caption.captionStyle === "focus-lower";
+    // A focus-lower composition moves the subtitle below the spotlight, but
+    // it still needs the director-selected keyword accent. Only an explicitly
+    // plain caption suppresses keyword coloring.
+    const plain = caption.captionStyle === "plain";
     const baseFontSize = strong ? 140 : 122;
     const keywordFontSize = Math.round(baseFontSize * 1.12);
     const svgHeight = captionLines.length * 154 + 16;
@@ -1851,34 +1854,109 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
     ? Math.max(0, Math.min(1, (currentTime - transitionCue.start) / transitionDuration))
     : 0;
   const transitionPulse = transitionCue ? Math.sin(Math.PI * transitionProgress) : 0;
+  const transitionEase = Easing.inOut(Easing.cubic)(transitionProgress);
   const transitionIntensity = transitionCue?.intensity ?? .72;
   const editorialCut = transitionCue?.style === "editorial-cut";
   const editorialWipe = transitionCue?.style === "editorial-wipe";
+  const sourceCut = transitionCue?.style === "source-cut";
+  const semanticCut = transitionCue?.style === "semantic-cut";
+  const depthPush = transitionCue?.style === "depth-push";
+  const contrastCut = transitionCue?.style === "contrast-cut";
+  const cleanWipe = transitionCue?.style === "clean-wipe";
+  const redWhiteSnap = transitionCue?.style === "red-white-snap";
+  const yellowBrushWipe = transitionCue?.style === "yellow-brush-wipe";
+  const cyanPanelSlide = transitionCue?.style === "cyan-panel-slide";
+  const focusIrisCut = transitionCue?.style === "focus-iris-cut";
+  const cameraPunchIn = transitionCue?.style === "camera-punch-in";
+  const closingPush = transitionCue?.style === "closing-push";
+  const pullbackReset = transitionCue?.style === "pullback-reset";
+  const jumpReframe = transitionCue?.style === "jump-reframe";
+  const focusRack = transitionCue?.style === "focus-rack";
+  const focusLock = transitionCue?.style === "focus-lock";
+  const pageTurn = transitionCue?.style === "page-turn";
+  const reframeCut = transitionCue?.style === "reframe-cut";
+  const transitionDirection = Math.round((transitionCue?.start ?? 0) * 10) % 2 === 0 ? 1 : -1;
   const viralTransitionBoost = viralPulse ? .72 : 1;
-  const transitionScale = transitionCue?.style === "soft-flash"
-    ? 1 + transitionPulse * .024 * transitionIntensity * viralTransitionBoost
+  // Director transitions must read as an intentional change of shot, even on
+  // a small phone preview.  These curves create an outgoing/incoming action;
+  // the persistent camera cue then holds the new composition after the cue.
+  // Templates 9-12 reproduce the reference edit by switching between stable
+  // wide/medium/close camera states.  The persistent camera cue owns the zoom;
+  // multiplying it by a temporary pulse created a rubber-band effect that the
+  // approved references do not have.
+  const directorCameraChange = cameraPunchIn || closingPush || pullbackReset || focusRack || focusLock || jumpReframe || reframeCut;
+  const transitionScale = directorCameraChange
+    ? 1
+    : pageTurn
+      ? interpolate(transitionProgress, [0, 1], [.94, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.out(Easing.cubic)})
+    : transitionCue?.style === "soft-flash"
+    ? 1 + transitionPulse * .04 * transitionIntensity * viralTransitionBoost
+    : sourceCut
+      ? 1 + transitionPulse * .008 * transitionIntensity
+    : semanticCut
+      ? 1 + transitionPulse * .018 * transitionIntensity
+    : depthPush
+      ? 1 + transitionPulse * .052 * transitionIntensity
+    : contrastCut
+      ? 1 + transitionPulse * .032 * transitionIntensity
+    : cleanWipe
+      ? 1 + transitionPulse * .016 * transitionIntensity
+    : redWhiteSnap
+      ? 1 + transitionPulse * .072 * transitionIntensity
+    : yellowBrushWipe
+      ? 1 + transitionPulse * .045 * transitionIntensity
+    : cyanPanelSlide
+      ? 1 + transitionPulse * .025 * transitionIntensity
+    : focusIrisCut
+      ? 1 + transitionPulse * .065 * transitionIntensity
     : editorialCut
-      ? 1 + transitionPulse * .075 * transitionIntensity * viralTransitionBoost
+      ? 1 + transitionPulse * .11 * transitionIntensity * viralTransitionBoost
       : editorialWipe
-        ? 1 + transitionPulse * .042 * transitionIntensity * viralTransitionBoost
-        : 1 + transitionPulse * .048 * transitionIntensity * viralTransitionBoost;
+        ? 1 + transitionPulse * .07 * transitionIntensity * viralTransitionBoost
+        : 1 + transitionPulse * .085 * transitionIntensity * viralTransitionBoost;
   const transitionShift = transitionCue?.style === "drift-left"
-    ? -transitionPulse * (viralPulse ? 2.4 : 2.1) * transitionIntensity
+    ? -transitionPulse * (viralPulse ? 4.8 : 4.5) * transitionIntensity
     : transitionCue?.style === "drift-right"
-      ? transitionPulse * (viralPulse ? 2.4 : 2.1) * transitionIntensity
+      ? transitionPulse * (viralPulse ? 4.8 : 4.5) * transitionIntensity
       : 0;
   const transitionRotation = transitionCue?.style === "drift-left"
-    ? -transitionPulse * .22 * transitionIntensity
+    ? -transitionPulse * .35 * transitionIntensity
     : transitionCue?.style === "drift-right"
-      ? transitionPulse * .22 * transitionIntensity
+      ? transitionPulse * .35 * transitionIntensity
       : 0;
   const transitionBlur = transitionCue?.style === "drift-left" || transitionCue?.style === "drift-right"
     ? transitionPulse * (viralPulse ? 1.2 : 1.4) * transitionIntensity
-    : 0;
+    : jumpReframe || reframeCut
+      ? 0
+    : focusRack
+      ? Math.max(0, (1 - transitionEase) * 11.5 * transitionIntensity)
+      : focusLock
+        ? Math.max(0, (1 - transitionEase) * 7.2 * transitionIntensity)
+        : pageTurn
+          ? Math.max(0, (1 - transitionEase) * 2.2 * transitionIntensity)
+          : 0;
   const editorialCutShift = editorialCut
     ? (transitionProgress < .5 ? -1 : 1) * transitionPulse * (viralPulse ? 2 : 1.65) * transitionIntensity
-    : 0;
+    : contrastCut
+      ? (transitionProgress < .5 ? -1 : 1) * transitionPulse * 1.15 * transitionIntensity
+      : cleanWipe
+        ? transitionPulse * .8 * transitionIntensity
+        : 0;
+  const signatureShift = redWhiteSnap
+    ? transitionDirection * transitionPulse * 2.4 * transitionIntensity
+    : yellowBrushWipe
+      ? transitionDirection * transitionPulse * 1.6 * transitionIntensity
+      : cyanPanelSlide
+        ? transitionDirection * transitionPulse * 4.2 * transitionIntensity
+        : 0;
+  const directorShift = jumpReframe || reframeCut
+    ? 0
+    : pageTurn
+        ? transitionDirection * (1 - transitionEase) * 2.6 * transitionIntensity
+        : 0;
   const editorialWipeX = -118 + transitionProgress * 236;
+  const cleanWipeX = -112 + transitionProgress * 224;
+  const containBlur = timeline.sourceLayout?.sourceFit === "contain-blur";
   const automaticScale = mintKnowledge
     ? [1, 1.01, 1.018, 1.008][Math.floor(activeCaptionIndex / 2) % 4]
     : boldImpact ? [1, 1.026, 1.012, 1.034][activeCaptionIndex % 4]
@@ -1886,9 +1964,21 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
   const automaticOrigin = ["50% 44%", "46% 42%", "54% 43%"][activeCaptionIndex % 3];
   const previousCameraCue = cameraCueIndex > 0 ? timeline.cameraCues?.[cameraCueIndex - 1] : cameraCue;
   const semanticPairCamera = studioStyle?.id === 1;
-  const cameraEaseEnd = cameraCue ? Math.min(cameraCue.end, cameraCue.start + (semanticPairCamera ? .46 : .34)) : currentTime;
+  const configuredCameraEase = cameraCue?.easeDuration
+    ?? (cameraCue?.move === "cut" ? .055 : cameraCue?.move === "smooth" ? .30 : .14);
+  const cameraEaseDuration = steppedStudioCamera && cameraCue
+    ? configuredCameraEase
+    : transitionCue && cameraCue && Math.abs(transitionCue.start - cameraCue.start) < .08
+      ? transitionDuration
+      : semanticPairCamera ? .46 : .42;
+  const cameraEaseEnd = cameraCue ? Math.min(cameraCue.end, cameraCue.start + cameraEaseDuration) : currentTime;
   const easedCameraScale = steppedStudioCamera && cameraCue
-    ? cameraCue.scale
+    ? interpolate(
+      currentTime,
+      [cameraCue.start, Math.max(cameraCue.start + .001, cameraEaseEnd)],
+      [previousCameraCue?.scale ?? cameraCue.scale, cameraCue.scale],
+      {extrapolateLeft: "clamp", extrapolateRight: "clamp", easing: Easing.inOut(Easing.cubic)},
+    )
     : cyanMinimal
     ? 1
     : (viralPulse || semanticPairCamera) && cameraCue
@@ -1899,6 +1989,9 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
       {extrapolateLeft: "clamp", extrapolateRight: "clamp"},
     )
       : cameraCue?.scale ?? automaticScale;
+  const directorBreath = steppedStudioCamera
+    ? Math.sin(currentTime * Math.PI * 2 / 7.5) * .0028 * (timeline.sourceLayout?.cameraStrength ?? 1)
+    : 0;
   const kineticCut = kinetic && !yellowBrush
     ? timeline.captions.reduce((maximum, caption, index) => {
       if (index === 0) return maximum;
@@ -1920,32 +2013,64 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
   const fade = firstFrameCoverActive
     ? 1
     : interpolate(frame, [0, 7, durationInFrames - 18, durationInFrames - 1], [0, 1, 1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
+  const pageTurnFreezeFrame = transitionCue
+    ? Math.max(0, secondsToFrames(transitionCue.start, fps) - 1)
+    : 0;
+  const pageTurnAngle = transitionDirection * transitionEase * 104;
+  const pageTurnTranslate = transitionDirection * transitionEase * -7;
   return (
     <AbsoluteFill style={{overflow: "hidden", background: blackYellowFocus ? "#000" : timeline.theme.background, opacity: fade}}>
       <AbsoluteFill style={{
-        transform: cyanMinimal && !cameraCue
+        // Templates 9-12 use stepped semantic framing, but they must still
+        // execute the short transition cue.  The old branch returned only the
+        // camera scale, which made every configured transition invisible.
+        transform: cyanMinimal && !cameraCue && !transitionCue
           ? "scale(1)"
           : steppedStudioCamera
-          ? `scale(${easedCameraScale})`
-          : `scale(${(easedCameraScale + punch * .045 + kineticCut * .028) * transitionScale}) translateX(${transitionShift + editorialCutShift}%) rotate(${transitionRotation}deg)`,
+          ? `scale(${(easedCameraScale + directorBreath) * transitionScale}) translateX(${transitionShift + editorialCutShift + signatureShift + directorShift}%) rotate(${transitionRotation}deg)`
+          : `scale(${(easedCameraScale + punch * .045 + kineticCut * .028 + directorBreath) * transitionScale}) translateX(${transitionShift + editorialCutShift + signatureShift + directorShift}%) rotate(${transitionRotation}deg)`,
         transformOrigin: cameraCue?.origin ?? automaticOrigin,
-        filter: steppedStudioCamera ? "none" : cyanMinimal ? "none" : `blur(${transitionBlur}px) contrast(${mintKnowledge ? 1.01 + punch * .02 : 1.02 + punch * .04 + kineticCut * .025}) saturate(${mintKnowledge ? .98 + punch * .03 : yellowBrush ? 1.0 + punch * .04 : 1.02 + punch * .08})`,
+        filter: steppedStudioCamera
+          ? `blur(${transitionBlur}px) contrast(${1.01 + transitionPulse * (focusRack || focusLock ? .07 : focusIrisCut ? .13 : redWhiteSnap ? .09 : .035)}) saturate(${1.01 + transitionPulse * (cyanPanelSlide ? .11 : .05)})`
+          : cyanMinimal ? "none" : `blur(${transitionBlur}px) contrast(${mintKnowledge ? 1.01 + punch * .02 : 1.02 + punch * .04 + kineticCut * .025}) saturate(${mintKnowledge ? .98 + punch * .03 : yellowBrush ? 1.0 + punch * .04 : 1.02 + punch * .08})`,
         WebkitMaskImage: focusCue ? `radial-gradient(ellipse ${focusRadius * 1.1}% ${focusRadius * .87}% at ${focusCue.x ?? 50}% ${focusCue.y ?? 51}%, #000 0%, #000 91%, rgba(0,0,0,.94) 95%, transparent 100%)` : undefined,
         maskImage: focusCue ? `radial-gradient(ellipse ${focusRadius * 1.1}% ${focusRadius * .87}% at ${focusCue.x ?? 50}% ${focusCue.y ?? 51}%, #000 0%, #000 91%, rgba(0,0,0,.94) 95%, transparent 100%)` : undefined,
       }}>
-        <OffthreadVideo
-          src={staticFile(timeline.sourceFile)}
-          volume={timeline.sourceVolume ?? 1}
-          style={{width: "100%", height: "100%", objectFit: "cover"}}
-        />
+        {containBlur ? (
+          <>
+            <OffthreadVideo
+              src={staticFile(timeline.sourceFile)}
+              volume={0}
+              style={{width: "100%", height: "100%", objectFit: "cover", filter: "blur(34px) brightness(.58) saturate(.82)", transform: "scale(1.1)"}}
+            />
+            <OffthreadVideo
+              src={staticFile(timeline.sourceFile)}
+              volume={timeline.sourceVolume ?? 1}
+              style={{width: "100%", height: "100%", objectFit: "contain"}}
+            />
+          </>
+        ) : (
+          <OffthreadVideo
+            src={staticFile(timeline.sourceFile)}
+            volume={timeline.sourceVolume ?? 1}
+            style={{width: "100%", height: "100%", objectFit: "cover"}}
+          />
+        )}
         {firstFrameCoverActive ? (
           <Sequence from={0} durationInFrames={1}>
             <Freeze frame={coverFrame}>
-              <OffthreadVideo
-                src={staticFile(timeline.sourceFile)}
-                volume={0}
-                style={{width: "100%", height: "100%", objectFit: "cover"}}
-              />
+              {containBlur ? (
+                <>
+                  <OffthreadVideo src={staticFile(timeline.sourceFile)} volume={0} style={{width: "100%", height: "100%", objectFit: "cover", filter: "blur(34px) brightness(.58)", transform: "scale(1.1)"}} />
+                  <OffthreadVideo src={staticFile(timeline.sourceFile)} volume={0} style={{width: "100%", height: "100%", objectFit: "contain"}} />
+                </>
+              ) : (
+                <OffthreadVideo
+                  src={staticFile(timeline.sourceFile)}
+                  volume={0}
+                  style={{width: "100%", height: "100%", objectFit: "cover"}}
+                />
+              )}
             </Freeze>
           </Sequence>
         ) : null}
@@ -1954,14 +2079,116 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
       <AbsoluteFill style={{
         background: transitionCue?.style === "soft-flash" ? "#fffaf0" : timeline.theme.accent,
         opacity: transitionCue
-          ? transitionPulse * transitionIntensity * (transitionCue.style === "soft-flash" ? .16 : editorialCut ? .13 : .035)
+          ? transitionPulse * transitionIntensity * (transitionCue.style === "soft-flash" ? .28 : sourceCut ? .025 : semanticCut ? .06 : depthPush ? .07 : contrastCut ? .13 : cleanWipe ? .06 : cameraPunchIn || closingPush || pullbackReset ? .012 : jumpReframe || reframeCut ? .018 : focusRack || focusLock ? .035 : pageTurn ? .025 : redWhiteSnap ? .16 : yellowBrushWipe ? .10 : cyanPanelSlide ? .08 : focusIrisCut ? .08 : editorialCut ? .26 : editorialWipe ? .14 : .12)
           : 0,
       }} />
+      {redWhiteSnap ? (
+        <>
+          <AbsoluteFill style={{
+            background: "linear-gradient(104deg, transparent 0%, transparent 34%, rgba(255,255,255,.96) 43%, rgba(164,34,42,.96) 49%, rgba(255,255,255,.92) 55%, transparent 66%, transparent 100%)",
+            opacity: Math.min(.88, transitionPulse * transitionIntensity * 1.18),
+            transform: `translateX(${transitionDirection * (-108 + transitionProgress * 216)}%) skewX(-9deg)`,
+            mixBlendMode: "screen",
+          }} />
+          <AbsoluteFill style={{
+            borderTop: "8px solid rgba(255,255,255,.88)",
+            borderBottom: "8px solid rgba(153,28,38,.86)",
+            opacity: transitionPulse * transitionIntensity * .72,
+            transform: `scaleY(${.84 + transitionPulse * .16})`,
+          }} />
+        </>
+      ) : null}
+      {yellowBrushWipe ? (
+        <>
+          <AbsoluteFill style={{
+            background: "linear-gradient(100deg, transparent 0%, transparent 24%, rgba(255,224,42,.18) 31%, rgba(255,224,42,.94) 44%, rgba(255,250,218,.98) 50%, rgba(255,224,42,.92) 56%, rgba(255,224,42,.16) 69%, transparent 76%, transparent 100%)",
+            opacity: Math.min(.92, transitionIntensity * 1.08),
+            transform: `translateX(${transitionDirection * (-118 + transitionProgress * 236)}%) skewX(-12deg)`,
+            mixBlendMode: "screen",
+          }} />
+          <AbsoluteFill style={{
+            background: "repeating-linear-gradient(174deg, transparent 0 46%, rgba(255,226,45,.84) 47% 48.2%, transparent 49.2% 100%)",
+            opacity: transitionPulse * transitionIntensity * .66,
+            transform: `translateX(${transitionDirection * (-76 + transitionProgress * 152)}%)`,
+          }} />
+        </>
+      ) : null}
+      {cyanPanelSlide ? (
+        <>
+          <AbsoluteFill style={{
+            background: "linear-gradient(90deg, rgba(75,238,229,.02) 0%, rgba(75,238,229,.76) 46%, rgba(235,255,254,.94) 50%, rgba(75,238,229,.76) 54%, rgba(75,238,229,.02) 100%)",
+            width: "34%",
+            left: transitionDirection > 0 ? 0 : "66%",
+            opacity: Math.min(.84, transitionPulse * transitionIntensity * 1.12),
+            transform: `translateX(${transitionDirection * (-108 + transitionProgress * 216)}%)`,
+            mixBlendMode: "screen",
+          }} />
+          <AbsoluteFill style={{
+            boxShadow: `inset ${transitionDirection * 18}px 0 0 rgba(75,238,229,${transitionPulse * .42})`,
+            opacity: transitionIntensity,
+          }} />
+        </>
+      ) : null}
+      {focusIrisCut ? (
+        <>
+          <AbsoluteFill style={{
+            background: `radial-gradient(circle at 50% 46%, transparent 0%, transparent ${40 + (1 - transitionPulse) * 38}%, rgba(0,0,0,.82) ${55 + (1 - transitionPulse) * 35}%, rgba(0,0,0,.96) 100%)`,
+            opacity: transitionIntensity * .92,
+          }} />
+          <AbsoluteFill style={{
+            background: `radial-gradient(circle at 50% 46%, transparent ${34 + transitionPulse * 7}%, rgba(255,225,0,.94) ${35 + transitionPulse * 7}%, rgba(255,225,0,.12) ${38 + transitionPulse * 8}%, transparent ${42 + transitionPulse * 9}%)`,
+            opacity: transitionPulse * transitionIntensity,
+            mixBlendMode: "screen",
+          }} />
+        </>
+      ) : null}
+      {pageTurn ? (
+        <AbsoluteFill style={{perspective: 1550, pointerEvents: "none", background: `rgba(0,0,0,${.08 * transitionPulse})`}}>
+          {/* The actual previous video frame is the page.  The live incoming
+              shot is already visible underneath, so this reads as a real
+              before/after transition instead of a decorative overlay. */}
+          <AbsoluteFill style={{
+            transformOrigin: transitionDirection > 0 ? "left center" : "right center",
+            transform: `translateX(${pageTurnTranslate}%) rotateY(${pageTurnAngle}deg)`,
+            boxShadow: `${transitionDirection * -34}px 0 52px rgba(0,0,0,${.14 + transitionPulse * .34})`,
+            backfaceVisibility: "hidden",
+            overflow: "hidden",
+          }}>
+            <Freeze frame={pageTurnFreezeFrame}>
+              <OffthreadVideo
+                src={staticFile(timeline.sourceFile)}
+                volume={0}
+                style={{width: "100%", height: "100%", objectFit: containBlur ? "contain" : "cover"}}
+              />
+            </Freeze>
+            <AbsoluteFill style={{
+              background: transitionDirection > 0
+                ? "linear-gradient(90deg, rgba(255,255,255,.03), transparent 60%, rgba(255,255,255,.48) 88%, rgba(0,0,0,.40))"
+                : "linear-gradient(90deg, rgba(0,0,0,.40), rgba(255,255,255,.48) 12%, transparent 40%, rgba(255,255,255,.03))",
+              opacity: .22 + transitionPulse * .68,
+            }} />
+          </AbsoluteFill>
+          <AbsoluteFill style={{
+            background: transitionDirection > 0
+              ? "linear-gradient(90deg, transparent 0 5%, rgba(0,0,0,.22) 12%, transparent 28%)"
+              : "linear-gradient(270deg, transparent 0 5%, rgba(0,0,0,.22) 12%, transparent 28%)",
+            opacity: transitionPulse * .62,
+          }} />
+        </AbsoluteFill>
+      ) : null}
       {editorialWipe ? (
         <AbsoluteFill style={{
           background: "linear-gradient(90deg, transparent 0%, transparent 24%, rgba(139,30,45,.78) 42%, rgba(255,253,248,.94) 50%, rgba(139,30,45,.78) 58%, transparent 76%, transparent 100%)",
           opacity: Math.min(1, transitionIntensity * .92),
           transform: `translateX(${editorialWipeX}%) skewX(-8deg)`,
+          mixBlendMode: "screen",
+        }} />
+      ) : null}
+      {cleanWipe ? (
+        <AbsoluteFill style={{
+          background: `linear-gradient(90deg, transparent 0%, transparent 45%, ${timeline.theme.accent} 49%, rgba(255,255,255,.86) 50%, ${timeline.theme.accent} 51%, transparent 55%, transparent 100%)`,
+          opacity: Math.min(.72, transitionIntensity),
+          transform: `translateX(${cleanWipeX}%) skewX(-5deg)`,
           mixBlendMode: "screen",
         }} />
       ) : null}
@@ -1994,7 +2221,7 @@ export const MerchantViralVertical: React.FC<{timeline: ViralTimeline}> = ({time
             const seconds = audioFrame / fps;
             const speaking = timeline.captions.some((caption) => seconds >= caption.start && seconds <= caption.end);
             const speechSafe = timeline.bgmVolume ?? .115;
-            const phraseGapLift = Math.min(.18, speechSafe * 1.18);
+            const phraseGapLift = timeline.bgmGapVolume ?? Math.min(.125, speechSafe * 1.18);
             const envelope = interpolate(
               audioFrame,
               [0, fadeFrames, durationInFrames - fadeFrames, durationInFrames - 1],

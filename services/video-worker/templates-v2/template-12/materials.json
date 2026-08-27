@@ -10,8 +10,8 @@
   ],
   "sfx": [
     {"id": "open-impact", "file": "sfx/template-12/open-impact.ogg", "role": "opening", "source": "A080 自用IP剪辑高级感常用音效"},
-    {"id": "caption-pop", "file": "sfx/template-12/caption-pop.ogg", "role": "caption", "source": "A080 自用IP剪辑高级感常用音效"},
-    {"id": "keyword-tick", "file": "sfx/template-12/keyword-tick.ogg", "role": "keyword", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "focus-pop", "file": "sfx/template-12/focus-pop.wav", "role": "caption-keyword", "source": "A080 自用IP剪辑高级感常用音效"},
+    {"id": "focus-chime", "file": "sfx/template-12/focus-chime.wav", "role": "number-conclusion", "source": "A080 自用IP剪辑高级感常用音效"},
     {"id": "focus-swish", "file": "sfx/template-12/focus-swish.ogg", "role": "radial-focus", "source": "A080 自用IP剪辑高级感常用音效"},
     {"id": "end-confirm", "file": "sfx/template-12/end-confirm.ogg", "role": "ending", "source": "A080 自用IP剪辑高级感常用音效"}
   ],

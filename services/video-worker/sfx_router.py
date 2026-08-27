@@ -18,10 +18,9 @@ def build_semantic_sfx_cues(
 ) -> list[dict[str, Any]]:
     """Select speech-safe SFX from semantic nodes and confirmed highlights.
 
-    Node sounds keep the editorial structure audible.  For templates that opt
-    in, a highlighted keyword can also promote an otherwise quiet supporting
-    caption into a restrained accent cue.  The cue is placed on the confirmed
-    word timestamp when available instead of always firing at caption start.
+    Visual highlights stay richer than the sound track.  Only captions marked
+    as ``keywordSfx`` may trigger a semantic/keyword hit; all other highlighted
+    words remain silent.  The cue is placed on the confirmed word timestamp.
     """
     configured = template.get("sfx_profile") if isinstance(template.get("sfx_profile"), dict) else {}
 
@@ -31,11 +30,22 @@ def build_semantic_sfx_cues(
         except (TypeError, ValueError):
             return fallback
 
+    isolated_package = (
+        str(template.get("package_mode") or "") == "isolated"
+        or str(template.get("fallback_policy") or "") == "forbid-cross-template"
+    )
+
+    def configured_pool(name: str, fallback: list[str]) -> list[Any]:
+        value = configured.get(name)
+        if isinstance(value, list):
+            return value
+        return [] if isolated_package else fallback
+
     pools: dict[str, list[Any]] = {
-        "opening": configured.get("opening_pool") or ["sfx/maximize_003.ogg", "sfx/open_002.ogg"],
-        "accent": configured.get("accent_pool") or ["sfx/tick_001.ogg", "sfx/select_001.ogg"],
-        "transition": configured.get("transition_pool") or ["sfx/open_002.ogg", "sfx/maximize_003.ogg", "sfx/select_001.ogg"],
-        "ending": configured.get("ending_pool") or ["sfx/confirmation_001.ogg"],
+        "opening": configured_pool("opening_pool", ["sfx/maximize_003.ogg", "sfx/open_002.ogg"]),
+        "accent": configured_pool("accent_pool", ["sfx/tick_001.ogg", "sfx/select_001.ogg"]),
+        "transition": configured_pool("transition_pool", ["sfx/open_002.ogg", "sfx/maximize_003.ogg", "sfx/select_001.ogg"]),
+        "ending": configured_pool("ending_pool", ["sfx/confirmation_001.ogg"]),
     }
     for semantic_role in ("hook", "number", "reversal", "step", "conclusion", "brand", "cta", "warning"):
         semantic_pool = configured.get(f"{semantic_role}_pool")
@@ -47,7 +57,12 @@ def build_semantic_sfx_cues(
     rng = random.Random(seed)
     minimum_gap = max(1.8, float(configured.get("minimum_gap_seconds") or 3.0))
     hits_per_minute = max(4.0, float(configured.get("maximum_hits_per_minute") or 10.0))
-    maximum_hits = max(2, min(10, math.ceil(duration / 60 * hits_per_minute)))
+    # Respect each template's per-minute density on longer videos.  The old
+    # global cap of 10 made the latter half of 60s+ videos noticeably silent,
+    # even when a template explicitly requested a denser semantic sound bed.
+    # Keep a generous absolute ceiling so malformed captions cannot create an
+    # unbounded number of overlays.
+    maximum_hits = max(2, min(30, math.ceil(duration / 60 * hits_per_minute)))
     cues: list[dict[str, Any]] = []
     last_file = ""
     recent_files: list[str] = []
@@ -59,6 +74,23 @@ def build_semantic_sfx_cues(
     role_counts = {role: 0 for role in pools}
     level_map = configured.get("level_map") if isinstance(configured.get("level_map"), dict) else {}
     role_gain_map = configured.get("role_gain_map") if isinstance(configured.get("role_gain_map"), dict) else {}
+    if str(configured.get("mix_standard") or "") in {"speech-first-v1", "speech-first-v2"}:
+        # Templates keep their own sound identities, but not independent volume
+        # scales.  These role gains make a number hit equally prominent across
+        # templates 9-12 while keeping transitions quieter than spoken words.
+        role_gain_map = {
+            "opening": 1.30,
+            "hook": 1.55,
+            "reversal": 1.45,
+            "conclusion": 1.40,
+            "number": 1.65,
+            "step": 1.50,
+            "brand": 1.40,
+            "cta": 1.60,
+            "accent": 1.45,
+            "transition": 1.15,
+            "ending": 1.30,
+        }
     maximum_cue_volume = max(
         0.1,
         min(0.5, numeric(configured.get("maximum_cue_volume"), 0.34)),
@@ -171,12 +203,8 @@ def build_semantic_sfx_cues(
         return caption_start + (caption_end - caption_start) * relative
 
     add_cue(0.08, "opening", 0.12)
-    transition_set = {round(float(value), 2) for value in transition_points}
-    candidates: list[tuple[float, str, str, str]] = (
-        []
-        if sparse_semantic_only
-        else [(float(value), "transition", "", "") for value in transition_points]
-    )
+    candidates: list[tuple[float, str, str, str]] = []
+    keyword_candidates: list[tuple[float, str, str, str]] = []
     for index, caption in enumerate(captions):
         start = float(caption.get("start") or 0.0)
         text = str(caption.get("text") or "")
@@ -187,10 +215,14 @@ def build_semantic_sfx_cues(
             keyword_confidence_value,
             0.0,
         ) >= keyword_min_confidence
-        has_keyword_emphasis = keyword_emphasis_enabled and keyword_grounded and keyword_confident
+        has_keyword_emphasis = (
+            keyword_emphasis_enabled
+            and caption.get("keywordSfx") is True
+            and keyword_grounded
+            and keyword_confident
+        )
         semantic_role = str(caption.get("semanticRole") or "")
         material_route = caption.get("materialRoute") if isinstance(caption.get("materialRoute"), dict) else {}
-        route_disabled = material_route.get("sfx") == "none"
         cue_role = semantic_role if semantic_role in pools and semantic_role not in {"opening", "accent", "transition", "ending"} else ""
         if has_keyword_emphasis:
             keyword_category = str(caption.get("keywordCategory") or "").strip().lower()
@@ -199,13 +231,23 @@ def build_semantic_sfx_cues(
                 cue_role = category_role
             elif not cue_role:
                 cue_role = "accent"
-            candidates.append((highlighted_word_start(caption, keyword), cue_role, keyword, text))
-        elif cue_role and not route_disabled:
-            candidates.append((start, cue_role, "", text))
-        elif not sparse_semantic_only and index > 0:
-            keyword = keyword_selector(text) if keyword_selector else ""
-            if (keyword and keyword in text) or index % 3 == 0:
-                candidates.append((start, "transition" if round(start, 2) in transition_set else "accent", "", text))
+            keyword_candidates.append((highlighted_word_start(caption, keyword), cue_role, keyword, text))
+
+    # A confirmed key word owns the audio beat.  When it falls on the same
+    # editorial boundary as a visual transition, keep the visual transition
+    # but do not stack or substitute a generic whoosh over the semantic hit.
+    candidates.extend(keyword_candidates)
+    if not sparse_semantic_only:
+        keyword_times = [float(item[0]) for item in keyword_candidates]
+        protected_keyword_window = max(2.6, minimum_gap * 0.8)
+        candidates.extend(
+            (float(value), "transition", "", "")
+            for value in transition_points
+            if not any(
+                abs(float(value) - keyword_time) <= protected_keyword_window
+                for keyword_time in keyword_times
+            )
+        )
 
     last_start = 0.08
     for start, role, keyword, caption_text in sorted(candidates, key=lambda item: item[0]):
@@ -226,7 +268,7 @@ def build_semantic_sfx_cues(
     final_cta = next((
         float(caption.get("start") or 0.0)
         for caption in reversed(captions)
-        if str(caption.get("semanticRole") or "") == "cta"
+        if str(caption.get("semanticRole") or "") == "cta" and caption.get("keywordSfx") is True
     ), None)
     if final_cta is not None and not any(cue.get("role") == "cta" for cue in cues):
         if cues and final_cta - float(cues[-1].get("start") or 0.0) < minimum_gap * 0.7:

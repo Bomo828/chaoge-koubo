@@ -24,7 +24,7 @@ def template9_profile() -> dict:
     }
 
 
-def caption(index: int, text: str, keyword: str, role: str = "steady", category: str = "") -> dict:
+def caption(index: int, text: str, keyword: str, role: str = "steady", category: str = "", keyword_sfx: bool = True) -> dict:
     start = index * 2.5
     return {
         "start": start,
@@ -33,6 +33,7 @@ def caption(index: int, text: str, keyword: str, role: str = "steady", category:
         "keyword": keyword,
         "keywordCategory": category,
         "keywordConfidence": 0.9,
+        "keywordSfx": keyword_sfx,
         "semanticRole": role,
         "materialRoute": {"sfx": "none" if role == "steady" else role},
         "words": [
@@ -89,6 +90,25 @@ def test_keyword_cue_uses_confirmed_word_timestamp() -> None:
     assert keyword_cue["start"] == 3.1
 
 
+def test_regular_visual_highlight_does_not_receive_keyword_sfx() -> None:
+    captions = [
+        caption(1, "重点提升效率", "提升效率", category="benefit", keyword_sfx=False),
+        caption(3, "成本降低一半", "降低一半", category="contrast", keyword_sfx=True),
+    ]
+    cues = build_semantic_sfx_cues(
+        Path("/tmp/template9-regular-highlight-test"),
+        template9_profile(),
+        10.0,
+        captions,
+        [],
+        "视觉提亮和声音重点分层",
+    )
+
+    assert not any(cue.get("keyword") == "提升效率" for cue in cues)
+    assert any(cue.get("keyword") == "降低一半" for cue in cues)
+    assert not any(cue.get("role") == "accent" and not cue.get("keyword") for cue in cues)
+
+
 def test_role_gain_makes_keyword_cues_audibly_stronger() -> None:
     profile = template9_profile()
     profile["sfx_profile"]["role_gain_map"] = {"number": 2.05, "transition": 1.0}
@@ -107,3 +127,48 @@ def test_role_gain_makes_keyword_cues_audibly_stronger() -> None:
     number_cue = next(cue for cue in cues if cue["role"] == "number")
 
     assert 0.34 <= number_cue["volume"] <= 0.46
+
+
+def test_long_video_respects_template_per_minute_density() -> None:
+    captions = [
+        caption(index, f"第{index + 1}个重点方法", f"第{index + 1}个重点", category="action")
+        for index in range(24)
+    ]
+    cues = build_semantic_sfx_cues(
+        Path("/tmp/template9-long-density-test"),
+        template9_profile(),
+        60.0,
+        captions,
+        [],
+        "长视频音效密度测试",
+    )
+
+    # Opening + semantic keyword cues should no longer be globally capped at 10.
+    assert 11 <= len(cues) <= 18
+
+
+def test_isolated_template_never_falls_back_to_public_transition_sfx() -> None:
+    profile = {
+        "name": "独立模板",
+        "package_mode": "isolated",
+        "fallback_policy": "forbid-cross-template",
+        "sfx_profile": {
+            "opening_pool": ["sfx/template-11/open.wav"],
+            "accent_pool": ["sfx/template-11/tick.wav"],
+            "transition_pool": [],
+            "ending_pool": ["sfx/template-11/end.wav"],
+            "minimum_gap_seconds": 1.8,
+            "maximum_hits_per_minute": 12,
+        },
+    }
+    cues = build_semantic_sfx_cues(
+        Path("/tmp/isolated-transition-test"),
+        profile,
+        12.0,
+        [],
+        [4.0, 8.0],
+        "独立音效测试",
+    )
+
+    assert not any(cue.get("role") == "transition" for cue in cues)
+    assert all(str(cue.get("file") or "").startswith("sfx/template-11/") for cue in cues)

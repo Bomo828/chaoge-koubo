@@ -1,1 +1,24 @@
-{"schema_version": 1, "template_id": "template-11", "transitions": [], "rule": "Reference uses a locked talking-head shot. Do not add push-ins, pans, flashes or periodic cuts."}
+{
+  "schema_version": 3,
+  "template_id": "template-11",
+  "policy": "semantic-input-aware",
+  "design_version": "director-shot-language-v3-cyan-minimal-focus",
+  "minimum_gap_seconds": 3.5,
+  "maximum_effects_per_minute": 11,
+  "input_adaptation": {
+    "static_talking_head": "低频语义景别变化",
+    "edited_source": "优先保留原片切换，模板只补必要节点",
+    "wide_source": "完整画面加柔化背景，不做破坏性居中裁切"
+  },
+  "transitions": [
+    {"id": "source-cut", "nodes": ["source-scene-change"], "reason": "沿用原片镜头切换"},
+    {"id": "focus-rack", "nodes": ["hook"], "reason": "青白主视觉从轻虚化进入清晰焦点"},
+    {"id": "reframe-cut", "nodes": ["pain_reversal"], "reason": "反差节点克制换构图"},
+    {"id": "focus-lock", "nodes": ["core_viewpoint", "brand_entity"], "reason": "核心观点和实体名居中锁焦"},
+    {"id": "camera-punch-in", "nodes": ["number_benefit"], "reason": "数字利益点短促推近"},
+    {"id": "pullback-reset", "nodes": ["example_step"], "reason": "举例和步骤节点退回全景换章"},
+    {"id": "pullback-reset", "nodes": ["supporting"], "reason": "解释段拉远复位"},
+    {"id": "closing-push", "nodes": ["cta"], "reason": "行动号召缓推收束"}
+  ],
+  "forbidden": ["cyan-panel-slide", "decorative-panel-wipe", "single-transition-only", "random-transition", "transition-on-every-caption"]
+}

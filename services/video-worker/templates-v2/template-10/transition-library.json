@@ -1,13 +1,23 @@
 {
-  "schema_version": 1,
+  "schema_version": 3,
   "template_id": "template-10",
-  "policy": "semantic-only",
-  "minimum_gap_seconds": 7.0,
-  "maximum_effects_per_minute": 4,
+  "policy": "semantic-input-aware",
+  "design_version": "director-shot-language-v3-handwritten-chapter",
+  "minimum_gap_seconds": 3.2,
+  "maximum_effects_per_minute": 12,
+  "input_adaptation": {
+    "static_talking_head": "允许语义景别变化",
+    "edited_source": "保留原片切换并降低模板转场密度",
+    "wide_source": "完整画面加柔化背景，不做破坏性居中裁切"
+  },
   "transitions": [
-    {"id":"editorial-cut","duration":0.18,"intensity":0.10,"nodes":["pain_reversal"]},
-    {"id":"drift-left","duration":0.22,"intensity":0.08,"nodes":["brand_entity","example_step"]},
-    {"id":"soft-flash","duration":0.18,"intensity":0.08,"nodes":["cta"]}
+    {"id": "source-cut", "nodes": ["source-scene-change"], "reason": "沿用原片镜头切换"},
+    {"id": "camera-punch-in", "nodes": ["hook", "number_benefit"], "reason": "钩子和数字节点快速推近"},
+    {"id": "reframe-cut", "nodes": ["pain_reversal"], "reason": "反差节点干净换位，不使用笔刷扫切"},
+    {"id": "focus-rack", "nodes": ["core_viewpoint", "brand_entity"], "reason": "核心观点和实体名执行焦点切换"},
+    {"id": "pullback-reset", "nodes": ["example_step"], "reason": "举例和步骤节点退回全景换章"},
+    {"id": "pullback-reset", "nodes": ["supporting"], "reason": "解释段拉远复位释放视觉压力"},
+    {"id": "closing-push", "nodes": ["cta"], "reason": "行动号召缓慢推近收束"}
   ],
-  "forbidden": ["continuous-zoom", "random-transition", "transition-on-every-caption"]
+  "forbidden": ["yellow-brush-wipe", "decorative-brush-wipe", "single-transition-only", "random-transition", "transition-on-every-caption"]
 }
