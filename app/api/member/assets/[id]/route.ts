@@ -26,7 +26,15 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const cover = new URL(request.url).searchParams.get("cover") === "1";
   const download = new URL(request.url).searchParams.get("download") === "1";
   const directUrl = getMemberAssetDirectUrl(member, id, cover, download);
-  if (directUrl) return Response.redirect(directUrl, 307);
+  if (directUrl) {
+    return new Response(null, {
+      status: 307,
+      headers: {
+        Location: directUrl,
+        "Cache-Control": download ? "private, no-store" : "private, max-age=900",
+      },
+    });
+  }
   if (cover) {
     const image = await getMemberAssetCover(member, id);
     if (!image) return Response.json({ error: "没有找到这个视频封面。" }, { status: 404 });
@@ -35,7 +43,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
         "Content-Type": image.contentType,
         "Content-Length": String(image.size),
         "Content-Disposition": "inline",
-        "Cache-Control": "private, max-age=3600",
+        "Cache-Control": "private, max-age=86400",
         "X-Content-Type-Options": "nosniff",
       },
     });
@@ -46,7 +54,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const headers = new Headers({
     "Content-Type": asset.row.content_type,
     "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
-    "Cache-Control": "private, max-age=3600",
+    "Cache-Control": download ? "private, no-store" : "private, max-age=86400",
     "X-Content-Type-Options": "nosniff",
     "Accept-Ranges": "bytes",
   });

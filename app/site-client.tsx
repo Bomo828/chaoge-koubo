@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import type { MemberSession } from "./member-session";
@@ -36,6 +37,9 @@ export function SiteClient({
   const [authOpen, setAuthOpen] = useState(Boolean(initialAuthMode));
   const [authError, setAuthError] = useState("");
   const [returnTo, setReturnTo] = useState(initialReturnTo);
+  const [resolvedMember, setResolvedMember] = useState(member);
+  const [sessionResolved, setSessionResolved] = useState(Boolean(member));
+  const [heroReady, setHeroReady] = useState(false);
   const usernameRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -47,17 +51,49 @@ export function SiteClient({
       }
       const errorCode = params.get("error");
       const requestedMode = params.get("auth");
-      if (requestedMode === "register" || requestedMode === "login") setAuthMode(requestedMode);
+      if (requestedMode === "register" || requestedMode === "login") {
+        setAuthMode(requestedMode);
+        setAuthOpen(true);
+      }
       if (errorCode) {
         setAuthError(authErrors[errorCode] ?? "登录信息有误，请重新输入。");
         setAuthOpen(true);
       }
-      if (initialAuthMode || errorCode) {
+      if (requestedMode === "register" || requestedMode === "login" || initialAuthMode || errorCode) {
         usernameRef.current?.focus({ preventScroll: true });
       }
     });
     return () => window.cancelAnimationFrame(frame);
   }, [initialAuthMode]);
+
+  useEffect(() => {
+    if (member) return;
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => {
+      fetch("/api/auth/session", { cache: "no-store", signal: controller.signal })
+        .then((response) => response.ok ? response.json() : Promise.reject(new Error("session unavailable")))
+        .then((data: { member?: MemberSession | null }) => setResolvedMember(data.member ?? null))
+        .catch((error: unknown) => {
+          if (!(error instanceof DOMException && error.name === "AbortError")) setResolvedMember(null);
+        })
+        .finally(() => setSessionResolved(true));
+    }, 250);
+    return () => {
+      controller.abort();
+      window.clearTimeout(timer);
+    };
+  }, [member]);
+
+  useEffect(() => {
+    let timer = 0;
+    const frame = window.requestAnimationFrame(() => {
+      timer = window.setTimeout(() => setHeroReady(true), 120);
+    });
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, []);
 
   useEffect(() => {
     if (!authOpen) return;
@@ -92,7 +128,7 @@ export function SiteClient({
   }
 
   function guardStudio(event: MouseEvent<HTMLAnchorElement>) {
-    if (member) return;
+    if (resolvedMember || !sessionResolved) return;
     event.preventDefault();
     openAuth("login");
   }
@@ -105,18 +141,19 @@ export function SiteClient({
     event.currentTarget.style.setProperty("--launch-y", y.toFixed(3));
   }
 
-  const studioHref = member ? "/studio" : "/?auth=login&return_to=%2Fstudio";
+  const studioHref = "/studio";
 
   return (
     <main className="launch-home" onPointerMove={handlePointerMove}>
       <video
         className="launch-video"
-        src="/media/flash-lab-hero-20260808.mp4"
+        src={heroReady ? "/media/flash-lab-hero-20260808.mp4" : undefined}
         autoPlay
         muted
         loop
         playsInline
-        preload="auto"
+        preload="metadata"
+        poster="/media/flash-lab-hero-poster.jpg"
         disablePictureInPicture
         aria-hidden="true"
       />
@@ -126,13 +163,13 @@ export function SiteClient({
 
       <header className="launch-header">
         <a className="launch-brand" href="#top" aria-label="爆点实验室首页">
-          <span className="launch-logo"><img src="/media/flash-lab-logo.png" alt="" /></span>
+          <span className="launch-logo"><Image src="/media/flash-lab-logo.png" width={512} height={512} sizes="52px" alt="" priority /></span>
           <span className="launch-wordmark"><b>爆点实验室</b></span>
         </a>
 
         <div className="launch-header-actions">
           <a className="launch-enter" href={studioHref} onClick={guardStudio}>
-            <b>{member ? "工作台" : "登录"}</b>
+            <b>{resolvedMember ? "工作台" : sessionResolved ? "登录" : "进入工作台"}</b>
             <span>↗</span>
           </a>
         </div>
@@ -141,21 +178,21 @@ export function SiteClient({
       <section className="launch-stage" id="top">
         <section className="launch-copy">
           <h1 className="launch-title-image">
-            <img src="/media/flash-lab-title-lockup.png" alt="爆点实验室，把灵感，放大到屏幕之外" />
+            <Image src="/media/flash-lab-title-lockup.png" width={1686} height={933} sizes="(max-width: 720px) 86vw, 680px" quality={86} alt="爆点实验室，把灵感，放大到屏幕之外" priority />
           </h1>
         </section>
       </section>
 
       <a className="launch-record" href="https://beian.miit.gov.cn/" target="_blank" rel="noreferrer">鄂ICP备2026017649号-1</a>
 
-      {authOpen && !member ? (
+      {authOpen && !resolvedMember ? (
         <div className="launch-auth-backdrop" role="presentation" onMouseDown={(event) => {
           if (event.currentTarget === event.target) closeAuth();
         }}>
           <section className="launch-login-card launch-auth-modal" role="dialog" aria-modal="true" aria-labelledby="launch-auth-title">
             <button className="launch-auth-close" type="button" aria-label="关闭登录窗口" onClick={closeAuth}>×</button>
             <div className="launch-login-brand">
-              <span><img src="/media/flash-lab-logo.png" alt="" /></span>
+              <span><Image src="/media/flash-lab-logo.png" width={512} height={512} sizes="56px" alt="" /></span>
               <h2 id="launch-auth-title">{authMode === "login" ? "登录" : "邀请注册"}</h2>
             </div>
 

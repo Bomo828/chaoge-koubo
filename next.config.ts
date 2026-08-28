@@ -20,6 +20,31 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "200mb",
     },
   },
+  async headers() {
+    const longLivedMediaCache = "public, max-age=604800, s-maxage=31536000, stale-while-revalidate=86400";
+    return [
+      {
+        source: "/media/:path*",
+        headers: [
+          { key: "Cache-Control", value: longLivedMediaCache },
+          { key: "Accept-Ranges", value: "bytes" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+        ],
+      },
+      {
+        source: "/template-covers/:path*",
+        headers: [{ key: "Cache-Control", value: longLivedMediaCache }],
+      },
+      {
+        source: "/industry-image-lab/:path*",
+        headers: [{ key: "Cache-Control", value: longLivedMediaCache }],
+      },
+      {
+        source: "/ffmpeg/:path*",
+        headers: [{ key: "Cache-Control", value: longLivedMediaCache }],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

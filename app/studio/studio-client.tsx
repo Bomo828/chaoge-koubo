@@ -40,7 +40,7 @@ function useImagePriceQuote(size: string, quality: string, count: number, refere
   return quote;
 }
 
-type MemberAssetItem = {
+export type MemberAssetItem = {
   id: string;
   projectName: string;
   kind: "image" | "video" | "audio" | "voice";
@@ -70,7 +70,7 @@ type WalletHistory = {
   recharge: WalletHistoryEntry[];
 };
 
-type AssetFilter = "all" | "image" | "video" | "audio";
+export type AssetFilter = "all" | "image" | "video" | "audio";
 
 type ClonedVoice = {
   voiceId: string;
@@ -729,7 +729,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   );
 }
 
-function AccountDialog({ message, onMessage, onClose }: { message: string; onMessage: (message: string) => void; onClose: () => void }) {
+export function AccountDialog({ message, onMessage, onClose }: { message: string; onMessage: (message: string) => void; onClose: () => void }) {
   async function submitPassword(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
@@ -1941,7 +1941,7 @@ type VideoWorkspace = "chooser" | "material" | "lip-sync" | "ai-benchmark" | "vi
 
 const VIDEO_WORKSPACES = new Set<VideoWorkspace>(["chooser", "material", "lip-sync", "ai-benchmark", "viral-edit", "ai-director"]);
 
-function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
+export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
   const [workspace, setWorkspace] = useState<VideoWorkspace>("chooser");
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
@@ -3674,7 +3674,10 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
       }
       const uploadResponse = await fetch(signed.uploadUrl, {
         method: "PUT",
-        headers: { "Content-Type": sourceFile.type || "video/mp4" },
+        headers: {
+          "Content-Type": sourceFile.type || "video/mp4",
+          "Cache-Control": "private, max-age=86400",
+        },
         body: sourceFile,
       });
       if (!uploadResponse.ok) throw new Error(`原片直传失败（HTTP ${uploadResponse.status}）。`);
@@ -4980,7 +4983,7 @@ function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boole
                   muted
                   loop
                   playsInline
-                  preload="auto"
+                  preload={viralTemplate === template.id ? "metadata" : "none"}
                   autoPlay={viralTemplate === template.id}
                   onMouseEnter={(event) => {
                     const video = event.currentTarget;
@@ -5113,7 +5116,7 @@ function formatAssetSize(value: number) {
   return `${(value / 1024 / 1024).toFixed(1)} MB`;
 }
 
-function Assets({
+export function Assets({
   initialFilter = "all",
   onUseViral,
   onUseSuperEditor,
@@ -5186,12 +5189,12 @@ function Assets({
       <button className={filter === "video" ? "active" : ""} onClick={() => setFilter("video")}><i>视</i><b>生成短视频</b><span>{videoCount} 个</span></button>
       <button className={filter === "audio" ? "active" : ""} onClick={() => setFilter("audio")}><i>声</i><b>声音与音频</b><span>{audioCount} 个</span></button>
     </div>
-    {error ? <div className="asset-state is-error"><b>资产空间暂时无法打开</b><span>{error}</span><button onClick={() => void loadAssets()}>重新加载</button></div> : loading ? <div className="asset-state"><i /><b>正在读取会员资产</b><span>生成记录正在按项目整理</span></div> : projects.length ? <div className="asset-project-list">{projects.map(([projectName, projectItems]) => <section className="asset-project" key={projectName}><header><div><small>项目</small><h2>{projectName}</h2></div><span>{formatAssetTime(projectItems[0].createdAt)} · {projectItems.length} 个文件</span></header><div className="asset-item-grid">{projectItems.map((item) => <article className={`asset-item is-${item.kind}`} key={item.id}><button className="asset-media" onClick={() => setSelectedAsset(item)} aria-label={`打开${item.name}`}>{item.kind === "image" ? <img src={item.mediaUrl} alt={item.name} loading="lazy" /> : item.kind === "video" ? <video src={item.mediaUrl} poster={item.coverUrl || undefined} preload="metadata" muted /> : <span>{item.kind === "voice" ? "声" : "音"}</span>}<i>{item.kind === "video" ? "▶" : item.kind === "image" ? "查看" : "播放"}</i></button><div><b>{item.name}</b><span>{formatAssetTime(item.createdAt)} · {formatAssetSize(item.sizeBytes)}</span></div>{item.kind === "video" ? <div className="asset-item-workflows"><button onClick={() => onUseViral(item)}>✦ 一键网感</button><button onClick={() => onUseSuperEditor(item)}>◆ 一键超级剪辑</button></div> : null}<div className="asset-item-actions"><a href={`${item.mediaUrl}?download=1`} download={item.name}>下载</a><button onClick={() => void deleteAsset(item)}>删除</button></div></article>)}</div></section>)}</div> : <div className="asset-state is-empty"><b>还没有{filter === "all" ? "会员资产" : filter === "image" ? "生成图片" : filter === "video" ? "生成短视频" : "声音文件"}</b><span>完成一次 AI 生成后，结果会自动按项目名称与时间出现在这里。</span></div>}
+    {error ? <div className="asset-state is-error"><b>资产空间暂时无法打开</b><span>{error}</span><button onClick={() => void loadAssets()}>重新加载</button></div> : loading ? <div className="asset-state"><i /><b>正在读取会员资产</b><span>生成记录正在按项目整理</span></div> : projects.length ? <div className="asset-project-list">{projects.map(([projectName, projectItems]) => <section className="asset-project" key={projectName}><header><div><small>项目</small><h2>{projectName}</h2></div><span>{formatAssetTime(projectItems[0].createdAt)} · {projectItems.length} 个文件</span></header><div className="asset-item-grid">{projectItems.map((item) => <article className={`asset-item is-${item.kind}`} key={item.id}><button className="asset-media" onClick={() => setSelectedAsset(item)} aria-label={`打开${item.name}`}>{item.kind === "image" ? <img src={item.mediaUrl} alt={item.name} loading="lazy" decoding="async" /> : item.kind === "video" ? <video src={item.mediaUrl} poster={item.coverUrl || undefined} preload="none" muted /> : <span>{item.kind === "voice" ? "声" : "音"}</span>}<i>{item.kind === "video" ? "▶" : item.kind === "image" ? "查看" : "播放"}</i></button><div><b>{item.name}</b><span>{formatAssetTime(item.createdAt)} · {formatAssetSize(item.sizeBytes)}</span></div>{item.kind === "video" ? <div className="asset-item-workflows"><button onClick={() => onUseViral(item)}>✦ 一键网感</button><button onClick={() => onUseSuperEditor(item)}>◆ 一键超级剪辑</button></div> : null}<div className="asset-item-actions"><a href={`${item.mediaUrl}?download=1`} download={item.name}>下载</a><button onClick={() => void deleteAsset(item)}>删除</button></div></article>)}</div></section>)}</div> : <div className="asset-state is-empty"><b>还没有{filter === "all" ? "会员资产" : filter === "image" ? "生成图片" : filter === "video" ? "生成短视频" : "声音文件"}</b><span>完成一次 AI 生成后，结果会自动按项目名称与时间出现在这里。</span></div>}
     {selectedAsset ? <div className="asset-viewer-backdrop" role="dialog" aria-modal="true" aria-label="查看会员资产" onMouseDown={(event) => { if (event.currentTarget === event.target) setSelectedAsset(null); }}><section className="asset-viewer"><button className="asset-viewer-close" aria-label="关闭" onClick={() => setSelectedAsset(null)}>×</button><header><small>{selectedAsset.projectName}</small><h2>{selectedAsset.name}</h2><span>{formatAssetTime(selectedAsset.createdAt)}</span></header>{selectedAsset.kind === "image" ? <img src={selectedAsset.mediaUrl} alt={selectedAsset.name} /> : selectedAsset.kind === "video" ? <video src={selectedAsset.mediaUrl} poster={selectedAsset.coverUrl || undefined} controls autoPlay playsInline disablePictureInPicture /> : <audio src={selectedAsset.mediaUrl} controls autoPlay />}<footer><a href={`${selectedAsset.mediaUrl}?download=1`} download={selectedAsset.name}>↓ 下载文件</a>{selectedAsset.kind === "video" ? <button className="asset-viewer-viral" onClick={() => onUseViral(selectedAsset)}>✦ 一键网感</button> : null}{selectedAsset.kind === "video" ? <button className="asset-viewer-super" onClick={() => onUseSuperEditor(selectedAsset)}>◆ 一键超级剪辑</button> : null}<button onClick={() => setSelectedAsset(null)}>关闭</button></footer></section></div> : null}
   </>;
 }
 
-function Member({
+export function Member({
   points,
   onPointsChange,
   onOpenAssets,
