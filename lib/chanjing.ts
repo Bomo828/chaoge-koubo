@@ -36,8 +36,40 @@ function upstreamMessage(payload: JsonRecord, status: number) {
   return `蝉镜接口请求失败（${status}）`;
 }
 
+function networkFailure(stage: string, error: unknown) {
+  const name = error instanceof Error ? error.name : "";
+  const cause = error instanceof Error && error.cause && typeof error.cause === "object"
+    ? error.cause as { code?: unknown }
+    : null;
+  const code = typeof cause?.code === "string" ? cause.code.toUpperCase() : "";
+  const timedOut = name === "AbortError" || name === "TimeoutError" || code === "ETIMEDOUT";
+  const reason = timedOut
+    ? "连接超时"
+    : code === "ENOTFOUND" || code === "EAI_AGAIN"
+      ? "域名解析失败"
+      : code === "ECONNRESET" || code === "EPIPE"
+        ? "连接被中断"
+        : code.startsWith("CERT_") || code.includes("TLS")
+          ? "HTTPS 连接校验失败"
+          : "网络连接失败";
+  return new ChanjingError(`蝉镜${stage}${reason}，请稍后重试。`, timedOut ? 504 : 502);
+}
+
+async function chanjingFetch(url: string, init: RequestInit, stage: string) {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    throw networkFailure(stage, error);
+  }
+}
+
 function config() {
-  const stored = getChanjingConfig();
+  let stored: ReturnType<typeof getChanjingConfig>;
+  try {
+    stored = getChanjingConfig();
+  } catch (error) {
+    throw new ChanjingError(`蝉镜配置无效：${error instanceof Error ? error.message : "请重新保存接口配置"}`, 503);
+  }
   const appId = stored.appId;
   const secretKey = stored.secretKey;
   const baseUrl = (stored.baseUrl || DEFAULT_BASE_URL).replace(/\/$/, "");
@@ -66,12 +98,12 @@ async function getAccessToken(forceRefresh = false) {
   const { appId, secretKey, baseUrl } = config();
   const configKey = `${baseUrl}\u0000${appId}\u0000${secretKey}`;
   if (!forceRefresh && tokenCache && tokenCache.configKey === configKey && Date.now() < tokenCache.expiresAt) return tokenCache.value;
-  const response = await fetch(`${baseUrl}/open/v1/access_token`, {
+  const response = await chanjingFetch(`${baseUrl}/open/v1/access_token`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ app_id: appId, secret_key: secretKey }),
     signal: AbortSignal.timeout(30_000),
-  });
+  }, "鉴权");
   const payload = await parseResponse(response);
   const data = payload.data && typeof payload.data === "object" ? payload.data as JsonRecord : {};
   const token = typeof data.access_token === "string" ? data.access_token : "";
@@ -83,7 +115,7 @@ async function getAccessToken(forceRefresh = false) {
 async function request(path: string, init: RequestInit = {}, retry = true): Promise<JsonRecord> {
   const { baseUrl } = config();
   const token = await getAccessToken();
-  const response = await fetch(`${baseUrl}${path}`, {
+  const response = await chanjingFetch(`${baseUrl}${path}`, {
     ...init,
     headers: {
       access_token: token,
@@ -91,7 +123,7 @@ async function request(path: string, init: RequestInit = {}, retry = true): Prom
       ...(init.headers ?? {}),
     },
     signal: init.signal ?? AbortSignal.timeout(60_000),
-  });
+  }, "接口");
   const raw = await response.text();
   let payload: JsonRecord = {};
   try {
@@ -221,21 +253,31 @@ export async function uploadLipSyncMedia(input: {
 
   let uploaded = false;
   let uploadStatus = 0;
+  let uploadNetworkError: ChanjingError | null = null;
   for (let attempt = 0; attempt < 2; attempt += 1) {
-    const response = await fetch(slot.signUrl, {
-      method: "PUT",
-      headers: { "Content-Type": slot.mimeType || input.contentType || "application/octet-stream" },
-      body: input.bytes,
-      signal: AbortSignal.timeout(120_000),
-    });
-    uploadStatus = response.status;
-    if (response.ok) {
-      uploaded = true;
-      break;
+    try {
+      const response = await chanjingFetch(slot.signUrl, {
+        method: "PUT",
+        headers: { "Content-Type": slot.mimeType || input.contentType || "application/octet-stream" },
+        body: input.bytes,
+        signal: AbortSignal.timeout(120_000),
+      }, `${mediaName}上传`);
+      uploadStatus = response.status;
+      uploadNetworkError = null;
+      if (response.ok) {
+        uploaded = true;
+        break;
+      }
+      if (response.status < 500 || attempt === 1) break;
+    } catch (error) {
+      uploadNetworkError = error instanceof ChanjingError
+        ? error
+        : networkFailure(`${mediaName}上传`, error);
+      if (attempt === 1) break;
     }
-    if (response.status < 500 || attempt === 1) break;
     await new Promise((resolve) => setTimeout(resolve, 1200));
   }
+  if (!uploaded && uploadNetworkError) throw uploadNetworkError;
   if (!uploaded) throw new ChanjingError(`${mediaName}上传失败（${uploadStatus || "网络异常"}）。`);
 
   const startedAt = Date.now();
@@ -431,5 +473,5 @@ export async function getLipSyncTask(taskId: string) {
 export function chanjingErrorResponse(error: unknown) {
   if (error instanceof ChanjingError) return Response.json({ error: error.message }, { status: error.status });
   console.error("Chanjing request failed", error);
-  return Response.json({ error: "蝉镜服务暂时不可用，请稍后重试。" }, { status: 500 });
+  return Response.json({ error: "蝉镜请求未完成，服务器已记录具体原因，请刷新后重试。" }, { status: 500 });
 }

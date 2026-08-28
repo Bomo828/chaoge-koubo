@@ -1,5 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import {
+  ChanjingError,
   chanjingErrorResponse,
   createLipSyncTask,
   ensureChanjingBalance,
@@ -31,6 +32,7 @@ export async function POST(request: Request) {
 
   let reservation: Awaited<ReturnType<typeof reserveAiPoints>> | null = null;
   let submitted = false;
+  let stage = "读取上传内容";
   try {
     const form = await request.formData();
     const video = form.get("video");
@@ -55,6 +57,7 @@ export async function POST(request: Request) {
       return Response.json({ error: "口播音频需小于 30MB。" }, { status: 413 });
     }
 
+    stage = "读取口播音频";
     const audioBytes = await audio.arrayBuffer();
     const declaredDuration = Number(form.get("audioDuration"));
     const detectedDuration = wavDurationSeconds(audioBytes);
@@ -63,23 +66,28 @@ export async function POST(request: Request) {
       return Response.json({ error: "无法读取口播音频时长，请重新生成口播音频。" }, { status: 400 });
     }
     const estimatedPoints = lipSyncPoints(audioDuration, true);
+    stage = "检查蝉镜余额";
     await ensureChanjingBalance(estimatedPoints);
+    stage = "预留会员积分";
     reservation = await reserveAiPoints(member, "lip_sync_generate", 1, requestId, estimatedPoints);
     // Chanjing's upload gateway is sensitive to simultaneous signed-slot
     // creation. Upload sequentially so each media file is fully ready before
     // requesting the next slot and creating the lip-sync task.
+    stage = "上传人物视频";
     const videoUpload = await uploadLipSyncMedia({
       service: "lip_sync_video",
       fileName: safeFileName(video.name, "lip-sync-video.mp4"),
       contentType: video.type,
       bytes: await video.arrayBuffer(),
     });
+    stage = "上传口播音频";
     const audioUpload = await uploadLipSyncMedia({
       service: "lip_sync_audio",
       fileName: safeFileName(audio.name, "lip-sync-audio.mp3"),
       contentType: audio.type,
       bytes: audioBytes,
     });
+    stage = "创建对口型任务";
     const task = await createLipSyncTask({
       videoFileId: videoUpload.fileId,
       audioFileId: audioUpload.fileId,
@@ -101,7 +109,11 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     if (reservation && !submitted) await refundAiPoints(reservation).catch(() => undefined);
-    return pointsErrorResponse(error) ?? chanjingErrorResponse(error);
+    const pointsResponse = pointsErrorResponse(error);
+    if (pointsResponse) return pointsResponse;
+    if (error instanceof ChanjingError) return chanjingErrorResponse(error);
+    console.error("Lip-sync submission failed", { stage, error });
+    return chanjingErrorResponse(new ChanjingError(`对口型流程在“${stage}”未完成，请稍后重试。`, 502));
   }
 }
 
