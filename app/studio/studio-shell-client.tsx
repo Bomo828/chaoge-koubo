@@ -203,7 +203,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
         <div className="studio-content">
           {active === "overview" && <Overview onOpen={openStudioSection} />}
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
-          {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
+          {active === "video" && <Video memberId={member.id} busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
           {active === "assets" && <Assets
             initialFilter={assetInitialFilter}

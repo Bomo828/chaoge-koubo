@@ -17,6 +17,7 @@ import { AiAssistant } from "./ai-assistant";
 import { buildViralDirectorPlan, markViralKeywordSfx, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
 import { publicMediaUrl } from "../../lib/public-media";
+import { loadWorkflowDraft, saveWorkflowDraft } from "../../lib/browser-workflow-draft";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -679,7 +680,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
         <div className="studio-content">
           {active === "overview" && <Overview onOpen={openStudioSection} />}
           {active === "design" && <IndustryImageLab onPointsChange={setWalletPoints} />}
-          {active === "video" && <Video busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
+          {active === "video" && <Video memberId={member.id} busy={busy} action={demoAction} onPointsChange={setWalletPoints} viralImportAsset={viralImportAsset} />}
           {active === "cases" && <MarketDynamics title={configuredLabels.cases || studioLabels.cases} />}
           {active === "assets" && <Assets
             initialFilter={assetInitialFilter}
@@ -1941,10 +1942,82 @@ function drawPhotoCaption(
 
 type VideoWorkspace = "chooser" | "material" | "lip-sync" | "ai-benchmark" | "viral-edit" | "ai-director";
 
+type SpeechTaskCheckpoint = {
+  taskId: string;
+  requestId: string;
+  projectName: string;
+  voiceName: string;
+  estimatedPoints: number;
+};
+
+type LipSyncTaskCheckpoint = {
+  taskId: string;
+  requestId: string;
+  projectName: string;
+};
+
+type LipSyncWorkflowDraft = {
+  voiceSource: "saved" | "upload";
+  selectedVoice: string;
+  voiceName: string;
+  voiceLanguage: "cn" | "en";
+  uploadedVoiceReady: boolean;
+  script: string;
+  speechSpeed: number;
+  speechAudioReady: boolean;
+  speechAudioUrl: string;
+  speechAudioDuration: number;
+  speechCaptions: ViralCaption[];
+  speechViralTitle: string;
+  speechViralPlanReady: boolean;
+  speechPendingTask: SpeechTaskCheckpoint | null;
+  lipVideoFile: File | null;
+  lipVideoName: string;
+  lipVideoSize: { width: number; height: number };
+  lipSyncPendingTask: LipSyncTaskCheckpoint | null;
+  lipSyncResultUrl: string;
+};
+
+const LIP_SYNC_DRAFT_KEY = "lip-sync-v1";
+
+type ViralTaskCheckpoint = {
+  jobId: string;
+  requestId: string;
+  pointsReserved: boolean;
+};
+
+type ViralWorkflowDraft = {
+  sourceFile: File | null;
+  sourceName: string;
+  sourceRemoteUrl: string;
+  analyzed: boolean;
+  template: string;
+  title: string;
+  captions: ViralCaption[];
+  captionPlanReady: boolean;
+  captionsConfirmed: boolean;
+  includeSfx: boolean;
+  includeBgm: boolean;
+  coverUrl: string;
+  processStarted: boolean;
+  failed: boolean;
+  progress: number;
+  stage: string;
+  error: string;
+  resultRemoteUrl: string;
+  resultBlob: Blob | null;
+  downloadUrl: string;
+  pendingTask: ViralTaskCheckpoint | null;
+};
+
+const VIRAL_DRAFT_KEY = "viral-edit-v1";
+
 const VIDEO_WORKSPACES = new Set<VideoWorkspace>(["chooser", "material", "lip-sync", "ai-benchmark", "viral-edit", "ai-director"]);
 
-export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
+export function Video({ memberId, busy, action, onPointsChange, viralImportAsset }: { memberId: string; busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
   const [workspace, setWorkspace] = useState<VideoWorkspace>("chooser");
+  const lipSyncDraftKey = `${LIP_SYNC_DRAFT_KEY}:${memberId}`;
+  const viralDraftKey = `${VIRAL_DRAFT_KEY}:${memberId}`;
   const [materialFiles, setMaterialFiles] = useState<VideoMaterialItem[]>([]);
   const [videoBrief, setVideoBrief] = useState("突出门店环境、专业服务和真实体验，制作一条自然、有节奏的门店介绍短视频。");
   const [videoPlatforms, setVideoPlatforms] = useState<string[]>(["视频号"]);
@@ -2008,6 +2081,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   const [scriptRewriteBusy, setScriptRewriteBusy] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false);
   const [speechError, setSpeechError] = useState("");
+  const [speechPendingTask, setSpeechPendingTask] = useState<SpeechTaskCheckpoint | null>(null);
   const [script, setScript] = useState("大家好，今天带大家看看我们的门店环境和特色服务。");
   const [speechSpeed, setSpeechSpeed] = useState(1);
   const [benchmarkUrl, setBenchmarkUrl] = useState("");
@@ -2028,6 +2102,11 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   const [lipSyncProgress, setLipSyncProgress] = useState(0);
   const [lipSyncError, setLipSyncError] = useState("");
   const [lipSyncResultUrl, setLipSyncResultUrl] = useState("");
+  const [lipSyncPendingTask, setLipSyncPendingTask] = useState<LipSyncTaskCheckpoint | null>(null);
+  const [lipSyncDraftReady, setLipSyncDraftReady] = useState(false);
+  const [lipSyncDraftStatus, setLipSyncDraftStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
+  const [lipSyncDraftMessage, setLipSyncDraftMessage] = useState("正在恢复上次制作进度…");
+  const lipVideoPreviewObjectUrl = useRef("");
   const [viralFiles, setViralFiles] = useState<string[]>([]);
   const [viralSourceFile, setViralSourceFile] = useState<File | null>(null);
   const [viralVideoPreviewUrl, setViralVideoPreviewUrl] = useState("");
@@ -2063,9 +2142,15 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   const [viralStage, setViralStage] = useState("");
   const [viralError, setViralError] = useState("");
   const [viralResultUrl, setViralResultUrl] = useState("");
-  const [, setViralResultBlob] = useState<Blob | null>(null);
+  const [viralResultBlob, setViralResultBlob] = useState<Blob | null>(null);
   const [viralDownloadUrl, setViralDownloadUrl] = useState("");
   const [, setViralSaved] = useState(false);
+  const [viralPendingTask, setViralPendingTask] = useState<ViralTaskCheckpoint | null>(null);
+  const [viralDraftReady, setViralDraftReady] = useState(false);
+  const [viralDraftStatus, setViralDraftStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
+  const [viralDraftMessage, setViralDraftMessage] = useState("正在恢复上次网感制作进度…");
+  const viralPreviewObjectUrl = useRef("");
+  const viralResultObjectUrl = useRef("");
   const viralCloudSourceRef = useRef<{
     fingerprint: string;
     sourceUrl: string;
@@ -2140,6 +2225,273 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     } catch {
       // Keep the chooser when browser storage is unavailable.
     }
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const restoreDraft = async () => {
+      try {
+        const record = await loadWorkflowDraft<LipSyncWorkflowDraft>(lipSyncDraftKey);
+        if (disposed || !record) {
+          if (!disposed) {
+            setLipSyncDraftStatus("saved");
+            setLipSyncDraftMessage("制作进度会自动保存，刷新页面也能继续。 ");
+          }
+          return;
+        }
+        const draft = record.value;
+        setVoiceSource(draft.voiceSource === "upload" ? "upload" : "saved");
+        setSelectedVoice(typeof draft.selectedVoice === "string" ? draft.selectedVoice : "");
+        setVoiceName(typeof draft.voiceName === "string" ? draft.voiceName : "");
+        setVoiceLanguage(draft.voiceLanguage === "en" ? "en" : "cn");
+        setUploadedVoiceReady(Boolean(draft.uploadedVoiceReady));
+        if (typeof draft.script === "string" && draft.script.trim()) setScript(draft.script);
+        if ([0.75, 1, 1.25, 1.5, 2].includes(Number(draft.speechSpeed))) setSpeechSpeed(Number(draft.speechSpeed));
+        setSpeechAudioReady(Boolean(draft.speechAudioReady && draft.speechAudioUrl));
+        setSpeechAudioUrl(typeof draft.speechAudioUrl === "string" ? draft.speechAudioUrl : "");
+        setSpeechAudioDuration(Math.max(0, Number(draft.speechAudioDuration) || 0));
+        setSpeechCaptions(Array.isArray(draft.speechCaptions) ? draft.speechCaptions : []);
+        setSpeechViralTitle(typeof draft.speechViralTitle === "string" ? draft.speechViralTitle : "");
+        setSpeechViralPlanReady(Boolean(draft.speechViralPlanReady));
+        setSpeechPendingTask(draft.speechPendingTask?.taskId ? draft.speechPendingTask : null);
+        if (draft.lipVideoFile instanceof File) {
+          const previewUrl = URL.createObjectURL(draft.lipVideoFile);
+          lipVideoPreviewObjectUrl.current = previewUrl;
+          setLipVideoFile(draft.lipVideoFile);
+          setLipVideoName(draft.lipVideoName || draft.lipVideoFile.name);
+          setLipVideoPreviewUrl(previewUrl);
+        }
+        if (draft.lipVideoSize && Number(draft.lipVideoSize.width) > 0 && Number(draft.lipVideoSize.height) > 0) {
+          setLipVideoSize({ width: Number(draft.lipVideoSize.width), height: Number(draft.lipVideoSize.height) });
+        }
+        setLipSyncPendingTask(draft.lipSyncPendingTask?.taskId ? draft.lipSyncPendingTask : null);
+        setLipSyncResultUrl(typeof draft.lipSyncResultUrl === "string" ? draft.lipSyncResultUrl : "");
+        setLipSyncDraftStatus("saved");
+        setLipSyncDraftMessage(draft.lipSyncPendingTask?.taskId
+          ? "已恢复上次任务，可直接继续查询生成结果。"
+          : draft.speechAudioReady && draft.lipVideoFile
+            ? "声音、口播音频和人物视频已恢复，可从上次步骤继续。"
+            : "已恢复上次保存的制作进度。 ");
+      } catch (error) {
+        if (!disposed) {
+          setLipSyncDraftStatus("error");
+          setLipSyncDraftMessage(error instanceof Error ? error.message : "制作进度暂时无法恢复。 ");
+        }
+      } finally {
+        if (!disposed) setLipSyncDraftReady(true);
+      }
+    };
+    void restoreDraft();
+    return () => { disposed = true; };
+  }, [lipSyncDraftKey]);
+
+  useEffect(() => {
+    if (!lipSyncDraftReady) return;
+    const timer = window.setTimeout(() => {
+      setLipSyncDraftStatus("saving");
+      setLipSyncDraftMessage("正在保存当前制作进度…");
+      const draft: LipSyncWorkflowDraft = {
+        voiceSource,
+        selectedVoice,
+        voiceName,
+        voiceLanguage,
+        uploadedVoiceReady,
+        script,
+        speechSpeed,
+        speechAudioReady,
+        speechAudioUrl,
+        speechAudioDuration,
+        speechCaptions,
+        speechViralTitle,
+        speechViralPlanReady,
+        speechPendingTask,
+        lipVideoFile,
+        lipVideoName,
+        lipVideoSize,
+        lipSyncPendingTask,
+        lipSyncResultUrl,
+      };
+      void saveWorkflowDraft(lipSyncDraftKey, draft)
+        .then(() => {
+          setLipSyncDraftStatus("saved");
+          setLipSyncDraftMessage(lipSyncPendingTask
+            ? "当前任务已保存，离开页面后仍可继续查询。"
+            : "当前步骤已自动保存，刷新页面也能继续。 ");
+        })
+        .catch((error: unknown) => {
+          setLipSyncDraftStatus("error");
+          setLipSyncDraftMessage(error instanceof Error && /quota|空间|容量/i.test(error.message)
+            ? "视频较大，音频和任务进度已保留；刷新后可能需要重新选择人物视频。"
+            : error instanceof Error ? error.message : "制作进度暂时无法保存。 ");
+        });
+    }, 650);
+    return () => window.clearTimeout(timer);
+  }, [
+    lipSyncDraftReady,
+    lipSyncDraftKey,
+    lipSyncPendingTask,
+    lipSyncResultUrl,
+    lipVideoFile,
+    lipVideoName,
+    lipVideoSize,
+    script,
+    selectedVoice,
+    speechAudioDuration,
+    speechAudioReady,
+    speechAudioUrl,
+    speechCaptions,
+    speechPendingTask,
+    speechSpeed,
+    speechViralPlanReady,
+    speechViralTitle,
+    uploadedVoiceReady,
+    voiceLanguage,
+    voiceName,
+    voiceSource,
+  ]);
+
+  useEffect(() => () => {
+    if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current);
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    const restoreDraft = async () => {
+      try {
+        const record = await loadWorkflowDraft<ViralWorkflowDraft>(viralDraftKey);
+        if (disposed || !record) {
+          if (!disposed) {
+            setViralDraftStatus("saved");
+            setViralDraftMessage("网感制作会自动保存，失败后只需继续当前步骤。");
+          }
+          return;
+        }
+        const draft = record.value;
+        if (draft.sourceFile instanceof File) {
+          const previewUrl = URL.createObjectURL(draft.sourceFile);
+          viralPreviewObjectUrl.current = previewUrl;
+          setViralSourceFile(draft.sourceFile);
+          setViralFiles([draft.sourceName || draft.sourceFile.name]);
+          setViralVideoPreviewUrl(previewUrl);
+        } else if (draft.sourceRemoteUrl) {
+          setViralFiles(draft.sourceName ? [draft.sourceName] : ["已导入视频"]);
+          setViralVideoPreviewUrl(draft.sourceRemoteUrl);
+        }
+        setViralAnalyzed(Boolean(draft.analyzed));
+        if (draft.template) setViralTemplate(draft.template);
+        setViralTitle(typeof draft.title === "string" ? draft.title : "");
+        setViralCaptions(Array.isArray(draft.captions) ? draft.captions : []);
+        setViralCaptionPlanReady(Boolean(draft.captionPlanReady));
+        setViralCaptionsConfirmed(Boolean(draft.captionsConfirmed));
+        setViralIncludeSfx(draft.includeSfx !== false);
+        setViralIncludeBgm(draft.includeBgm !== false);
+        setViralCoverUrl(typeof draft.coverUrl === "string" ? draft.coverUrl : "");
+        setViralProcessStarted(Boolean(draft.processStarted));
+        setViralFailed(Boolean(draft.failed));
+        setViralProgress(Math.max(0, Math.min(100, Number(draft.progress) || 0)));
+        setViralStage(typeof draft.stage === "string" ? draft.stage : "");
+        setViralError(typeof draft.error === "string" ? draft.error : "");
+        setViralPendingTask(draft.pendingTask?.jobId ? draft.pendingTask : null);
+        if (draft.resultBlob instanceof Blob && draft.resultBlob.size) {
+          const resultUrl = URL.createObjectURL(draft.resultBlob);
+          viralResultObjectUrl.current = resultUrl;
+          setViralResultBlob(draft.resultBlob);
+          setViralResultUrl(resultUrl);
+        } else if (draft.resultRemoteUrl) {
+          setViralResultUrl(draft.resultRemoteUrl);
+        }
+        setViralDownloadUrl(typeof draft.downloadUrl === "string" ? draft.downloadUrl : "");
+        setViralDraftStatus("saved");
+        setViralDraftMessage(draft.pendingTask?.jobId
+          ? "已恢复后台渲染任务，可直接继续查询，不会重复扣费。"
+          : draft.resultBlob || draft.resultRemoteUrl
+            ? "已恢复上次生成的网感成片。"
+            : "已恢复原片、字幕、模板和当前制作步骤。");
+      } catch (error) {
+        if (!disposed) {
+          setViralDraftStatus("error");
+          setViralDraftMessage(error instanceof Error ? error.message : "网感制作进度暂时无法恢复。");
+        }
+      } finally {
+        if (!disposed) setViralDraftReady(true);
+      }
+    };
+    void restoreDraft();
+    return () => { disposed = true; };
+  }, [viralDraftKey]);
+
+  useEffect(() => {
+    if (!viralDraftReady) return;
+    const timer = window.setTimeout(() => {
+      setViralDraftStatus("saving");
+      setViralDraftMessage("正在保存网感制作进度…");
+      const draft: ViralWorkflowDraft = {
+        sourceFile: viralSourceFile,
+        sourceName: viralFiles[0] || viralSourceFile?.name || "",
+        sourceRemoteUrl: viralSourceFile || viralVideoPreviewUrl.startsWith("blob:") ? "" : viralVideoPreviewUrl,
+        analyzed: viralAnalyzed,
+        template: viralTemplate,
+        title: viralTitle,
+        captions: viralCaptions,
+        captionPlanReady: viralCaptionPlanReady,
+        captionsConfirmed: viralCaptionsConfirmed,
+        includeSfx: viralIncludeSfx,
+        includeBgm: viralIncludeBgm,
+        coverUrl: viralCoverUrl.startsWith("blob:") ? "" : viralCoverUrl,
+        processStarted: viralProcessStarted,
+        failed: viralFailed,
+        progress: viralProgress,
+        stage: viralStage,
+        error: viralError,
+        resultRemoteUrl: viralResultBlob || viralResultUrl.startsWith("blob:") ? "" : viralResultUrl,
+        resultBlob: viralResultBlob,
+        downloadUrl: viralDownloadUrl,
+        pendingTask: viralPendingTask,
+      };
+      void saveWorkflowDraft(viralDraftKey, draft)
+        .then(() => {
+          setViralDraftStatus("saved");
+          setViralDraftMessage(viralPendingTask
+            ? "后台渲染任务已保存，刷新后可继续查询。"
+            : "原片、字幕、模板和结果已自动保存。");
+        })
+        .catch((error: unknown) => {
+          setViralDraftStatus("error");
+          setViralDraftMessage(error instanceof Error && /quota|空间|容量/i.test(error.message)
+            ? "原片较大，字幕和任务号已保留；刷新后可能需要重新选择原片。"
+            : error instanceof Error ? error.message : "网感制作进度暂时无法保存。");
+        });
+    }, 700);
+    return () => window.clearTimeout(timer);
+  }, [
+    viralAnalyzed,
+    viralCaptionPlanReady,
+    viralCaptions,
+    viralCaptionsConfirmed,
+    viralCoverUrl,
+    viralDownloadUrl,
+    viralDraftReady,
+    viralDraftKey,
+    viralError,
+    viralFailed,
+    viralFiles,
+    viralIncludeBgm,
+    viralIncludeSfx,
+    viralPendingTask,
+    viralProcessStarted,
+    viralProgress,
+    viralResultBlob,
+    viralResultUrl,
+    viralSourceFile,
+    viralStage,
+    viralTemplate,
+    viralTitle,
+    viralVideoPreviewUrl,
+  ]);
+
+  useEffect(() => () => {
+    if (viralPreviewObjectUrl.current) URL.revokeObjectURL(viralPreviewObjectUrl.current);
+    if (viralResultObjectUrl.current) URL.revokeObjectURL(viralResultObjectUrl.current);
   }, []);
 
   useEffect(() => {
@@ -2405,6 +2757,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
       setUploadedVoiceReady(true);
       setSpeechAudioReady(false);
       setSpeechAudioUrl("");
+      setSpeechPendingTask(null);
       setSpeechError("");
       setVoiceNotice(data.warning || `“${data.voice.name}”已成功克隆并保存。`);
       window.dispatchEvent(new CustomEvent("member-assets-updated"));
@@ -2430,6 +2783,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     setSelectedVoice("");
     setSpeechAudioReady(false);
     setSpeechAudioUrl("");
+    setSpeechPendingTask(null);
     setSpeechError("");
     setVoiceError("");
     setVoiceNotice("");
@@ -2621,6 +2975,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     setSpeechError("");
     setSpeechAudioReady(false);
     setSpeechAudioUrl("");
+    setSpeechPendingTask(null);
     setLipSyncResultUrl("");
     setLipSyncError("");
     try {
@@ -2738,6 +3093,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     setScript(confirmed);
     setSpeechAudioReady(false);
     setSpeechAudioUrl("");
+    setSpeechPendingTask(null);
     setSpeechError("");
     setLipSyncResultUrl("");
     setLipSyncError("");
@@ -2746,7 +3102,8 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
 
   async function generateSpeechAudio() {
     if (!selectedVoice || !script.trim() || speechBusy) return;
-    setSpeechCaptions([]);
+    const resumableTask = speechPendingTask;
+    if (!resumableTask) setSpeechCaptions([]);
     const selectedVoiceRecord = savedVoices.find((item) => item.voiceId === selectedVoice);
     const containsChinese = /[\u3400-\u9fff]/.test(script);
     const containsEnglish = /[A-Za-z]/.test(script);
@@ -2760,27 +3117,18 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     }
     setSpeechBusy(true);
     setSpeechError("");
-    setSpeechAudioReady(false);
-    setSpeechAudioUrl("");
-    setSpeechAudioDuration(0);
+    if (!resumableTask) {
+      setSpeechAudioReady(false);
+      setSpeechAudioUrl("");
+      setSpeechPendingTask(null);
+      setSpeechAudioDuration(0);
+    }
     setLipSyncResultUrl("");
     setLipSyncError("");
     try {
       const voice = savedVoices.find((item) => item.voiceId === selectedVoice);
-      const projectName = "口播音频";
-      const response = await fetch("/api/ai/speech", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          voiceId: selectedVoice,
-          voiceName: voice?.name || voiceName || "克隆声音",
-          text: script.trim(),
-          speed: speechSpeed,
-          projectName,
-          requestId: `speech_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
-        }),
-      });
-      let data = await response.json() as {
+      const projectName = resumableTask?.projectName || "口播音频";
+      let data: {
         error?: string;
         taskId?: string | null;
         requestId?: string;
@@ -2792,8 +3140,40 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         estimatedPoints?: number;
         wallet?: { points?: number };
       };
-      if (!response.ok) throw new Error(data.error || "口播音频生成失败，请稍后重试。");
-      if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+      if (resumableTask) {
+        data = {
+          taskId: resumableTask.taskId,
+          requestId: resumableTask.requestId,
+          state: "running",
+          isFinal: false,
+          estimatedPoints: resumableTask.estimatedPoints,
+        };
+      } else {
+        const response = await fetch("/api/ai/speech", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            voiceId: selectedVoice,
+            voiceName: voice?.name || voiceName || "克隆声音",
+            text: script.trim(),
+            speed: speechSpeed,
+            projectName,
+            requestId: `speech_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          }),
+        });
+        data = await response.json() as typeof data;
+        if (!response.ok) throw new Error(data.error || "口播音频生成失败，请稍后重试。");
+        if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+        if (!data.isFinal && data.taskId) {
+          setSpeechPendingTask({
+            taskId: data.taskId,
+            requestId: data.requestId || "",
+            projectName,
+            voiceName: voice?.name || voiceName || "克隆声音",
+            estimatedPoints: Number(data.estimatedPoints) || 1,
+          });
+        }
+      }
 
       let attempts = 0;
       while (!data.isFinal && data.taskId && attempts < 120) {
@@ -2802,7 +3182,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
           task_id: data.taskId || "",
           request_id: data.requestId || "",
           project_name: projectName,
-          voice_name: voice?.name || voiceName || "克隆声音",
+          voice_name: resumableTask?.voiceName || voice?.name || voiceName || "克隆声音",
           estimated_points: String(data.estimatedPoints || 1),
         });
         const statusResponse = await fetch(`/api/ai/speech?${params}`, { cache: "no-store" });
@@ -2811,8 +3191,12 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
         attempts += 1;
       }
-      if (!data.isFinal) throw new Error("口播音频生成时间较长，请稍后重试。");
-      if (data.state === "failed" || !data.audioUrl) throw new Error(data.error || "口播音频生成失败，请重新提交。");
+      if (!data.isFinal) throw new Error("口播音频仍在生成，任务已保存，可稍后继续查询。");
+      if (data.state === "failed" || !data.audioUrl) {
+        setSpeechPendingTask(null);
+        throw new Error(data.error || "口播音频生成失败，本步骤可以单独重新提交。");
+      }
+      setSpeechPendingTask(null);
       setSpeechAudioUrl(data.audioUrl);
       setSpeechAudioDuration(Math.max(0, Number(data.duration) || 0));
       setSpeechCaptions(Array.isArray(data.captions) ? normalizeViralCaptionsForReview(data.captions) : []);
@@ -2829,28 +3213,15 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   }
 
   async function generateLipSyncVideo() {
-    if (!lipVideoFile || !speechAudioUrl || lipSyncBusy) return;
+    const resumableTask = lipSyncPendingTask;
+    if ((!resumableTask && (!lipVideoFile || !speechAudioUrl)) || lipSyncBusy) return;
     setLipSyncBusy(true);
     setLipSyncError("");
-    setLipSyncProgress(0);
-    setLipSyncResultUrl("");
+    if (!resumableTask) {
+      setLipSyncProgress(0);
+      setLipSyncResultUrl("");
+    }
     try {
-      const audioResponse = await fetch(speechAudioUrl, { cache: "no-store" });
-      if (!audioResponse.ok) throw new Error("口播音频读取失败，请重新生成音频。");
-      const audioBlob = await audioResponse.blob();
-      const isWav = audioBlob.type.includes("wav");
-      const audioFileForUpload = new File([audioBlob], isWav ? "speech.wav" : "speech.mp3", { type: audioBlob.type || "audio/mpeg" });
-      const form = new FormData();
-      form.append("video", lipVideoFile, lipVideoFile.name);
-      form.append("audio", audioFileForUpload, audioFileForUpload.name);
-      form.append("width", String(lipVideoSize.width));
-      form.append("height", String(lipVideoSize.height));
-      form.append("audioDuration", String(speechAudioDuration));
-      form.append("projectName", "对口型视频");
-      form.append("requestId", `lip_sync_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
-
-      const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
-      const responseText = await response.text();
       let data: {
         error?: string;
         taskId?: string;
@@ -2864,16 +3235,48 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         estimatedPoints?: number;
         audioDuration?: number;
       };
-      try {
-        data = responseText ? JSON.parse(responseText) as typeof data : {};
-      } catch {
-        if (response.status === 413) {
-          throw new Error("视频上传失败：文件超过当前服务允许的大小，请压缩到 200MB 以内后重试。");
+      if (resumableTask) {
+        data = {
+          taskId: resumableTask.taskId,
+          requestId: resumableTask.requestId,
+          projectName: resumableTask.projectName,
+          state: "running",
+          isFinal: false,
+          progress: lipSyncProgress,
+        };
+      } else {
+        const audioResponse = await fetch(speechAudioUrl, { cache: "no-store" });
+        if (!audioResponse.ok) throw new Error("口播音频读取失败，请重新生成音频。");
+        const audioBlob = await audioResponse.blob();
+        const isWav = audioBlob.type.includes("wav");
+        const audioFileForUpload = new File([audioBlob], isWav ? "speech.wav" : "speech.mp3", { type: audioBlob.type || "audio/mpeg" });
+        const form = new FormData();
+        form.append("video", lipVideoFile as File, (lipVideoFile as File).name);
+        form.append("audio", audioFileForUpload, audioFileForUpload.name);
+        form.append("width", String(lipVideoSize.width));
+        form.append("height", String(lipVideoSize.height));
+        form.append("audioDuration", String(speechAudioDuration));
+        form.append("projectName", "对口型视频");
+        form.append("requestId", `lip_sync_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+
+        const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
+        const responseText = await response.text();
+        try {
+          data = responseText ? JSON.parse(responseText) as typeof data : {};
+        } catch {
+          if (response.status === 413) {
+            throw new Error("视频上传失败：文件超过当前服务允许的大小，请压缩到 200MB 以内后重试。");
+          }
+          throw new Error(responseText.trim() || `对口型接口返回异常（${response.status}）。`);
         }
-        throw new Error(responseText.trim() || `对口型接口返回异常（${response.status}）。`);
+        if (!response.ok || !data.taskId) throw new Error(data.error || "对口型任务创建失败，请稍后重试。");
+        if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+        setLipSyncPendingTask({
+          taskId: data.taskId,
+          requestId: data.requestId || "",
+          projectName: data.projectName || "对口型视频",
+        });
       }
-      if (!response.ok || !data.taskId) throw new Error(data.error || "对口型任务创建失败，请稍后重试。");
-      if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
 
       let attempts = 0;
       while (!data.isFinal && attempts < 240) {
@@ -2890,8 +3293,12 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
         attempts += 1;
       }
-      if (!data.isFinal) throw new Error("对口型任务仍在处理中，请稍后重新进入会员资产查看。");
-      if (data.state !== "success" || !data.videoUrl) throw new Error(data.error || "对口型视频生成失败，本次积分已自动退回。");
+      if (!data.isFinal) throw new Error("对口型任务仍在处理中，任务已保存，可稍后继续查询。");
+      if (data.state !== "success" || !data.videoUrl) {
+        setLipSyncPendingTask(null);
+        throw new Error(data.error || "对口型视频生成失败，本次积分已自动退回，可只重试当前步骤。");
+      }
+      setLipSyncPendingTask(null);
       setLipSyncProgress(100);
       // The provider URL is playable as soon as the task finishes. Do not wait
       // for the whole MP4 to be copied through the application server first.
@@ -3102,11 +3509,14 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   function addViralFiles(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
     if (!file) return;
+    if (viralPreviewObjectUrl.current) URL.revokeObjectURL(viralPreviewObjectUrl.current);
+    const previewUrl = URL.createObjectURL(file);
+    viralPreviewObjectUrl.current = previewUrl;
     setViralFiles([file.name]);
     setViralSourceFile(file);
     viralCloudSourceRef.current = null;
     setViralImportPreparing(false);
-    setViralVideoPreviewUrl(URL.createObjectURL(file));
+    setViralVideoPreviewUrl(previewUrl);
     setViralAnalyzed(true);
     setViralResultUrl("");
     setViralResultBlob(null);
@@ -3127,6 +3537,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     setViralFailed(false);
     setViralTranscriptError("");
     setViralProcessStarted(false);
+    setViralPendingTask(null);
     window.sessionStorage.removeItem("merchant-studio-viral-source");
     event.target.value = "";
   }
@@ -3757,13 +4168,16 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   }
 
   async function processViralVideoOnWorker() {
-    const requestId = `viral_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
-    let pointsReserved = false;
+    const resumableTask = viralPendingTask;
+    const requestId = resumableTask?.requestId || `viral_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`;
+    let pointsReserved = Boolean(resumableTask?.pointsReserved);
+    let activeCheckpoint = resumableTask;
+    let terminalFailure = false;
     setViralProcessBusy(true);
     setViralProcessingEngine("server");
     setViralError("");
-    setViralProgress(1);
-    setViralStage("正在把原片发送到本地视频处理服务…");
+    if (!resumableTask) setViralProgress(1);
+    setViralStage(resumableTask ? "正在继续查询已保存的后台任务…" : "正在把原片发送到视频处理服务…");
     setViralSaved(false);
     setViralFailed(false);
     setViralAnalysisMode("local");
@@ -3771,54 +4185,59 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
     setViralResultBlob(null);
     setViralDownloadUrl("");
     try {
-      const reserveResponse = await fetch("/api/ai/viral-edit", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ phase: "reserve", requestId }),
-      });
-      const reserveData = await reserveResponse.json() as { error?: string; wallet?: { points?: number } };
-      if (!reserveResponse.ok) throw new Error(reserveData.error || "积分预扣失败，请稍后重试。");
-      pointsReserved = true;
-      if (typeof reserveData.wallet?.points === "number") onPointsChange(reserveData.wallet.points);
+      let job: ViralWorkerJob;
+      if (resumableTask) {
+        job = { id: resumableTask.jobId, state: "running", stage: "rendering", progress: viralProgress, message: "正在继续查询后台任务" };
+      } else {
+        const reserveResponse = await fetch("/api/ai/viral-edit", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ phase: "reserve", requestId }),
+        });
+        const reserveData = await reserveResponse.json() as { error?: string; wallet?: { points?: number } };
+        if (!reserveResponse.ok) throw new Error(reserveData.error || "积分预扣失败，请稍后重试。");
+        pointsReserved = true;
+        if (typeof reserveData.wallet?.points === "number") onPointsChange(reserveData.wallet.points);
 
-      setViralProgress(6);
-      const generatedTitle = viralTitle.trim();
-      setViralStage("正在提交已确认的标题与口播文案…");
-      setViralAnalysisSummary("标题与分段口播已经人工确认，将直接交给模板生成，不再重复分析或改写。");
-      setViralAnalysisMode("ai");
+        setViralProgress(6);
+        const generatedTitle = viralTitle.trim();
+        setViralStage("正在提交已确认的标题与口播文案…");
+        setViralAnalysisSummary("标题与分段口播已经人工确认，将直接交给模板生成，不再重复分析或改写。");
+        setViralAnalysisMode("ai");
 
-      setViralProgress(12);
-      setViralStage("原片内容已读取，正在按模板规则重新编排…");
-      const form = new FormData();
-      await appendWorkerSource(form);
-      form.append("template_id", viralTemplate);
-      form.append("title", generatedTitle);
-      form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
-      const directorPlan = buildViralDirectorPlan({
-        templateId: viralTemplate,
-        title: generatedTitle,
-        duration: Math.max(1, viralCaptions.at(-1)?.end || 1),
-        captions: viralCaptions,
-        source: viralCaptionPlanReady ? "ai" : "user-confirmed",
-        model: viralCaptionPlanReady ? "app-precomputed" : "local-confirmed",
-        degraded: !viralCaptionPlanReady,
-      });
-      form.append("director_plan_json", JSON.stringify(directorPlan));
-      // The confirmed immutable plan is complete even when the AI timed out;
-      // its local semantic fallback is intentionally render-ready.
-      form.append("caption_plan_ready", viralCaptionsConfirmed && directorPlan.captions.length ? "true" : "false");
-      form.append("include_sfx", viralIncludeSfx ? "true" : "false");
-      form.append("include_bgm", viralIncludeBgm ? "true" : "false");
-      const createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {
-        method: "POST",
-        body: form,
-      });
-      const createData = await createResponse.json().catch(() => null) as ViralWorkerJob | { detail?: string } | null;
-      if (!createResponse.ok || !createData || !("id" in createData)) {
-        throw new Error(createData && "detail" in createData ? createData.detail || "视频处理服务没有接受原片。" : "视频处理服务没有接受原片。");
+        setViralProgress(12);
+        setViralStage("原片内容已读取，正在按模板规则重新编排…");
+        const form = new FormData();
+        await appendWorkerSource(form);
+        form.append("template_id", viralTemplate);
+        form.append("title", generatedTitle);
+        form.append("captions_json", viralCaptions.length ? JSON.stringify(viralCaptions) : "[]");
+        const directorPlan = buildViralDirectorPlan({
+          templateId: viralTemplate,
+          title: generatedTitle,
+          duration: Math.max(1, viralCaptions.at(-1)?.end || 1),
+          captions: viralCaptions,
+          source: viralCaptionPlanReady ? "ai" : "user-confirmed",
+          model: viralCaptionPlanReady ? "app-precomputed" : "local-confirmed",
+          degraded: !viralCaptionPlanReady,
+        });
+        form.append("director_plan_json", JSON.stringify(directorPlan));
+        form.append("caption_plan_ready", viralCaptionsConfirmed && directorPlan.captions.length ? "true" : "false");
+        form.append("include_sfx", viralIncludeSfx ? "true" : "false");
+        form.append("include_bgm", viralIncludeBgm ? "true" : "false");
+        const createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {
+          method: "POST",
+          body: form,
+        });
+        const createData = await createResponse.json().catch(() => null) as ViralWorkerJob | { detail?: string } | null;
+        if (!createResponse.ok || !createData || !("id" in createData)) {
+          throw new Error(createData && "detail" in createData ? createData.detail || "视频处理服务没有接受原片。" : "视频处理服务没有接受原片。");
+        }
+        job = createData;
+        activeCheckpoint = { jobId: job.id, requestId, pointsReserved: true };
+        setViralPendingTask(activeCheckpoint);
       }
 
-      let job = createData;
       const deadline = Date.now() + 30 * 60 * 1000;
       while (job.state !== "success" && job.state !== "failed") {
         if (Date.now() > deadline) throw new Error("视频处理超过30分钟，任务已停止等待。");
@@ -3832,7 +4251,10 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         setViralProgress(Math.max(1, Math.min(100, Number(job.progress) || 1)));
         setViralStage(job.message || "后台正在处理视频…");
       }
-      if (job.state === "failed") throw new Error(job.error || job.message || "后台视频处理失败。");
+      if (job.state === "failed") {
+        terminalFailure = true;
+        throw new Error(job.error || job.message || "后台视频处理失败。");
+      }
       if (!job.result_url) throw new Error("后台任务完成，但没有返回成片地址。");
 
       const resultUrl = resolveVideoWorkerUrl(job.result_url);
@@ -3888,11 +4310,14 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
       if (!settleResponse.ok) throw new Error(settleData.error || "积分结算失败。");
       if (typeof settleData.wallet?.points === "number") onPointsChange(settleData.wallet.points);
       pointsReserved = false;
+      activeCheckpoint = null;
+      setViralPendingTask(null);
       setViralProgress(100);
       setViralFailed(false);
       setViralStage(saved ? "处理完成，MP4 成片已保存到会员资产。" : "处理完成，可先下载 MP4 成片。");
     } catch (error) {
-      if (pointsReserved) {
+      const shouldRefund = pointsReserved && (!activeCheckpoint || terminalFailure);
+      if (shouldRefund) {
         const refundResponse = await fetch("/api/ai/viral-edit", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -3900,11 +4325,19 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
         }).catch(() => null);
         const refundData = refundResponse ? await refundResponse.json().catch(() => null) as { wallet?: { points?: number } } | null : null;
         if (typeof refundData?.wallet?.points === "number") onPointsChange(refundData.wallet.points);
+        pointsReserved = false;
       }
       setViralFailed(true);
-      setViralStage("后台处理失败，积分已退回，可直接重新开始。");
       const message = error instanceof Error ? error.message : "后台视频处理失败。";
-      setViralError(`${message.replace(/[。！!]*$/, "")}，本次积分已退回。`);
+      if (activeCheckpoint && !terminalFailure) {
+        setViralPendingTask(activeCheckpoint);
+        setViralStage("后台任务仍在继续，进度已保存，可稍后继续查询。");
+        setViralError(`${message.replace(/[。！!]*$/, "")}。任务号和已完成步骤已保存，不会重复提交或扣费。`);
+      } else {
+        setViralPendingTask(null);
+        setViralStage("后台处理失败，积分已退回，只需重试当前生成步骤。");
+        setViralError(`${message.replace(/[。！!]*$/, "")}，本次积分已退回。`);
+      }
     } finally {
       setViralProcessBusy(false);
     }
@@ -4041,7 +4474,9 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
       if (viralSourceFile && source.src.startsWith("blob:")) URL.revokeObjectURL(source.src);
       if (!resultBlob.size) throw new Error("本地视频没有生成有效内容，请重新处理。");
 
+      if (viralResultObjectUrl.current) URL.revokeObjectURL(viralResultObjectUrl.current);
       const resultUrl = URL.createObjectURL(resultBlob);
+      viralResultObjectUrl.current = resultUrl;
       setViralResultBlob(resultBlob);
       setViralResultUrl(resultUrl);
       setViralProgress(96);
@@ -4090,13 +4525,17 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   }
 
   async function processViralVideo() {
-    if (!viralVideoPreviewUrl || viralProcessBusy) return;
-    if (!viralTitle.trim() || !viralCaptions.length || !viralCaptionsConfirmed) {
+    if ((!viralVideoPreviewUrl && !viralPendingTask) || viralProcessBusy) return;
+    if (!viralPendingTask && (!viralTitle.trim() || !viralCaptions.length || !viralCaptionsConfirmed)) {
       setViralTranscriptError("请先核对标题与口播文案，确认全部内容无误后再应用模板。");
       return;
     }
     setViralProcessStarted(true);
     setViralTranscriptError("");
+    if (viralPendingTask) {
+      await processViralVideoOnWorker();
+      return;
+    }
     if (await videoWorkerAvailable()) {
       await processViralVideoOnWorker();
       return;
@@ -4827,9 +5266,10 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
   if (workspace === "lip-sync") {
     const voiceReady = Boolean(selectedVoice) && (voiceSource === "saved" || uploadedVoiceReady);
     const canGenerateSpeechAudio = voiceReady && Boolean(script.trim());
-    const canGenerateLipSync = speechAudioReady
+    const canGenerateLipSync = Boolean(lipSyncPendingTask) || (speechAudioReady
       && Boolean(speechAudioUrl)
-      && Boolean(lipVideoFile);
+      && Boolean(lipVideoFile));
+    const lipSyncLocked = lipSyncBusy || Boolean(lipSyncPendingTask);
     const currentSavedVoice = savedVoices.find((item) => item.voiceId === selectedVoice);
     const currentVoiceName = currentSavedVoice?.name || (voiceSource === "upload" ? voiceName || "待克隆声音" : "尚未选择声音");
     const lipSyncEstimatedPoints = speechAudioDuration > 0 ? billablePointsFromCost(lipSyncPoints(speechAudioDuration, true)) : null;
@@ -4839,6 +5279,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
       setSelectedVoice("");
       setSpeechAudioReady(false);
       setSpeechAudioUrl("");
+      setSpeechPendingTask(null);
       setSpeechError("");
       setVoiceError("");
       setVoiceNotice("");
@@ -4864,27 +5305,31 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
           </span>;
         })}
       </nav>
+      <div className={`lip-sync-draft-status is-${lipSyncDraftStatus}`} role="status" aria-live="polite">
+        <i aria-hidden="true">{lipSyncDraftStatus === "saved" ? "✓" : lipSyncDraftStatus === "error" ? "!" : "●"}</i>
+        <span><b>{lipSyncDraftStatus === "loading" ? "正在恢复进度" : lipSyncDraftStatus === "saving" ? "正在保存进度" : lipSyncDraftStatus === "error" ? "进度保存遇到问题" : "制作进度已保存"}</b><small>{lipSyncDraftMessage}</small></span>
+      </div>
       <div className="video-builder-grid lip-sync-grid">
         <div className="video-builder-form">
           <section className={`video-builder-card lip-sync-step-card ${voiceReady ? "is-complete" : "is-active"}`}>
             <div className="video-card-title lip-sync-card-title"><span>01</span><div><b>选择或克隆声音</b><small>{voiceReady ? `已选择 ${currentVoiceName}` : "先确定口播使用的声音"}</small></div>{voiceReady ? <em>已完成</em> : <em>当前步骤</em>}</div>
             <nav className="voice-source-tabs">
-              <button type="button" className={voiceSource === "saved" ? "active" : ""} onClick={() => { setVoiceSource("saved"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>选择已有声音</button>
-              <button type="button" className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
+              <button type="button" disabled={lipSyncLocked} className={voiceSource === "saved" ? "active" : ""} onClick={() => { setVoiceSource("saved"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>选择已有声音</button>
+              <button type="button" disabled={lipSyncLocked} className={voiceSource === "upload" ? "active" : ""} onClick={() => { setVoiceSource("upload"); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setVoiceError(""); setVoiceNotice(""); }}>上传音频克隆</button>
             </nav>
-            {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
+            {voiceSource === "saved" ? <><div className="voice-saved-row"><label className="video-select-field"><span>已有克隆声音</span><select value={selectedVoice} disabled={voicesLoading || !savedVoices.length || voiceAuditionBusy || lipSyncLocked} onChange={(event) => { setSelectedVoice(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setVoiceError(""); }}><option value="">{voicesLoading ? "正在读取声音…" : savedVoices.length ? "请选择声音" : "暂无已克隆声音"}</option>{savedVoices.map((voice) => <option value={voice.voiceId} key={voice.voiceId}>{voice.name}（{voice.language === "en" ? "英文" : "中文"}）</option>)}</select><small>{currentSavedVoice ? `已绑定当前会员账号 · ${currentSavedVoice.language === "en" ? "英文音色" : "中文音色"}` : "请先在“上传音频克隆”中创建声音"}</small></label><button type="button" className="voice-audition-button" disabled={!currentSavedVoice || voiceAuditionBusy || lipSyncLocked} onClick={() => void auditionClonedVoice(selectedVoice)}>{voiceAuditionBusy ? "正在生成试听…" : "▶ 试听声音"}</button></div><p className="voice-audition-copy">试听内容：{currentSavedVoice?.language === "en" ? VOICE_AUDITION_TEXT_EN : VOICE_AUDITION_TEXT}</p>{currentSavedVoice && voiceAuditionUrls[currentSavedVoice.voiceId] ? <div className="voice-audition-preview"><audio src={voiceAuditionUrls[currentSavedVoice.voiceId]} controls preload="metadata" /></div> : null}</> : null}
             {voiceSource === "upload" ? <div className="voice-clone-panel"><label className="video-file-drop is-compact"><input type="file" accept="audio/mpeg,audio/mp3,audio/wav,audio/x-wav,audio/mp4,audio/m4a,audio/ogg,audio/webm,.mp3,.m4a,.wav,.ogg,.webm" onChange={(event) => { void prepareVoiceAudioPreview(event.target.files?.[0] ?? null); event.target.value = ""; }} /><i>＋</i><b>{audioFileName || "上传清晰人声音频"}</b><span>清晰人声 · 无背景音乐 · 3–10 秒</span></label>{voiceUploadPreviewUrl ? <div className="voice-upload-preview"><span>原始音频试听</span><audio key={voiceUploadPreviewUrl} src={voiceUploadPreviewUrl} controls preload="auto" onCanPlay={() => setVoiceUploadPreviewError("")} onError={() => { if (voicePreviewConverted.current) setVoiceUploadPreviewError("浏览器仍无法播放转换后的音频，请重新导出为标准 MP3 或 WAV。"); else void convertVoiceAudioForBrowser(); }}>当前浏览器不支持音频试听。</audio>{voiceUploadPreviewConverting ? <em>正在转换兼容格式…</em> : null}</div> : null}{voiceUploadPreviewError ? <div className="voice-preview-error" role="alert">{voiceUploadPreviewError}</div> : null}<div className="voice-clone-controls"><input value={voiceName} placeholder="给克隆声音命名" disabled={voiceBusy} onChange={(event) => { setVoiceName(event.target.value); resetVoiceResult(); }} /><button type="button" className="voice-clone-action is-chinese" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("cn")}>{voiceBusy && voiceLanguage === "cn" ? "正在克隆中文…" : `克隆中文 · ${billablePointsFromCost(CHANJING_VOICE_CLONE_POINTS)}积分`}</button><button type="button" className="voice-clone-action is-english" disabled={!audioFile || voiceUploadPreviewConverting || Boolean(voiceUploadPreviewError) || !voiceName.trim() || voiceBusy} onClick={() => void cloneUploadedVoice("en")}>{voiceBusy && voiceLanguage === "en" ? "正在克隆英文…" : `克隆英文 · ${billablePointsFromCost(CHANJING_VOICE_CLONE_POINTS)}积分`}</button></div>{uploadedVoiceReady ? <small className="voice-clone-ready">✓ {voiceNotice || `“${voiceName}”${voiceLanguage === "en" ? "英文" : "中文"}音色已保存`}</small> : null}</div> : null}
             {voiceError ? <div className="video-agent-error" role="alert">{voiceError}</div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>生成口播音频</b><small>{speechAudioReady ? "音频已生成，可以试听" : "输入文案并调整说话速度"}</small></div>{speechAudioReady ? <em>已完成</em> : voiceReady ? <em>当前步骤</em> : <em>等待声音</em>}</div>
-            <textarea value={script} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
+            <textarea value={script} disabled={lipSyncLocked} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
-              <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy} onClick={() => { setBenchmarkError(""); openVideoWorkspace("ai-benchmark"); }}>AI 对标</button>
-              <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
+              <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy || lipSyncLocked} onClick={() => { setBenchmarkError(""); openVideoWorkspace("ai-benchmark"); }}>AI 对标</button>
+              <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2 || lipSyncLocked} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
               <label className="speech-speed-field">
                 <span>语速</span>
-                <select value={speechSpeed} disabled={speechBusy} onChange={(event) => { setSpeechSpeed(Number(event.target.value)); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播语速">
+                <select value={speechSpeed} disabled={speechBusy || lipSyncLocked} onChange={(event) => { setSpeechSpeed(Number(event.target.value)); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播语速">
                   <option value={0.75}>慢速 · 0.75×</option>
                   <option value={1}>正常 · 1.0×</option>
                   <option value={1.25}>稍快 · 1.25×</option>
@@ -4892,24 +5337,24 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
                   <option value={2}>很快 · 2.0×</option>
                 </select>
               </label>
-              <button type="button" className="primary" disabled={!canGenerateSpeechAudio || speechBusy || scriptRewriteBusy} onClick={() => void generateSpeechAudio()}>{speechBusy ? "正在生成口播音频…" : "生成口播音频 · 按实际积分结算"}</button>
+              <button type="button" className="primary" disabled={!canGenerateSpeechAudio || speechBusy || scriptRewriteBusy || lipSyncLocked} onClick={() => void generateSpeechAudio()}>{speechBusy ? "正在生成口播音频…" : speechPendingTask ? "继续查询口播结果" : "生成口播音频 · 按实际积分结算"}</button>
             </div>
             {speechError ? <div className="video-agent-error" role="alert">{speechError}</div> : null}
             {speechAudioReady && speechAudioUrl ? <div className="speech-audio-preview"><div><i>♪</i><span><b>口播音频已生成</b><small>{`${currentVoiceName} · ${speechAudioDuration ? `${speechAudioDuration.toFixed(1)} 秒 · ` : ""}${speechSpeed}×`}</small></span></div><audio src={speechAudioUrl} controls preload="metadata" onLoadedMetadata={(event) => setSpeechAudioDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0)} /></div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card ${lipVideoName ? "is-complete" : speechAudioReady ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>03</span><div><b>上传本人视频</b><small>{lipVideoName ? "人物视频已就绪" : "使用正脸、清晰、嘴部无遮挡的视频"}</small></div>{lipVideoName ? <em>已完成</em> : speechAudioReady ? <em>当前步骤</em> : <em>等待口播</em>}</div>
-            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" onChange={(event) => { const file = event.target.files?.[0] ?? null; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(file ? URL.createObjectURL(file) : ""); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
+            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" disabled={lipSyncLocked} onChange={(event) => { const file = event.target.files?.[0] ?? null; if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current); const previewUrl = file ? URL.createObjectURL(file) : ""; lipVideoPreviewObjectUrl.current = previewUrl; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(previewUrl); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
             {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 })} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card lip-sync-final-card ${lipSyncResultUrl ? "is-complete" : canGenerateLipSync ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>04</span><div><b>生成对口型视频</b><small>{lipSyncResultUrl ? "成片已保存，可继续网感剪辑" : "声音和人物视频将自动同步"}</small></div>{lipSyncResultUrl ? <em>已完成</em> : canGenerateLipSync ? <em>可以生成</em> : <em>等待素材</em>}</div>
             <div className="lip-sync-final-actions">
-              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || !lipSyncEstimatedPoints} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
+              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || (!lipSyncPendingTask && !lipSyncEstimatedPoints)} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : lipSyncPendingTask ? "继续查询生成结果" : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInSuperEditor}>{lipSyncResultUrl ? "✦ 导入AI超级剪辑" : "生成后可导入AI超级剪辑"}</button>
             </div>
-            {lipSyncError ? <div className="video-agent-error" role="alert">{lipSyncError}</div> : null}
+            {lipSyncError ? <div className="video-agent-error" role="alert"><b>{lipSyncError}</b><span>{lipSyncPendingTask ? "声音、音频、视频和任务编号均已保存，点击“继续查询生成结果”即可。" : "前面已完成的步骤不会丢失，只需重试当前步骤。"}</span></div> : null}
           </section>
         </div>
         <aside className="video-builder-preview lip-sync-preview">
@@ -4946,11 +5391,15 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
           </span>;
         })}
       </nav>
+      <div className={`lip-sync-draft-status is-${viralDraftStatus}`} role="status" aria-live="polite">
+        <i aria-hidden="true">{viralDraftStatus === "saved" ? "✓" : viralDraftStatus === "error" ? "!" : "●"}</i>
+        <span><b>{viralDraftStatus === "loading" ? "正在恢复进度" : viralDraftStatus === "saving" ? "正在保存进度" : viralDraftStatus === "error" ? "进度保存遇到问题" : "网感进度已保存"}</b><small>{viralDraftMessage}</small></span>
+      </div>
       <div className="viral-quick-shell">
         <section className={`viral-source-pane viral-edit-step-card ${viralFiles.length ? "is-complete" : "is-active"}`}>
           <div className="viral-pane-heading">
             <i>01</i><span><b>导入口播原片</b></span>
-            <label><input type="file" accept="video/*" onChange={addViralFiles} />{viralFiles.length ? "更换原片" : "导入原片"}</label>
+            <label><input type="file" accept="video/*" disabled={viralProcessBusy || Boolean(viralPendingTask)} onChange={addViralFiles} />{viralFiles.length ? "更换原片" : "导入原片"}</label>
           </div>
           <div className={`viral-main-preview template-${viralTemplate}`}>
             {viralVideoPreviewUrl ? <video src={viralVideoPreviewUrl} poster={viralCoverUrl || undefined} controls playsInline preload="metadata" onLoadedMetadata={(event) => setViralSourceResolution(`${event.currentTarget.videoWidth} × ${event.currentTarget.videoHeight}`)} onLoadedData={(event) => { if (!viralCoverUrl) { const cover = viralFrameDataUrl(event.currentTarget, 900); if (cover) setViralCoverUrl(cover); } }} /> : <div className="viral-empty-video">导入视频后在这里预览</div>}
@@ -4959,7 +5408,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
           <section className="viral-source-transcript">
             <header>
               <i>02</i><span><b>核对标题与口播</b></span>
-              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy} onClick={() => viralCaptions.length ? openViralTranscriptReview() : void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `AI 正在排版 · ${viralTranscriptProgress}%` : viralCaptions.length ? "查看并修改文案" : "AI 识别并排版"}</button>
+              <button type="button" disabled={!viralFiles.length || viralImportPreparing || viralTranscriptBusy || viralProcessBusy || Boolean(viralPendingTask)} onClick={() => viralCaptions.length ? openViralTranscriptReview() : void extractViralTranscript()}>{viralImportPreparing ? "正在读取会员视频…" : viralTranscriptBusy ? `AI 正在排版 · ${viralTranscriptProgress}%` : viralCaptions.length ? "查看并修改文案" : "AI 识别并排版"}</button>
             </header>
             {viralCaptions.length ? <div className={`viral-transcript-status ${viralCaptionsConfirmed ? "is-confirmed" : ""}`}>
               <span><b>{viralCaptionsConfirmed ? "标题与字幕已确认" : "AI 排版已完成，等待确认"}</b><small>{plainViralTitle(viralTitle) || `${viralCaptions.length} 段字幕`}</small></span>
@@ -4977,7 +5426,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
             {viralTemplatesLoading ? <p className="viral-template-state">正在同步管理员模板库…</p> : null}
             {!viralTemplatesLoading && viralTemplatesError ? <p className="viral-template-state is-error">{viralTemplatesError}</p> : null}
             {!viralTemplatesLoading && !viralTemplatesError && !templates.length ? <p className="viral-template-state">管理员暂未上架网感模板。</p> : null}
-            {templates.map((template) => <button type="button" key={template.id} className={`viral-template-card ${viralTemplate === template.id ? "selected" : ""}`} aria-pressed={viralTemplate === template.id} aria-label={`选择${template.name}模板`} onClick={() => setViralTemplate(template.id)}>
+            {templates.map((template) => <button type="button" disabled={viralProcessBusy || Boolean(viralPendingTask)} key={template.id} className={`viral-template-card ${viralTemplate === template.id ? "selected" : ""}`} aria-pressed={viralTemplate === template.id} aria-label={`选择${template.name}模板`} onClick={() => setViralTemplate(template.id)}>
               <span className={`template-thumb template-${template.id}`}>
                 {template.previewUrl ? <video
                   key={`${template.id}-${template.previewUrl}`}
@@ -5004,16 +5453,16 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
           </div>
           <div className="viral-process-bar">
             <span>保留原片声音</span>
-            <label><input type="checkbox" checked={viralIncludeSfx} onChange={(event) => setViralIncludeSfx(event.target.checked)} />添加音效</label>
-            <label><input type="checkbox" checked={viralIncludeBgm} onChange={(event) => setViralIncludeBgm(event.target.checked)} />添加背景音乐</label>
-            <div><button type="button" disabled={!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length || viralProcessBusy || viralTranscriptBusy} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : `一键应用模板 · ${billablePointsFromCost(28)}积分`}</button></div>
+            <label><input type="checkbox" disabled={viralProcessBusy || Boolean(viralPendingTask)} checked={viralIncludeSfx} onChange={(event) => setViralIncludeSfx(event.target.checked)} />添加音效</label>
+            <label><input type="checkbox" disabled={viralProcessBusy || Boolean(viralPendingTask)} checked={viralIncludeBgm} onChange={(event) => setViralIncludeBgm(event.target.checked)} />添加背景音乐</label>
+            <div><button type="button" disabled={viralProcessBusy || viralTranscriptBusy || (!viralPendingTask && (!templates.length || !viralFiles.length || !viralTitle.trim() || !viralCaptionsConfirmed || !viralCaptions.length))} onClick={() => void processViralVideo()}>{viralProcessBusy ? `正在处理 · ${viralProgress}%` : viralPendingTask ? "继续查询生成结果" : `一键应用模板 · ${billablePointsFromCost(28)}积分`}</button></div>
           </div>
         </section>
       </div>
       {viralProcessStarted ? <section className="viral-result-shell">
         <header>
           <div><h2>{viralProcessBusy ? "正在生成网感成片" : viralResultUrl ? "网感成片已完成" : viralFailed ? "本次处理未完成" : "处理状态"}</h2></div>
-          <span className={viralResultUrl ? "done" : viralFailed ? "failed" : ""}>{viralResultUrl ? "已完成" : viralProcessBusy ? `${viralProgress}%` : viralFailed ? "已停止并退款" : "未完成"}</span>
+          <span className={viralResultUrl ? "done" : viralFailed ? "failed" : ""}>{viralResultUrl ? "已完成" : viralProcessBusy ? `${viralProgress}%` : viralPendingTask ? "任务已保存" : viralFailed ? "已停止并退款" : "未完成"}</span>
         </header>
         <div className="viral-progress-track"><i style={{ width: `${viralProgress}%` }} /></div>
         <div className="viral-result-grid">
@@ -5027,7 +5476,7 @@ export function Video({ busy, action, onPointsChange, viralImportAsset }: { busy
                   : `/api/ai/viral-download?source=${encodeURIComponent(viralResultUrl)}&filename=${encodeURIComponent("一键网感成片.mp4")}`}
                 download="一键网感成片.mp4"
               >↓ 下载成片</a> : <button type="button" disabled>↓ 下载成片</button>}
-              <button type="button" disabled={viralProcessBusy} onClick={() => { setViralProcessStarted(false); setViralResultUrl(""); setViralResultBlob(null); setViralDownloadUrl(""); setViralSaved(false); setViralFailed(false); setViralAnalysisMode(""); setViralProcessingEngine(""); setViralRenderer(""); setViralProgress(0); setViralStage(""); setViralError(""); }}>重新制作</button>
+              <button type="button" disabled={viralProcessBusy || Boolean(viralPendingTask)} onClick={() => { setViralProcessStarted(false); setViralResultUrl(""); setViralResultBlob(null); setViralDownloadUrl(""); setViralSaved(false); setViralFailed(false); setViralAnalysisMode(""); setViralProcessingEngine(""); setViralRenderer(""); setViralProgress(0); setViralStage(""); setViralError(""); }}>重新制作</button>
             </div>
           </div>
         </div>
