@@ -12,6 +12,10 @@ const secretKey = process.env.TENCENT_CLOUD_SECRET_KEY?.trim();
 const apply = process.argv.includes("--apply");
 const whoami = process.argv.includes("--whoami");
 const requestCertificate = process.argv.includes("--request-certificate");
+const inspectCertificate = process.argv.includes("--inspect-certificate");
+const repairCertificateDns = process.argv.includes("--repair-certificate-dns");
+const ensureSslDeployRole = process.argv.includes("--ensure-ssl-deploy-role");
+const deployCertificate = process.argv.includes("--deploy-certificate");
 const purgePublicMedia = process.argv.includes("--purge-public-media");
 
 const publicMediaPaths = [
@@ -115,6 +119,14 @@ const sslApi = (action, body = {}) => tcApi({
   host: "ssl.tencentcloudapi.com",
   action,
   version: "2019-12-05",
+  body,
+});
+
+const camApi = (action, body = {}) => tcApi({
+  service: "cam",
+  host: "cam.tencentcloudapi.com",
+  action,
+  version: "2019-01-16",
   body,
 });
 
@@ -301,6 +313,192 @@ async function main() {
     return;
   }
 
+  if (inspectCertificate) {
+    const candidates = await getCertificateCandidates();
+    const certificate = candidates[0];
+    if (!certificate?.CertificateId) {
+      console.log(JSON.stringify({ result: "not-found", domain }, null, 2));
+      return;
+    }
+    const detail = await sslApi("DescribeCertificateDetail", {
+      CertificateId: certificate.CertificateId,
+    });
+    const authDetail = detail.DvAuthDetail || {};
+    const auths = Array.isArray(authDetail.DvAuths) ? authDetail.DvAuths : [];
+    console.log(JSON.stringify({
+      result: "certificate-detail",
+      certificateId: certificate.CertificateId,
+      domain: detail.Domain || certificate.Domain || domain,
+      status: detail.Status ?? certificate.Status ?? null,
+      statusName: detail.StatusName || certificate.StatusName || null,
+      verifyType: detail.VerifyType || authDetail.DvAuthVerifyType || null,
+      source: detail.From || null,
+      certificateType: detail.CertificateType || null,
+      productName: detail.ProductZhName || detail.ProductName || null,
+      encryption: detail.EncryptAlgorithm || detail.CertCSREncryptAlgo || null,
+      authStatus: authDetail.DvAuthStatus || null,
+      authRecords: auths.map((auth) => ({
+        domain: auth.DvAuthDomain || auth.DvAuthSubDomain || null,
+        verifyType: auth.DvAuthVerifyType || null,
+        status: auth.DvAuthStatus || null,
+        fields: Object.keys(auth).sort(),
+      })),
+      submittedAt: detail.InsertTime || certificate.InsertTime || null,
+    }, null, 2));
+    return;
+  }
+
+  if (repairCertificateDns) {
+    const candidates = await getCertificateCandidates();
+    const certificate = candidates.find((cert) => cert.Status !== 1) || candidates[0];
+    if (!certificate?.CertificateId) {
+      throw new Error(`No certificate application found for ${domain}.`);
+    }
+    const detail = await sslApi("DescribeCertificateDetail", {
+      CertificateId: certificate.CertificateId,
+    });
+    const auths = Array.isArray(detail.DvAuthDetail?.DvAuths)
+      ? detail.DvAuthDetail.DvAuths
+      : [];
+    const txtAuths = auths.filter((auth) => auth.DvAuthVerifyType === "TXT");
+    if (txtAuths.length === 0) {
+      throw new Error("Certificate application did not return a TXT validation record.");
+    }
+
+    const changes = [];
+    for (const auth of txtAuths) {
+      const rawHost = String(auth.DvAuthSubDomain || auth.DvAuthKey || "")
+        .trim()
+        .replace(/\.$/, "");
+      const suffix = `.${rootDomain}`;
+      const host = rawHost === rootDomain
+        ? "@"
+        : rawHost.endsWith(suffix)
+          ? rawHost.slice(0, -suffix.length)
+          : rawHost;
+      const value = String(auth.DvAuthValue || "").trim();
+      if (!host || !value) {
+        throw new Error("Certificate TXT validation record is incomplete.");
+      }
+
+      const records = await getDnsRecords({ host, type: "TXT" });
+      const exact = records.find((record) => String(record.Value).replace(/^"|"$/g, "") === value);
+      if (!exact) {
+        await dnsApi("CreateRecord", {
+          Domain: rootDomain,
+          SubDomain: host,
+          RecordType: "TXT",
+          RecordLine: "默认",
+          Value: value,
+          TTL: 600,
+          Status: "ENABLE",
+        });
+        changes.push({ host, result: "created" });
+      } else if (exact.Status !== "ENABLE") {
+        await dnsApi("ModifyRecordStatus", {
+          Domain: rootDomain,
+          RecordId: exact.RecordId,
+          Status: "ENABLE",
+        });
+        changes.push({ host, result: "enabled" });
+      } else {
+        changes.push({ host, result: "unchanged" });
+      }
+    }
+
+    await sleep(5000);
+    let verificationTriggered = false;
+    let triggerError = null;
+    try {
+      await sslApi("CompleteCertificate", { CertificateId: certificate.CertificateId });
+      verificationTriggered = true;
+    } catch (error) {
+      triggerError = error?.code || error?.message || "unknown";
+    }
+    console.log(JSON.stringify({
+      result: "certificate-dns-repaired",
+      certificateId: certificate.CertificateId,
+      records: changes,
+      verificationTriggered,
+      triggerError,
+    }, null, 2));
+    return;
+  }
+
+  if (ensureSslDeployRole) {
+    const roleName = "SSL_QCSLinkedRoleInReplaceLoadCertificate";
+    try {
+      const currentRole = await camApi("GetRole", { RoleName: roleName });
+      console.log(JSON.stringify({
+        result: "already-exists",
+        roleName: currentRole.RoleInfo?.RoleName || roleName,
+        roleType: currentRole.RoleInfo?.RoleType || null,
+      }, null, 2));
+      return;
+    } catch (error) {
+      if (error?.code !== "InvalidParameter.RoleNotExist") throw error;
+    }
+
+    const created = await camApi("CreateServiceLinkedRole", {
+      QCSServiceName: ["replaceloadcertificate.ssl.cloud.tencent.com"],
+      Description: "Allow Tencent Cloud SSL to deploy issued certificates to CDN resources.",
+    });
+    console.log(JSON.stringify({
+      result: "created",
+      roleName,
+      roleId: created.RoleId || null,
+    }, null, 2));
+    return;
+  }
+
+  if (deployCertificate) {
+    const certificate = await getCertificate();
+    if (!certificate?.CertificateId) {
+      throw new Error(`No issued certificate found for ${domain}.`);
+    }
+
+    const deployment = await sslApi("DeployCertificateInstance", {
+      CertificateId: certificate.CertificateId,
+      InstanceIdList: [`${domain}|on`],
+      ResourceType: "cdn",
+    });
+    const deployRecordId = deployment.DeployRecordId;
+    if (!deployRecordId) {
+      throw new Error("Tencent SSL did not return a CDN deployment record ID.");
+    }
+
+    let detail = null;
+    for (let attempt = 0; attempt < 36; attempt += 1) {
+      detail = await sslApi("DescribeHostDeployRecordDetail", {
+        DeployRecordId: String(deployRecordId),
+        Offset: 0,
+        Limit: 20,
+      });
+      if ((detail.RunningTotalCount || 0) === 0 && (detail.PendingTotalCount || 0) === 0) break;
+      await sleep(5000);
+    }
+
+    const records = (detail?.DeployRecordDetailList || []).map((record) => ({
+      status: record.Status,
+      domains: record.Domains || [],
+      error: record.ErrorMsg || null,
+    }));
+    console.log(JSON.stringify({
+      result: (detail?.FailedTotalCount || 0) > 0 ? "deployment-failed" : "deployment-completed",
+      certificateId: certificate.CertificateId,
+      deployRecordId,
+      success: detail?.SuccessTotalCount || 0,
+      failed: detail?.FailedTotalCount || 0,
+      running: detail?.RunningTotalCount || 0,
+      pending: detail?.PendingTotalCount || 0,
+      records,
+    }, null, 2));
+    if ((detail?.FailedTotalCount || 0) > 0 || (detail?.RunningTotalCount || 0) > 0 || (detail?.PendingTotalCount || 0) > 0) {
+      process.exitCode = 1;
+    }
+    return;
+  }
+
   let current = await getCdnDomain();
   const certificate = await getCertificate();
   let records = await getDnsRecords();
@@ -315,7 +513,17 @@ async function main() {
     cdnStatus: current?.Status || null,
     cname: current?.Cname || null,
     httpsEnabled: current?.Https?.Switch === "on",
+    httpsBillingEnabled: current?.HttpsBilling?.Switch === "on",
+    httpsHttp2Enabled: current?.Https?.Http2 === "on",
+    httpsCertificateId: current?.Https?.CertInfo?.CertId || null,
     forceHttpsEnabled: current?.ForceRedirect?.Switch === "on" && current?.ForceRedirect?.RedirectType === "https",
+    ipFrequencyLimit: current?.IpFreqLimit
+      ? {
+          enabled: current.IpFreqLimit.Switch === "on",
+          qps: current.IpFreqLimit.Qps ?? null,
+        }
+      : null,
+    ipFilterEnabled: current?.IpFilter?.Switch === "on",
     certificateAvailable: Boolean(certificate),
     certificateDomain: certificate?.Domain || null,
     certificateExpiresAt: certificate?.CertEndTime || null,
@@ -390,8 +598,13 @@ async function main() {
   if (!certificate) {
     console.log("HTTPS_SKIPPED_NO_MATCHING_CERTIFICATE");
   } else {
-    await modifyDomain("Https.CertInfo.CertId", certificate.CertificateId);
+    if (current?.Https?.Switch !== "on") {
+      await modifyDomain("Https.CertInfo.CertId", certificate.CertificateId);
+    } else {
+      console.log("HTTPS_CERTIFICATE_ALREADY_DEPLOYED");
+    }
     await modifyDomain("Https.Switch", "on");
+    await modifyDomain("HttpsBilling.Switch", "on");
     await modifyDomain("Https.Http2", "on");
     await modifyDomain("ForceRedirect", {
       Switch: "on",
@@ -410,6 +623,7 @@ async function main() {
     cname: current?.Cname || null,
     cdnStatus: current?.Status || null,
     httpsEnabled: current?.Https?.Switch === "on",
+    httpsBillingEnabled: current?.HttpsBilling?.Switch === "on",
     forceHttpsEnabled: current?.ForceRedirect?.Switch === "on" && current?.ForceRedirect?.RedirectType === "https",
     dnsConfigured: records.some((record) => String(record.Value).replace(/\.$/, "") === String(current?.Cname).replace(/\.$/, "")),
   }, null, 2));
