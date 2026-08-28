@@ -15,6 +15,7 @@ Environment=APP_DATA_DIR=/opt/merchant-studio/web/.data
 Environment=ENABLE_DEMO_ACCOUNT=false
 Environment=NEXT_PUBLIC_VIDEO_WORKER_URL=/video-worker
 EnvironmentFile=-/opt/merchant-studio/web/.env.local
+EnvironmentFile=-/opt/merchant-studio/web/.video-worker-upstream
 ExecStart=/usr/bin/node /opt/merchant-studio/web/server.js
 Restart=always
 RestartSec=5

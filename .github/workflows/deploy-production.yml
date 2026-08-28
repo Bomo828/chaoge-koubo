@@ -94,13 +94,17 @@ jobs:
           DEPLOY_HOST: ${{ secrets.TENCENT_SSH_HOST }}
           DEPLOY_PORT: ${{ secrets.TENCENT_SSH_PORT }}
           DEPLOY_USER: ${{ secrets.TENCENT_SSH_USER }}
+          VIDEO_WORKER_UPSTREAM_URL: ${{ vars.VIDEO_WORKER_UPSTREAM_URL }}
           RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
+          test -n "$VIDEO_WORKER_UPSTREAM_URL"
           port="${DEPLOY_PORT:-22}"
           release_dir="$RUNNER_TEMP/merchant-studio-release"
           remote_archive="/tmp/merchant-studio-web-${RELEASE_SHA}.tar.gz"
           ssh_options=(-i "$HOME/.ssh/tencent_deploy" -o BatchMode=yes -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes)
+          printf 'VIDEO_WORKER_UPSTREAM_URL=%s\n' "$VIDEO_WORKER_UPSTREAM_URL" \
+            > "$release_dir/.video-worker-upstream"
 
           rsync --archive --compress --checksum --delete \
             --exclude '.data' --exclude '.env.local' \
@@ -196,11 +200,22 @@ jobs:
       - name: Verify public health endpoint
         env:
           PUBLIC_HEALTHCHECK_URL: ${{ vars.PUBLIC_HEALTHCHECK_URL }}
+          PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL: ${{ vars.PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL }}
         run: |
           set -euo pipefail
           test -n "$PUBLIC_HEALTHCHECK_URL"
+          test -n "$PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL"
           for attempt in $(seq 1 12); do
             if curl --fail --silent --show-error --max-time 15 "$PUBLIC_HEALTHCHECK_URL"; then
+              break
+            fi
+            if [[ "$attempt" == "12" ]]; then
+              exit 1
+            fi
+            sleep 5
+          done
+          for attempt in $(seq 1 12); do
+            if curl --fail --silent --show-error --max-time 15 "$PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL"; then
               exit 0
             fi
             sleep 5

@@ -46,7 +46,9 @@ pnpm run publish:production -- "本次更新说明"
 - `VIDEO_WORKER_SSH_HOST`：渲染节点地址。
 - `VIDEO_WORKER_SSH_PORT`：渲染节点 SSH 端口，通常为 `22`。
 - `VIDEO_WORKER_SSH_USER`：渲染节点受限部署账号。
+- `VIDEO_WORKER_UPSTREAM_URL`：主站到渲染节点的绝对地址，例如 `http://render.internal/video-worker`。
 - `PUBLIC_HEALTHCHECK_URL`：发布后检查地址，例如 `https://studio.example.com/api/health`。
+- `PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL`：主站代理的视频服务检查地址，例如 `https://studio.example.com/video-worker/health`。
 
 这些值未配置时工作流会主动失败，避免误发到未知服务器。
 

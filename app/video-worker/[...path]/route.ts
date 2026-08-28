@@ -12,8 +12,6 @@ function upstreamBaseUrl() {
 async function relay(request: Request, context: RouteContext) {
   const { path } = await context.params;
   const requestUrl = new URL(request.url);
-  const upstreamUrl = new URL(`${upstreamBaseUrl()}/${path.map(encodeURIComponent).join("/")}`);
-  upstreamUrl.search = requestUrl.search;
 
   const headers = new Headers(request.headers);
   // Never forward the member's local session or browser-origin headers to the
@@ -37,6 +35,8 @@ async function relay(request: Request, context: RouteContext) {
   }
 
   try {
+    const upstreamUrl = new URL(`${upstreamBaseUrl()}/${path.map(encodeURIComponent).join("/")}`);
+    upstreamUrl.search = requestUrl.search;
     const hasBody = request.method !== "GET" && request.method !== "HEAD";
     const init: RequestInit & { duplex?: "half" } = {
       method: request.method,
