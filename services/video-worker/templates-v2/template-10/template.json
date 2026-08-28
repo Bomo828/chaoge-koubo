@@ -14,7 +14,7 @@
   "renderer_key": "template-10-yellow-white-bilingual-v1",
   "fallback_policy": "forbid-cross-template",
   "release_checklist_file": "acceptance-checklist.md",
-  "reference_url": "/Users/chaoge/Downloads/微信视频2026-08-06_020915_394.mp4",
+  "reference_url": "参考片：微信视频2026-08-06_020915_394.mp4",
   "material_scope": "template-10-owned-2026-08-17",
   "canvas": {"aspect_ratio": "9:16", "width": 1080, "height": 1920, "fit": "cover", "maximum_upscale": 2},
   "cover": {

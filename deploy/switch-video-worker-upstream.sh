@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-CONFIG="/etc/nginx/conf.d/merchant-studio-api.conf"
-OLD_UPSTREAM="proxy_pass http://127.0.0.1:8790/;"
-NEW_UPSTREAM="proxy_pass http://129.204.151.78/video-worker/;"
-HEALTH_URL="http://129.204.151.78/video-worker/health"
+CONFIG="${NGINX_CONFIG_PATH:-/etc/nginx/conf.d/merchant-studio-api.conf}"
+OLD_UPSTREAM="${OLD_VIDEO_WORKER_PROXY_PASS:-proxy_pass http://127.0.0.1:8790/;}"
+: "${VIDEO_WORKER_UPSTREAM_URL:?Set VIDEO_WORKER_UPSTREAM_URL, for example http://10.0.0.20/video-worker}"
+upstream_base="${VIDEO_WORKER_UPSTREAM_URL%/}"
+NEW_UPSTREAM="proxy_pass ${upstream_base}/;"
+HEALTH_URL="${VIDEO_WORKER_HEALTH_URL:-${upstream_base}/health}"
+PUBLIC_HOST_HEADER="${PUBLIC_HOST_HEADER:-}"
 
 fail() {
   echo "Video worker upstream switch failed: $*" >&2
@@ -54,10 +57,15 @@ PY
 nginx -t
 systemctl reload nginx
 
-curl --fail --silent --show-error --max-time 15 \
-  -H 'Host: api.chaogeai.top' \
-  http://127.0.0.1/video-worker/health >/dev/null
+if [[ -n "${PUBLIC_HOST_HEADER}" ]]; then
+  curl --fail --silent --show-error --max-time 15 \
+    -H "Host: ${PUBLIC_HOST_HEADER}" \
+    http://127.0.0.1/video-worker/health >/dev/null
+else
+  curl --fail --silent --show-error --max-time 15 \
+    http://127.0.0.1/video-worker/health >/dev/null
+fi
 
 trap - ERR
-echo "Video worker upstream switched to 129.204.151.78 successfully."
+echo "Video worker upstream switched successfully."
 echo "Rollback copy: ${backup}"

@@ -1,8 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import { videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
 
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
-
 function safeFilename(value: string) {
   const base = value
     .trim()
@@ -25,12 +23,15 @@ export async function GET(request: Request) {
   try {
     sourceUrl = new URL(source);
     const workerBase = new URL(upstreamBase);
-    const legacyBase = new URL(DEFAULT_VIDEO_WORKER_URL);
+    const legacyBase = process.env.LEGACY_VIDEO_WORKER_URL
+      ? new URL(process.env.LEGACY_VIDEO_WORKER_URL)
+      : null;
     const sameOriginRelay = sourceUrl.origin === requestUrl.origin
       && sourceUrl.pathname.startsWith("/video-worker/media/");
     const directWorkerAsset = sourceUrl.origin === workerBase.origin
       && sourceUrl.pathname.startsWith(`${workerBase.pathname.replace(/\/+$/, "")}/media/`);
-    const legacyWorkerAsset = sourceUrl.origin === legacyBase.origin
+    const legacyWorkerAsset = legacyBase !== null
+      && sourceUrl.origin === legacyBase.origin
       && sourceUrl.pathname.startsWith(`${legacyBase.pathname.replace(/\/+$/, "")}/media/`);
     if (!sameOriginRelay && !directWorkerAsset && !legacyWorkerAsset) throw new Error("untrusted source");
     if (!sourceUrl.pathname.endsWith("/output.mp4")) throw new Error("invalid asset");

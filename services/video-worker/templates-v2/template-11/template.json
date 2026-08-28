@@ -18,7 +18,7 @@
   "renderer_key": "template-11-cyan-white-bilingual-v1",
   "fallback_policy": "forbid-cross-template",
   "release_checklist_file": "acceptance-checklist.md",
-  "reference_url": "/Users/chaoge/Downloads/817.mp4",
+  "reference_url": "参考片：817.mp4",
   "cover": {
     "time_seconds": 0.8,
     "width": 1080,

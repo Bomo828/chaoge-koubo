@@ -11,7 +11,7 @@ import {
   settleAiPointsByRequest,
 } from "../../../../lib/points";
 
-const DEFAULT_RELAY_BASE_URL = "https://api.chaogeai.top";
+const DEFAULT_RELAY_BASE_URL = "http://127.0.0.1:3001";
 const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
 
 function normalizeVoiceLanguage(value: unknown): "cn" | "en" {

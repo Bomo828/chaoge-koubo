@@ -22,7 +22,22 @@ const bucket = String(env.TENCENT_MPS_COS_BUCKET || "").trim();
 const region = String(env.TENCENT_MPS_COS_REGION || "ap-guangzhou").trim();
 const inputPrefix = String(env.TENCENT_MPS_INPUT_PREFIX || "ai-director/input").replace(/^\/+|\/+$/g, "");
 const outputPrefix = String(env.VIDEO_WORKER_COS_OUTPUT_PREFIX || "video-worker/outputs").replace(/^\/+|\/+$/g, "");
+const corsOrigins = String(env.COS_CORS_ORIGINS || "https://studio.example.com,http://127.0.0.1:3012,http://localhost:3012")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 if (!secretId || !secretKey || !bucket || !region) throw new Error("COS 配置不完整。请检查腾讯云密钥、存储桶和地域。\n");
+const hasInvalidCorsOrigin = corsOrigins.some((origin) => {
+  try {
+    const parsed = new URL(origin);
+    return !["http:", "https:"].includes(parsed.protocol) || parsed.origin !== origin;
+  } catch {
+    return true;
+  }
+});
+if (!corsOrigins.length || hasInvalidCorsOrigin) {
+  throw new Error("COS_CORS_ORIGINS 必须是逗号分隔的 HTTP/HTTPS Origin，且不能包含路径。\n");
+}
 
 const host = `${bucket}.cos.${region}.myqcloud.com`;
 const encode = (value) => encodeURIComponent(value).replace(/[!'()*]/g, (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`);
@@ -83,7 +98,8 @@ function appendRule(current, root, rule) {
 const corsRuleId = "merchant-studio-direct-upload-v1";
 let cors = await getConfig("cors");
 if (!cors.includes(`<ID>${corsRuleId}</ID>`)) {
-  const rule = `<CORSRule><ID>${corsRuleId}</ID><AllowedOrigin>https://studio.chaogeai.top</AllowedOrigin><AllowedOrigin>https://chaogeai.top</AllowedOrigin><AllowedOrigin>https://www.chaogeai.top</AllowedOrigin><AllowedOrigin>http://127.0.0.1:3012</AllowedOrigin><AllowedOrigin>http://localhost:3012</AllowedOrigin><AllowedMethod>PUT</AllowedMethod><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><ExposeHeader>Content-Length</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule>`;
+  const allowedOrigins = corsOrigins.map((origin) => `<AllowedOrigin>${origin}</AllowedOrigin>`).join("");
+  const rule = `<CORSRule><ID>${corsRuleId}</ID>${allowedOrigins}<AllowedMethod>PUT</AllowedMethod><AllowedMethod>GET</AllowedMethod><AllowedMethod>HEAD</AllowedMethod><AllowedHeader>*</AllowedHeader><ExposeHeader>ETag</ExposeHeader><ExposeHeader>Content-Length</ExposeHeader><MaxAgeSeconds>3600</MaxAgeSeconds></CORSRule>`;
   cors = appendRule(cors, "CORSConfiguration", rule);
   await putConfig("cors", cors);
 }

@@ -10,7 +10,7 @@
   "renderer_key": "template-12-black-yellow-focus-v1",
   "fallback_policy": "forbid-cross-template",
   "release_checklist_file": "acceptance-checklist.md",
-  "reference_url": "/Users/chaoge/Downloads/818.mp4",
+  "reference_url": "参考片：818.mp4",
   "cover": {"time_seconds": 0.8, "width": 1080, "height": 1920, "format": "jpg", "include_title": true, "include_caption": true, "path": "cover.jpg"},
   "canvas": {"aspect_ratio": "9:16", "width": 1080, "height": 1920, "fit": "cover"},
   "opening": {"min_seconds": 23.0, "max_seconds": 120.0, "title_mode": "persistent", "safe_top_px": 38, "title_font_size_px": 88, "title_line_gap_px": -2, "sfx": "impact"},

@@ -49,6 +49,14 @@ def validate(path: Path) -> None:
     audio = require_mapping(value.get("audio"), "audio")
     if audio.get("preserve_source") is not True:
         raise ValueError("audio.preserve_source must be true")
+    sfx = audio.get("sfx") if isinstance(audio.get("sfx"), dict) else {}
+    for pool_name, pool_value in sfx.items():
+        if not str(pool_name).endswith("_pool"):
+            continue
+        if not isinstance(pool_value, list):
+            raise ValueError(f"audio.sfx.{pool_name} must be a list")
+        if any(not str(asset).startswith(f"sfx/{template_id}/") for asset in pool_value):
+            raise ValueError(f"audio.sfx.{pool_name} must use the template-owned SFX namespace")
     music = audio.get("music")
     if music not in (False, None) and not isinstance(music, dict):
         raise ValueError("audio.music must be false or an object")

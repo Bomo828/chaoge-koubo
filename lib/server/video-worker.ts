@@ -1,11 +1,10 @@
-const DEFAULT_VIDEO_WORKER_URL = "https://api.chaogeai.top/video-worker";
-const DEVELOPMENT_VIDEO_WORKER_URL = "https://studio.chaogeai.top/video-worker";
+const DEFAULT_VIDEO_WORKER_URL = "http://127.0.0.1:8790";
 
 export function videoWorkerUpstreamUrl() {
   return (process.env.VIDEO_WORKER_UPSTREAM_URL
     || process.env.VIDEO_WORKER_BASE_URL
     || process.env.NEXT_PUBLIC_VIDEO_WORKER_URL
-    || (process.env.NODE_ENV === "development" ? DEVELOPMENT_VIDEO_WORKER_URL : DEFAULT_VIDEO_WORKER_URL)).replace(/\/+$/, "");
+    || DEFAULT_VIDEO_WORKER_URL).replace(/\/+$/, "");
 }
 
 export function videoWorkerPublicUrl() {

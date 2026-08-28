@@ -14,7 +14,12 @@ from pathlib import Path
 
 PROJECT = Path(__file__).resolve().parents[3]
 VIDEO_WORKER = PROJECT / "services" / "video-worker"
-SOURCE_ROOT = Path("/Users/chaoge/Documents/Codex/2026-07-14/new-chat/merchant-studio-web/artifacts/template-series-3-8/template-5")
+SOURCE_ROOT = Path(
+    os.environ.get(
+        "TEMPLATE9_REVIEW_SOURCE_ROOT",
+        str(PROJECT / "artifacts" / "template-series-3-8" / "template-5"),
+    )
+).expanduser()
 OUTPUT_ROOT = PROJECT / "artifacts" / "template-9-local-review"
 
 
@@ -46,7 +51,7 @@ def load_worker():
                 return None
 
             def __getattr__(self, name):
-                if name in {"get", "post", "put", "delete", "patch", "api_route"}:
+                if name in {"get", "post", "put", "delete", "patch", "api_route", "on_event"}:
                     return lambda *args, **kwargs: (lambda function: function)
                 raise AttributeError(name)
 

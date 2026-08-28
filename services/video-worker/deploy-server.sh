@@ -32,6 +32,8 @@ EXISTING_TENCENT_SECRET_ID=""
 EXISTING_TENCENT_SECRET_KEY=""
 EXISTING_MPS_COS_BUCKET=""
 EXISTING_MPS_COS_REGION="ap-guangzhou"
+VIDEO_WORKER_CORS_ORIGINS_VALUE="${VIDEO_WORKER_CORS_ORIGINS:-http://localhost:3000,http://localhost:3001,http://localhost:3012,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3012,https://studio.example.com}"
+VIDEO_WORKER_PUBLIC_BASE_URL_VALUE="${VIDEO_WORKER_PUBLIC_BASE_URL:-https://studio.example.com/video-worker}"
 if [ -f "$INSTALL_DIR/.env" ]; then
   EXISTING_AI_KEY="$($SUDO sed -n 's/^LK888_API_KEY=//p' "$INSTALL_DIR/.env" | head -n 1)"
   EXISTING_TEMPLATE_REGISTRY_URL="$($SUDO sed -n 's/^VIDEO_TEMPLATE_REGISTRY_URL=//p' "$INSTALL_DIR/.env" | head -n 1)"
@@ -161,8 +163,8 @@ VIDEO_WORKER_DATA_DIR=/var/lib/merchant-studio/video
 VIDEO_WORKER_MAX_UPLOAD_MB=500
 VIDEO_WORKER_CONCURRENCY=1
 VIDEO_WORKER_TRANSCRIPTION_CONCURRENCY=1
-VIDEO_WORKER_CORS_ORIGINS=http://localhost:3000,http://localhost:3001,http://localhost:3012,http://127.0.0.1:3000,http://127.0.0.1:3001,http://127.0.0.1:3012,https://studio.chaogeai.top,https://chaogeai.top,https://www.chaogeai.top,https://api.chaogeai.top
-VIDEO_WORKER_PUBLIC_BASE_URL=https://api.chaogeai.top/video-worker
+VIDEO_WORKER_CORS_ORIGINS=$VIDEO_WORKER_CORS_ORIGINS_VALUE
+VIDEO_WORKER_PUBLIC_BASE_URL=$VIDEO_WORKER_PUBLIC_BASE_URL_VALUE
 VIDEO_WORKER_X264_PRESET=fast
 VIDEO_WORKER_CRF=18
 LK888_API_BASE_URL=https://api.lk888.ai

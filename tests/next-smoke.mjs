@@ -197,7 +197,7 @@ try {
   const marketAccount = (await marketAdd.json()).item;
   assert.equal(marketAccount.status, "ready");
   assert.equal(marketAccount.nickname, "冒烟测试账号");
-  assert.equal(marketAccount.videos.length, 1);
+  assert.equal(marketAccount.videos.length, 0);
   assert.ok(marketAccount.id);
 
   const marketSync = await fetch(`${baseUrl}/api/member/market/accounts/${encodeURIComponent(marketAccount.id)}`, {

@@ -140,7 +140,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
   const [wechatCredential, setWechatCredential] = useState<WechatPayCredential | null>(null);
   const [wechatEditor, setWechatEditor] = useState<WechatPayEditor>({
     mchId: "", appId: "", apiV3Key: "", certSerialNo: "", privateKey: "",
-    platformPublicKey: "", platformSerialNo: "", notifyUrl: "https://studio.chaogeai.top/api/pay/wechat/notify",
+    platformPublicKey: "", platformSerialNo: "", notifyUrl: "",
   });
   const [wechatBusy, setWechatBusy] = useState<"load" | "save" | "test" | null>(null);
   const [wechatFeedback, setWechatFeedback] = useState("");
@@ -633,7 +633,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
         <header><div><h2>微信支付</h2><p>配置普通直连商户 Native 支付</p></div><span className={`admin-payment-state ${wechatCredential?.configured ? "is-ready" : ""}`}><i />{wechatBusy === "load" ? "正在读取" : wechatCredential?.configured ? "配置完整" : "待完善"}</span></header>
         <div className="admin-wechat-layout">
           <form className="admin-wechat-form" onSubmit={(event) => void saveWechatPaySettings(event)} autoComplete="off">
-            <label><span>微信支付商户号</span><input required inputMode="numeric" maxLength={32} value={wechatEditor.mchId} onChange={(event) => setWechatEditor({ ...wechatEditor, mchId: event.target.value })} placeholder="例如：1116833977" /></label>
+            <label><span>微信支付商户号</span><input required inputMode="numeric" maxLength={32} value={wechatEditor.mchId} onChange={(event) => setWechatEditor({ ...wechatEditor, mchId: event.target.value })} placeholder="例如：1900000000" /></label>
             <label><span>绑定 AppID</span><input required maxLength={64} value={wechatEditor.appId} onChange={(event) => setWechatEditor({ ...wechatEditor, appId: event.target.value })} placeholder="wx 开头的 AppID" /></label>
             <label><span>商户 API 证书序列号</span><input required maxLength={256} value={wechatEditor.certSerialNo} onChange={(event) => setWechatEditor({ ...wechatEditor, certSerialNo: event.target.value })} /></label>
             <label><span>微信支付公钥编号</span><input required maxLength={256} value={wechatEditor.platformSerialNo} onChange={(event) => setWechatEditor({ ...wechatEditor, platformSerialNo: event.target.value })} placeholder="PUB_KEY_ID_..." /></label>
