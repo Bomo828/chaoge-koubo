@@ -340,7 +340,9 @@ export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover
   const parameters: Record<string, string> = download
     ? { "response-content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(safeDownloadFilename(row))}` }
     : {};
-  return signedCosObjectUrl(objectKey, 60 * 60, parameters);
+  // 播放需要覆盖一次正常观看；下载链接更短，封面则允许更长的私有缓存。
+  const expiresIn = download ? 15 * 60 : cover ? 4 * 60 * 60 : 60 * 60;
+  return signedCosObjectUrl(objectKey, expiresIn, parameters);
 }
 
 export async function saveMemberAsset(member: MemberSession, input: {
