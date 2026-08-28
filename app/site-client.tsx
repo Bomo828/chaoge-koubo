@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import type { MouseEvent, PointerEvent } from "react";
 import type { MemberSession } from "./member-session";
+import { publicMediaCdnEnabled, publicMediaUrl } from "../lib/public-media";
 
 type AuthMode = "login" | "register";
 
@@ -147,13 +148,13 @@ export function SiteClient({
     <main className="launch-home" onPointerMove={handlePointerMove}>
       <video
         className="launch-video"
-        src={heroReady ? "/media/flash-lab-hero-20260808.mp4" : undefined}
+        src={heroReady ? publicMediaUrl("/media/flash-lab-hero-20260808.mp4") : undefined}
         autoPlay
         muted
         loop
         playsInline
         preload="metadata"
-        poster="/media/flash-lab-hero-poster.jpg"
+        poster={publicMediaUrl("/media/flash-lab-hero-poster.jpg")}
         disablePictureInPicture
         aria-hidden="true"
       />
@@ -163,7 +164,7 @@ export function SiteClient({
 
       <header className="launch-header">
         <a className="launch-brand" href="#top" aria-label="爆点实验室首页">
-          <span className="launch-logo"><Image src="/media/flash-lab-logo.png" width={512} height={512} sizes="52px" alt="" priority /></span>
+          <span className="launch-logo"><Image src={publicMediaUrl("/media/flash-lab-logo.png")} width={512} height={512} sizes="52px" alt="" priority unoptimized={publicMediaCdnEnabled} /></span>
           <span className="launch-wordmark"><b>爆点实验室</b></span>
         </a>
 
@@ -178,7 +179,7 @@ export function SiteClient({
       <section className="launch-stage" id="top">
         <section className="launch-copy">
           <h1 className="launch-title-image">
-            <Image src="/media/flash-lab-title-lockup.png" width={1686} height={933} sizes="(max-width: 720px) 86vw, 680px" quality={86} alt="爆点实验室，把灵感，放大到屏幕之外" priority />
+            <Image src={publicMediaUrl("/media/flash-lab-title-lockup.png")} width={1686} height={933} sizes="(max-width: 720px) 86vw, 680px" quality={86} alt="爆点实验室，把灵感，放大到屏幕之外" priority unoptimized={publicMediaCdnEnabled} />
           </h1>
         </section>
       </section>
@@ -192,7 +193,7 @@ export function SiteClient({
           <section className="launch-login-card launch-auth-modal" role="dialog" aria-modal="true" aria-labelledby="launch-auth-title">
             <button className="launch-auth-close" type="button" aria-label="关闭登录窗口" onClick={closeAuth}>×</button>
             <div className="launch-login-brand">
-              <span><Image src="/media/flash-lab-logo.png" width={512} height={512} sizes="56px" alt="" /></span>
+              <span><Image src={publicMediaUrl("/media/flash-lab-logo.png")} width={512} height={512} sizes="56px" alt="" unoptimized={publicMediaCdnEnabled} /></span>
               <h2 id="launch-auth-title">{authMode === "login" ? "登录" : "邀请注册"}</h2>
             </div>
 

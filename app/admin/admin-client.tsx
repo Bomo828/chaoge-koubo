@@ -7,6 +7,7 @@ import type { ClonedVoiceRecord } from "../../lib/server/cloned-voices";
 import type { AdminInvitation } from "../../lib/server/invitations";
 import type { PlatformFeature, PlatformSettings, RechargePackage } from "../../lib/server/platform-settings";
 import { AI_COST_MARKUP_MULTIPLIER, billablePointsFromCost } from "../../lib/billing";
+import { publicMediaUrl } from "../../lib/public-media";
 
 type Stats = { users: number; projects: number; templates: number; tasks: number };
 type Tab = "features" | "templates" | "points" | "wechat" | "ai" | "voices" | "invites" | "users";
@@ -562,7 +563,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
 
   return <main className="admin-shell">
     <aside className="admin-sidebar">
-      <a className="admin-brand" href="/studio"><i><img src="/media/flash-lab-logo.png" alt="" /></i><span><b>爆点实验室</b></span></a>
+      <a className="admin-brand" href="/studio"><i><img src={publicMediaUrl("/media/flash-lab-logo.png")} alt="" /></i><span><b>爆点实验室</b></span></a>
       <nav>{navItems.map((item) => <button key={item.id} className={tab === item.id ? "active" : ""} onClick={() => { setTab(item.id); if (item.id === "ai" && !aiStatuses.length) void refreshAiStatus(); if (item.id === "wechat" && !wechatCredential) void loadWechatPaySettings(); }}><i>{item.icon}</i><span>{item.label}</span></button>)}</nav>
       <div className="admin-account"><span>{member.displayName}</span><small>{member.role === "super_admin" ? "超级管理员" : "运营管理员"}</small><a href="/studio">返回创作平台 →</a></div>
     </aside>

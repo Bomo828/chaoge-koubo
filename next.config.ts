@@ -1,7 +1,21 @@
 import type { NextConfig } from "next";
 
+const mediaCdnBaseUrl = process.env.NEXT_PUBLIC_MEDIA_CDN_BASE_URL?.trim();
+const mediaCdnRemotePatterns = (() => {
+  if (!mediaCdnBaseUrl) return [];
+  try {
+    const url = new URL(mediaCdnBaseUrl);
+    return [{ protocol: url.protocol.replace(":", "") as "http" | "https", hostname: url.hostname, port: url.port, pathname: "/**" }];
+  } catch {
+    return [];
+  }
+})();
+
 const nextConfig: NextConfig = {
   output: "standalone",
+  images: {
+    remotePatterns: mediaCdnRemotePatterns,
+  },
   // The development toolbar overlaps the compact wallet in the studio sidebar.
   // Keep local previews visually identical to the deployed interface.
   devIndicators: false,

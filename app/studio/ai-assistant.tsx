@@ -1,5 +1,7 @@
 "use client";
 
+import { publicMediaUrl } from "../../lib/public-media";
+
 import { useEffect, useRef, useState } from "react";
 import {
   Brain,
@@ -359,7 +361,7 @@ export function AiAssistant({ open, memberName, onClose, onPointsChange }: {
     <button className="assistant-scrim" type="button" aria-label="关闭 AI 助手" onClick={onClose} />
     <section className="assistant-panel" role="dialog" aria-modal="true" aria-labelledby="assistant-title">
       <header className="assistant-head">
-        <img src="/media/ai-assistant-avatar.svg" alt="" />
+        <img src={publicMediaUrl("/media/ai-assistant-avatar.svg")} alt="" />
         <div><h2 id="assistant-title">爆点 AI 助手</h2><span>您好，{memberName}</span></div>
         <button type="button" className="assistant-icon-button" aria-label="关闭 AI 助手" onClick={onClose}><X size={19} /></button>
       </header>
@@ -380,7 +382,7 @@ export function AiAssistant({ open, memberName, onClose, onPointsChange }: {
 
       <div className="assistant-messages" ref={scrollRef} aria-live="polite">
         {messages.map((message) => <article className={`assistant-message is-${message.role}`} key={message.id}>
-          {message.role === "assistant" ? <img src="/media/ai-assistant-avatar.svg" alt="" /> : null}
+          {message.role === "assistant" ? <img src={publicMediaUrl("/media/ai-assistant-avatar.svg")} alt="" /> : null}
           <div>
             <p>{message.content || (sending ? "正在思考…" : "")}</p>
             {message.attachments?.length ? <div className="assistant-attachment-list">{message.attachments.map((item) => <span key={item}><Paperclip size={13} />{item}</span>)}</div> : null}

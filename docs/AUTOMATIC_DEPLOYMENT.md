@@ -49,8 +49,9 @@ pnpm run publish:production -- "本次更新说明"
 - `VIDEO_WORKER_UPSTREAM_URL`：主站到渲染节点的绝对地址，例如 `http://render.internal/video-worker`。
 - `PUBLIC_HEALTHCHECK_URL`：发布后检查地址，例如 `https://studio.example.com/api/health`。
 - `PUBLIC_VIDEO_WORKER_HEALTHCHECK_URL`：主站代理的视频服务检查地址，例如 `https://studio.example.com/video-worker/health`。
+- `PUBLIC_MEDIA_CDN_BASE_URL`：公开图片、模板封面和预览视频的 HTTPS CDN 基址；证书未生效时留空。
 
-这些值未配置时工作流会主动失败，避免误发到未知服务器。
+除 `PUBLIC_MEDIA_CDN_BASE_URL` 外，这些值未配置时工作流会主动失败，避免误发到未知服务器。CDN 基址留空时，应用自动使用随主站发布的本地公共素材。
 
 部署密钥应独立于个人 GitHub 密钥。服务器只允许该用户调用受限的部署命令，不能把 root 密码放入 GitHub。
 

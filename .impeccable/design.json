@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-15T17:25:24Z",
+  "generatedAt": "2026-08-28T05:38:07Z",
   "title": "Design System: 爆点实验室创作工作台",
   "extensions": {
     "colorMeta": {
@@ -192,20 +192,29 @@
     {
       "name": "Media Preview",
       "kind": "custom",
-      "description": "A low-radius media frame that preserves the source ratio and keeps controls visible.",
+      "description": "A poster-first, low-radius media frame that preserves the source ratio and keeps playback and download distinct.",
       "html": "<figure class=\"ds-media\"><div class=\"ds-media-frame\"><svg viewBox=\"0 0 24 24\" aria-hidden=\"true\"><path fill=\"currentColor\" d=\"m9 7 8 5-8 5Z\"/></svg></div><figcaption><b>成片已完成</b><a href=\"#\">下载成片</a></figcaption></figure>",
       "css": ".ds-media { width: 260px; margin: 0; padding: 14px; border: 1px solid #34468c; border-radius: 16px; background: #151d49; color: #f6f3ef; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; box-shadow: 0 18px 48px rgba(2,5,29,.22); } .ds-media-frame { width: 100%; aspect-ratio: 9/16; display: grid; place-items: center; overflow: hidden; border-radius: 7px; background: radial-gradient(circle at 60% 28%,#34468c,#121419 58%); } .ds-media-frame svg { width: 44px; height: 44px; color: #f6f3ef; } .ds-media figcaption { margin-top: 12px; display: flex; align-items: center; justify-content: space-between; gap: 12px; } .ds-media figcaption b { font-size: 13px; } .ds-media figcaption a { color: #59d9e8; font-size: 10px; font-weight: 800; text-decoration: none; } .ds-media figcaption a:hover { text-decoration: underline; text-underline-offset: 3px; } .ds-media figcaption a:focus-visible { outline: 2px solid #59d9e8; outline-offset: 2px; }"
+    },
+    {
+      "name": "Deferred Module Skeleton",
+      "kind": "custom",
+      "description": "A local loading surface that preserves the workbench shell while the selected feature loads on demand.",
+      "html": "<section class=\"ds-module-loading\" role=\"status\" aria-live=\"polite\"><span></span><div><b>正在打开视频创作</b><i></i><i></i></div></section>",
+      "css": ".ds-module-loading { min-height: 210px; padding: 24px; display: flex; align-items: center; gap: 18px; border: 1px solid #34468c; border-radius: 16px; background: #151d49; color: #f6f3ef; font-family: \"PingFang SC\", \"Microsoft YaHei\", system-ui, sans-serif; } .ds-module-loading > span { width: 32px; height: 32px; flex: 0 0 auto; border: 3px solid rgba(89,217,232,.2); border-top-color: #59d9e8; border-radius: 50%; animation: ds-spin .8s linear infinite; } .ds-module-loading div { width: min(420px,100%); } .ds-module-loading b { display: block; margin-bottom: 14px; font-size: 13px; } .ds-module-loading i { height: 8px; margin-top: 8px; display: block; border-radius: 7px; background: linear-gradient(90deg,#202c69,#34468c,#202c69); background-size: 200% 100%; animation: ds-shimmer 1.3s ease-in-out infinite; } .ds-module-loading i:last-child { width: 68%; } @keyframes ds-spin { to { transform: rotate(360deg); } } @keyframes ds-shimmer { to { background-position: -200% 0; } } @media (prefers-reduced-motion: reduce) { .ds-module-loading > span, .ds-module-loading i { animation: none; } }"
     }
   ],
   "narrative": {
     "northStar": "The Electric Proofing Table / 电光打样台",
-    "overview": "爆点实验室把商家的图片、短视频、市场动态和会员资产组织成一张持续工作的数字打样台。深靛蓝是工作间的环境光，石墨黑是创作与预览的校样区域；品红、电子青和信号黄像三种功能明确的套准墨，只在选择、焦点、生成、成本与状态处出现。\n\n系统不是娱乐化控制台。它强调真实内容、清楚步骤、可恢复进度和可核对账目：复杂的 AI 流程被拆成稳定面板、步骤状态、素材轨道和结果区；市场动态使用账号栏、资料区与视频网格；会员中心使用余额、分区流水和资产入口。每个模块可以有自己的任务构图，但必须共享相同的色彩语义、控件密度和反馈语言。",
+    "overview": "爆点实验室把商家的图片、短视频、市场动态和会员资产组织成一张持续工作的数字打样台。深靛蓝是工作间的环境光，石墨黑是创作与预览的校样区域；品红、电子青和信号黄像三种功能明确的套准墨，只在选择、焦点、生成、成本与状态处出现。\n\n系统不是娱乐化控制台。它强调真实内容、清楚步骤、可恢复进度和可核对账目：复杂的 AI 流程被拆成稳定面板、步骤状态、素材轨道和结果区；市场动态使用账号栏、资料区与视频网格；会员中心使用余额、分区流水和资产入口。每个模块可以有自己的任务构图，但必须共享相同的色彩语义、控件密度和反馈语言。\n\n公开首页与会员工作台是两个明确分离的体验层。首页只承担品牌展示、登录与进入工作台，不预取会员、模板、支付或市场数据；工作台先交付稳定外壳，再在用户打开对应功能后加载代码与数据。性能不是隐藏的工程细节，而是本设计系统对“即时响应”的组成部分。",
     "keyCharacteristics": [
       "深靛蓝工作台外壳与石墨校样区域形成双层生产环境",
       "品红表示主选择与生成，电子青表示焦点、校准与正向到账，信号黄表示成本、消费与提醒",
       "面板、列表和步骤条优先承载任务状态，不用装饰性数据制造专业感",
       "桌面端并排提高效率，移动端保持相同任务顺序并消除页面级横向溢出",
-      "图片、视频、账号、流水和生成结果都使用真实内容与明确空状态"
+      "图片、视频、账号、流水和生成结果都使用真实内容与明确空状态",
+      "首页轻量进入、工作台外壳先行、功能按需加载，避免在首屏初始化整套平台",
+      "视频先展示首帧封面，用户发起播放后再读取媒体数据"
     ],
     "rules": [
       { "name": "The Three-Ink Rule", "body": "品红只表示选择或生成，电子青只表示焦点、完成或正向到账，信号黄只表示成本、消费或提醒；不要互换语义。", "section": "colors" },
@@ -214,6 +223,8 @@
       { "name": "The Operational Type Rule", "body": "字号服务于扫描、比较和操作；标题必须让位于素材、结果、账号数据和唯一主操作。", "section": "typography" },
       { "name": "The Workflow Order Rule", "body": "响应式可以改变列数、固定方式和轨道方向，但不能改变用户完成任务的顺序。", "section": "layout" },
       { "name": "The One Active Job Rule", "body": "一个页面只允许一个明确的当前步骤和一个高强调主操作；后台并行不转化为前台视觉噪音。", "section": "layout" },
+      { "name": "The Instant Shell Rule", "body": "先显示可操作的页面骨架，再加载会员资产和功能模块；禁止为了“数据齐全”让用户面对空白首屏。", "section": "layout" },
+      { "name": "The Media Before Bytes Rule", "body": "视频列表与结果区先使用首帧封面和固定画幅稳定布局，用户播放时才读取媒体；页面打开时不得批量读取完整视频。", "section": "layout" },
       { "name": "The Structural Shadow Rule", "body": "阴影只说明真实层级、悬停或固定状态；普通列表行和信息块保持平面。", "section": "elevation" },
       { "name": "The Proof Sheet Rule", "body": "工具面板可以柔和，媒体与成品画幅必须更克制；用较小圆角区分“工具”与“内容”。", "section": "shapes" }
     ],
@@ -223,7 +234,9 @@
       "Do 让品红、电子青和信号黄持续承担固定语义，并保留可见键盘焦点。",
       "Do 为加载、空数据、错误、重试、已完成和历史记录提供真实状态。",
       "Do 在移动端重排而非缩小桌面布局，保证素材、视频、账号与流水可以完整阅读。",
-      "Do 使用真实商家素材、账号信息、任务流水和可核对的商业事实。"
+      "Do 使用真实商家素材、账号信息、任务流水和可核对的商业事实。",
+      "Do 让公开首页独立于工作台数据，并在工作台先交付外壳、后加载当前功能。",
+      "Do 为视频提供真实首帧封面、固定画幅、分段播放和独立下载动作。"
     ],
     "donts": [
       "Don't 使用游戏控制台式 HUD、密集霓虹描边、装饰性遥测或无意义英文标签。",
@@ -231,7 +244,9 @@
       "Don't 用厚重单侧彩边、异形缺角、渐变文字或硬偏移阴影制造“科技感”。",
       "Don't 把主色互换语义，或让多个高强调按钮在同一当前步骤中竞争。",
       "Don't 隐藏错误恢复、积分结算、生成状态或刷新后的草稿恢复状态。",
-      "Don't 强制裁切媒体、虚构账号数据或把 AI 合成场景冒充真实事实。"
+      "Don't 强制裁切媒体、虚构账号数据或把 AI 合成场景冒充真实事实。",
+      "Don't 在工作台首屏同时初始化会员、模板、支付、市场动态和全部创作工具。",
+      "Don't 在页面打开时预载完整视频，或用空黑视频框代替可识别的首帧封面。"
     ]
   }
 }

@@ -16,6 +16,7 @@ import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
 import { buildViralDirectorPlan, markViralKeywordSfx, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
+import { publicMediaUrl } from "../../lib/public-media";
 
 type ImagePriceQuote = {
   estimatedPoints: number;
@@ -189,16 +190,17 @@ const TEMPLATE_LIBRARY_UPDATE_KEY = "merchant-studio:template-library-updated";
 
 function revisionedTemplateMediaUrl(value: string | undefined, updatedAt?: number) {
   if (!value) return "";
-  if (!updatedAt || !value.startsWith("/")) return value;
-  const separator = value.includes("?") ? "&" : "?";
-  return `${value}${separator}template_updated_at=${encodeURIComponent(String(updatedAt))}`;
+  const resolved = publicMediaUrl(value);
+  if (!updatedAt || !value.startsWith("/")) return resolved;
+  const separator = resolved.includes("?") ? "&" : "?";
+  return `${resolved}${separator}template_updated_at=${encodeURIComponent(String(updatedAt))}`;
 }
 
 const VIRAL_TEMPLATES: ViralTemplateSpec[] = [
-  { id: "template-9", name: "红白双语", previewUrl: "", coverUrl: "/template-covers/template-9.jpg", accent: "#9f2538", titleColor: "#fffdf9", panel: "transparent", align: "center", titleEffect: "红白双排常驻标题", subtitleEffect: "红白双语字幕 · 关键词语义强调", transition: "fade", transitionLabel: "语义节点触发编辑式切换", sfx: "soft", sfxLabel: "模板9独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 22 },
-  { id: "template-10", name: "黄白大字双语", previewUrl: "", coverUrl: "/template-covers/template-10.jpg", accent: "#fff300", titleColor: "#fffdf8", panel: "transparent", align: "center", titleEffect: "黄白大字双排手书标题", subtitleEffect: "黄白双语字幕 · 语义大字强调", transition: "slide", transitionLabel: "语义停顿触发轻切与景别变化", sfx: "impact", sfxLabel: "模板10独占语义音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 11 },
-  { id: "template-11", name: "青白高亮双语", previewUrl: "", coverUrl: "/template-covers/template-11.jpg", accent: "#79f4e4", titleColor: "#ffffff", panel: "transparent", align: "left", titleEffect: "青白高亮常驻标题", subtitleEffect: "逐字双语字幕 · 青色关键词放大", transition: "zoom", transitionLabel: "语义节点触发克制景别切换", sfx: "click", sfxLabel: "模板11独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 13 },
-  { id: "template-12", name: "黑黄聚焦双语", previewUrl: "", coverUrl: "/template-covers/template-12.jpg", accent: "#fff000", titleColor: "#ffffff", panel: "rgba(5,5,5,.82)", align: "center", titleEffect: "黑底黄白双排常驻标题", subtitleEffect: "黑黄双语字幕 · 单次语义聚焦", transition: "zoom", transitionLabel: "语义节点景别切换与柔边聚焦", sfx: "bright", sfxLabel: "模板12独占语义音效池", overlay: "panel", titleTiming: "persistent", effectCadence: "rhythm", version: 12 },
+  { id: "template-9", name: "红白双语", previewUrl: "", coverUrl: publicMediaUrl("/template-covers/template-9.jpg"), accent: "#9f2538", titleColor: "#fffdf9", panel: "transparent", align: "center", titleEffect: "红白双排常驻标题", subtitleEffect: "红白双语字幕 · 关键词语义强调", transition: "fade", transitionLabel: "语义节点触发编辑式切换", sfx: "soft", sfxLabel: "模板9独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 22 },
+  { id: "template-10", name: "黄白大字双语", previewUrl: "", coverUrl: publicMediaUrl("/template-covers/template-10.jpg"), accent: "#fff300", titleColor: "#fffdf8", panel: "transparent", align: "center", titleEffect: "黄白大字双排手书标题", subtitleEffect: "黄白双语字幕 · 语义大字强调", transition: "slide", transitionLabel: "语义停顿触发轻切与景别变化", sfx: "impact", sfxLabel: "模板10独占语义音效池", overlay: "outline", titleTiming: "opening", effectCadence: "rhythm", version: 11 },
+  { id: "template-11", name: "青白高亮双语", previewUrl: "", coverUrl: publicMediaUrl("/template-covers/template-11.jpg"), accent: "#79f4e4", titleColor: "#ffffff", panel: "transparent", align: "left", titleEffect: "青白高亮常驻标题", subtitleEffect: "逐字双语字幕 · 青色关键词放大", transition: "zoom", transitionLabel: "语义节点触发克制景别切换", sfx: "click", sfxLabel: "模板11独占语义音效池", overlay: "outline", titleTiming: "persistent", effectCadence: "rhythm", version: 13 },
+  { id: "template-12", name: "黑黄聚焦双语", previewUrl: "", coverUrl: publicMediaUrl("/template-covers/template-12.jpg"), accent: "#fff000", titleColor: "#ffffff", panel: "rgba(5,5,5,.82)", align: "center", titleEffect: "黑底黄白双排常驻标题", subtitleEffect: "黑黄双语字幕 · 单次语义聚焦", transition: "zoom", transitionLabel: "语义节点景别切换与柔边聚焦", sfx: "bright", sfxLabel: "模板12独占语义音效池", overlay: "panel", titleTiming: "persistent", effectCadence: "rhythm", version: 12 },
 ];
 
 function viralTemplateById(id: string, templates: ViralTemplateSpec[] = VIRAL_TEMPLATES) {
@@ -614,7 +616,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   return (
     <main className={`studio-shell ${active === "design" ? "is-image-lab" : ""}`}>
       <aside className="studio-sidebar">
-        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><img src="/media/flash-lab-logo.png" alt="" /></span><div><b>爆点实验室</b></div></Link>
+        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><img src={publicMediaUrl("/media/flash-lab-logo.png")} alt="" /></span><div><b>爆点实验室</b></div></Link>
         <nav>
           {visibleMenu.map((item, index) => {
             const MenuIcon = menuIcons[item.id as keyof typeof menuIcons] ?? House;
@@ -631,7 +633,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
         </nav>
         <div className="sidebar-utility">
           <button type="button" className="sidebar-assistant" onClick={() => setAssistantOpen(true)}>
-            <img src="/media/ai-assistant-avatar.svg" alt="" />
+            <img src={publicMediaUrl("/media/ai-assistant-avatar.svg")} alt="" />
             <span><b>AI 助手</b><small>随时帮您创作</small></span>
             <CaretRight size={16} weight="bold" />
           </button>
@@ -820,7 +822,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
     <section className="hyper-hero">
       <video
         className="hyper-hero-art"
-        src="/media/flash-lab-hero-20260808.mp4"
+        src={publicMediaUrl("/media/flash-lab-hero-20260808.mp4")}
         autoPlay
         muted
         loop

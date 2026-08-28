@@ -9,6 +9,7 @@ import type { MemberSession } from "../member-session";
 import type { PlatformFeature } from "../../lib/server/platform-settings";
 import type { ViralWorkflowManifest } from "../../lib/viral-workflow";
 import type { AssetFilter, MemberAssetItem } from "./studio-client";
+import { publicMediaCdnEnabled, publicMediaUrl } from "../../lib/public-media";
 
 const IndustryImageLab = dynamic(
   () => import("./image-lab").then((module) => module.IndustryImageLab),
@@ -159,7 +160,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
   return (
     <main className={`studio-shell ${active === "design" ? "is-image-lab" : ""}`}>
       <aside className="studio-sidebar">
-        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><Image src="/media/flash-lab-logo.png" width={512} height={512} sizes="44px" alt="" priority /></span><div><b>爆点实验室</b></div></Link>
+        <Link className="studio-brand" href="/" aria-label="爆点实验室首页"><span><Image src={publicMediaUrl("/media/flash-lab-logo.png")} width={512} height={512} sizes="44px" alt="" priority unoptimized={publicMediaCdnEnabled} /></span><div><b>爆点实验室</b></div></Link>
         <nav>
           {visibleMenu.map((item, index) => {
             const MenuIcon = menuIcons[item.id as keyof typeof menuIcons] ?? House;
@@ -171,7 +172,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
         </nav>
         <div className="sidebar-utility">
           <button type="button" className="sidebar-assistant" onClick={() => setAssistantOpen(true)}>
-            <img src="/media/ai-assistant-avatar.svg" alt="" />
+            <img src={publicMediaUrl("/media/ai-assistant-avatar.svg")} alt="" />
             <span><b>AI 助手</b><small>随时帮您创作</small></span>
             <CaretRight size={16} weight="bold" />
           </button>
@@ -286,7 +287,7 @@ function Overview({ onOpen }: { onOpen: (id: string) => void }) {
 
   return <div className="hyper-home">
     <section className="hyper-hero">
-      <video className="hyper-hero-art" src={heroReady ? "/media/flash-lab-hero-20260808.mp4" : undefined} poster="/media/flash-lab-hero-poster.jpg" autoPlay muted loop playsInline preload="metadata" disablePictureInPicture aria-hidden="true" />
+      <video className="hyper-hero-art" src={heroReady ? publicMediaUrl("/media/flash-lab-hero-20260808.mp4") : undefined} poster={publicMediaUrl("/media/flash-lab-hero-poster.jpg")} autoPlay muted loop playsInline preload="metadata" disablePictureInPicture aria-hidden="true" />
       <div className="hyper-hero-copy"><h1>把灵感<br /><span>放大</span></h1><p>图片、视频、声音，一站式完成。</p></div>
       <div className="hyper-main-actions"><button className="is-image" onClick={() => onOpen("design")}><span>图片创作</span></button><button className="is-video" onClick={() => onOpen("video")}><span>视频创作</span></button></div>
     </section>

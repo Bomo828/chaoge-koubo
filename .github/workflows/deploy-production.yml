@@ -56,6 +56,8 @@ jobs:
             services/video-worker/sfx_router.py
 
       - name: Build production bundle
+        env:
+          NEXT_PUBLIC_MEDIA_CDN_BASE_URL: ${{ vars.PUBLIC_MEDIA_CDN_BASE_URL }}
         run: |
           set -euo pipefail
           pnpm exec next build --webpack

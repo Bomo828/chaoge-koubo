@@ -126,6 +126,8 @@ pnpm run build
 
 - [项目架构](docs/PROJECT_ARCHITECTURE.md)
 - [云服务器架构实施计划](docs/CLOUD_DEPLOYMENT_PLAN.md)
+- [CDN 媒体全量迁移实施计划](docs/CDN_MEDIA_MIGRATION_PLAN.md)
+- [产品设计规范](DESIGN.md)
 - [自动部署说明](docs/AUTOMATIC_DEPLOYMENT.md)
 - [开源发布指南](docs/OPEN_SOURCE_GUIDE.md)
 - [安全策略](SECURITY.md)

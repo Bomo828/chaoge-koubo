@@ -19,6 +19,7 @@ import {
   UploadSimple,
   X,
 } from "@phosphor-icons/react";
+import { publicMediaUrl } from "../../lib/public-media";
 
 type Props = {
   onPointsChange: (points: number) => void;
@@ -96,7 +97,7 @@ const concepts: Concept[] = [
     angle: "以核心产品或服务结果作为唯一视觉主角，建立高级、可信、可识别的品牌第一印象。",
     visual: "单一主角、近景材质、强轮廓光、左侧标题安全区",
     safeArea: "左 34% 保持低细节，用于标题与权益信息",
-    image: "/media/image-lab/product-hero.png",
+    image: publicMediaUrl("/media/image-lab/product-hero.png"),
   },
   {
     id: "scene",
@@ -106,7 +107,7 @@ const concepts: Concept[] = [
     angle: "让用户进入真实消费场景，用空间、人物动线与服务细节制造到店冲动。",
     visual: "广角空间、前景产品、人物活动、霓虹品牌色",
     safeArea: "左上预留主标题，右下避免重要信息",
-    image: "/media/image-lab/store-scene.png",
+    image: publicMediaUrl("/media/image-lab/store-scene.png"),
   },
   {
     id: "editorial",
@@ -116,7 +117,7 @@ const concepts: Concept[] = [
     angle: "用编辑式拼贴呈现材质、过程与细节证据，适合品牌种草和专业能力表达。",
     visual: "微距细节、玻璃材质、流程切片、杂志感留白",
     safeArea: "中心主体完整，底部 18% 可放证明点",
-    image: "/media/image-lab/editorial-collage.png",
+    image: publicMediaUrl("/media/image-lab/editorial-collage.png"),
   },
 ];
 
