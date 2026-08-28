@@ -15,6 +15,15 @@ export class ChanjingError extends Error {
 type JsonRecord = Record<string, unknown>;
 let tokenCache: { value: string; expiresAt: number; configKey: string } | null = null;
 
+function boundedTimeout(name: string, fallback: number, minimum: number, maximum: number) {
+  const configured = Number(process.env[name]);
+  if (!Number.isFinite(configured)) return fallback;
+  return Math.max(minimum, Math.min(maximum, Math.floor(configured)));
+}
+
+const MEDIA_UPLOAD_TIMEOUT_MS = boundedTimeout("CHANJING_MEDIA_UPLOAD_TIMEOUT_MS", 10 * 60_000, 60_000, 30 * 60_000);
+const MEDIA_PROCESS_TIMEOUT_MS = boundedTimeout("CHANJING_MEDIA_PROCESS_TIMEOUT_MS", 5 * 60_000, 60_000, 15 * 60_000);
+
 export type ChanjingCommonVoice = {
   voiceId: string;
   name: string;
@@ -230,6 +239,30 @@ async function fileDetail(fileId: string) {
   };
 }
 
+async function waitForUploadedMedia(fileId: string, mediaName: string, timeoutMs: number) {
+  const startedAt = Date.now();
+  while (Date.now() - startedAt < timeoutMs) {
+    let detail: Awaited<ReturnType<typeof fileDetail>>;
+    try {
+      detail = await fileDetail(fileId);
+    } catch (error) {
+      if (error instanceof ChanjingError && error.status >= 500) {
+        await new Promise((resolve) => setTimeout(resolve, 1800));
+        continue;
+      }
+      throw new ChanjingError(`${mediaName}处理状态查询失败：${error instanceof Error ? error.message : "未知错误"}`, error instanceof ChanjingError ? error.status : 502);
+    }
+    // Current File Management API marks status=1 as available. Keep status=2
+    // for compatibility with the older avatar skill documentation.
+    if (detail.status === 1 || detail.status === 2) return true;
+    if ([3, 4, 30, 98, 99, 100].includes(detail.status)) {
+      throw new ChanjingError(`${mediaName}处理失败：${detail.error || "素材校验未通过"}`, 422);
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1800));
+  }
+  return false;
+}
+
 export async function uploadLipSyncMedia(input: {
   service: "lip_sync_video" | "lip_sync_audio";
   fileName: string;
@@ -260,7 +293,7 @@ export async function uploadLipSyncMedia(input: {
         method: "PUT",
         headers: { "Content-Type": slot.mimeType || input.contentType || "application/octet-stream" },
         body: input.bytes,
-        signal: AbortSignal.timeout(120_000),
+        signal: AbortSignal.timeout(MEDIA_UPLOAD_TIMEOUT_MS),
       }, `${mediaName}上传`);
       uploadStatus = response.status;
       uploadNetworkError = null;
@@ -273,33 +306,25 @@ export async function uploadLipSyncMedia(input: {
       uploadNetworkError = error instanceof ChanjingError
         ? error
         : networkFailure(`${mediaName}上传`, error);
+      // A signed PUT can finish at the storage provider just as the local
+      // connection times out. Check the assigned file id before uploading the
+      // same large file again.
+      if (await waitForUploadedMedia(slot.fileId, mediaName, 20_000).catch(() => false)) {
+        uploaded = true;
+        uploadNetworkError = null;
+        break;
+      }
       if (attempt === 1) break;
     }
     await new Promise((resolve) => setTimeout(resolve, 1200));
   }
   if (!uploaded && uploadNetworkError) throw uploadNetworkError;
-  if (!uploaded) throw new ChanjingError(`${mediaName}上传失败（${uploadStatus || "网络异常"}）。`);
-
-  const startedAt = Date.now();
-  while (Date.now() - startedAt < 120_000) {
-    let detail: Awaited<ReturnType<typeof fileDetail>>;
-    try {
-      detail = await fileDetail(slot.fileId);
-    } catch (error) {
-      if (error instanceof ChanjingError && error.status >= 500) {
-        await new Promise((resolve) => setTimeout(resolve, 1800));
-        continue;
-      }
-      throw new ChanjingError(`${mediaName}处理状态查询失败：${error instanceof Error ? error.message : "未知错误"}`, error instanceof ChanjingError ? error.status : 502);
-    }
-    // Current File Management API marks status=1 as available. Keep status=2
-    // for compatibility with the older avatar skill documentation.
-    if (detail.status === 1 || detail.status === 2) return { fileId: slot.fileId };
-    if ([3, 4, 30, 98, 99, 100].includes(detail.status)) {
-      throw new ChanjingError(`${mediaName}处理失败：${detail.error || "素材校验未通过"}`);
-    }
-    await new Promise((resolve) => setTimeout(resolve, 1800));
+  if (!uploaded) {
+    const status = uploadStatus >= 400 && uploadStatus < 500 ? uploadStatus : 502;
+    throw new ChanjingError(`${mediaName}上传失败（${uploadStatus || "网络异常"}）。`, status);
   }
+
+  if (await waitForUploadedMedia(slot.fileId, mediaName, MEDIA_PROCESS_TIMEOUT_MS)) return { fileId: slot.fileId };
   throw new ChanjingError(`${mediaName}处理超时，请稍后重试。`, 504);
 }
 

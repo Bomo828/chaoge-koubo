@@ -1956,6 +1956,13 @@ type LipSyncTaskCheckpoint = {
   projectName: string;
 };
 
+type LipSyncSubmissionCheckpoint = {
+  requestId: string;
+  projectName: string;
+  videoUploaded: boolean;
+  audioUploaded: boolean;
+};
+
 type LipSyncWorkflowDraft = {
   voiceSource: "saved" | "upload";
   selectedVoice: string;
@@ -1974,6 +1981,7 @@ type LipSyncWorkflowDraft = {
   lipVideoFile: File | null;
   lipVideoName: string;
   lipVideoSize: { width: number; height: number };
+  lipSyncSubmission: LipSyncSubmissionCheckpoint | null;
   lipSyncPendingTask: LipSyncTaskCheckpoint | null;
   lipSyncResultUrl: string;
 };
@@ -2102,6 +2110,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [lipSyncProgress, setLipSyncProgress] = useState(0);
   const [lipSyncError, setLipSyncError] = useState("");
   const [lipSyncResultUrl, setLipSyncResultUrl] = useState("");
+  const [lipSyncSubmission, setLipSyncSubmission] = useState<LipSyncSubmissionCheckpoint | null>(null);
   const [lipSyncPendingTask, setLipSyncPendingTask] = useState<LipSyncTaskCheckpoint | null>(null);
   const [lipSyncDraftReady, setLipSyncDraftReady] = useState(false);
   const [lipSyncDraftStatus, setLipSyncDraftStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
@@ -2264,11 +2273,14 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         if (draft.lipVideoSize && Number(draft.lipVideoSize.width) > 0 && Number(draft.lipVideoSize.height) > 0) {
           setLipVideoSize({ width: Number(draft.lipVideoSize.width), height: Number(draft.lipVideoSize.height) });
         }
+        setLipSyncSubmission(draft.lipSyncSubmission?.requestId ? draft.lipSyncSubmission : null);
         setLipSyncPendingTask(draft.lipSyncPendingTask?.taskId ? draft.lipSyncPendingTask : null);
         setLipSyncResultUrl(typeof draft.lipSyncResultUrl === "string" ? draft.lipSyncResultUrl : "");
         setLipSyncDraftStatus("saved");
         setLipSyncDraftMessage(draft.lipSyncPendingTask?.taskId
           ? "已恢复上次任务，可直接继续查询生成结果。"
+          : draft.lipSyncSubmission?.requestId
+            ? "已恢复上次上传进度，可从失败环节继续。"
           : draft.speechAudioReady && draft.lipVideoFile
             ? "声音、口播音频和人物视频已恢复，可从上次步骤继续。"
             : "已恢复上次保存的制作进度。 ");
@@ -2308,6 +2320,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         lipVideoFile,
         lipVideoName,
         lipVideoSize,
+        lipSyncSubmission,
         lipSyncPendingTask,
         lipSyncResultUrl,
       };
@@ -2316,6 +2329,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           setLipSyncDraftStatus("saved");
           setLipSyncDraftMessage(lipSyncPendingTask
             ? "当前任务已保存，离开页面后仍可继续查询。"
+            : lipSyncSubmission
+              ? "已保存当前上传断点，重试不会重复已完成环节。"
             : "当前步骤已自动保存，刷新页面也能继续。 ");
         })
         .catch((error: unknown) => {
@@ -2329,6 +2344,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   }, [
     lipSyncDraftReady,
     lipSyncDraftKey,
+    lipSyncSubmission,
     lipSyncPendingTask,
     lipSyncResultUrl,
     lipVideoFile,
@@ -2977,6 +2993,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setSpeechAudioUrl("");
     setSpeechPendingTask(null);
     setLipSyncResultUrl("");
+    setLipSyncSubmission(null);
+    setLipSyncPendingTask(null);
     setLipSyncError("");
     try {
       const response = await fetch("/api/ai/speech-script", {
@@ -3096,6 +3114,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setSpeechPendingTask(null);
     setSpeechError("");
     setLipSyncResultUrl("");
+    setLipSyncSubmission(null);
+    setLipSyncPendingTask(null);
     setLipSyncError("");
     openVideoWorkspace("lip-sync");
   }
@@ -3122,6 +3142,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       setSpeechAudioUrl("");
       setSpeechPendingTask(null);
       setSpeechAudioDuration(0);
+      setLipSyncSubmission(null);
+      setLipSyncPendingTask(null);
     }
     setLipSyncResultUrl("");
     setLipSyncError("");
@@ -3214,7 +3236,10 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
 
   async function generateLipSyncVideo() {
     const resumableTask = lipSyncPendingTask;
-    if ((!resumableTask && (!lipVideoFile || !speechAudioUrl)) || lipSyncBusy) return;
+    const uploadCheckpoint = lipSyncSubmission;
+    const needsVideoUpload = !uploadCheckpoint?.videoUploaded;
+    const needsAudioUpload = !uploadCheckpoint?.audioUploaded;
+    if ((!resumableTask && ((needsVideoUpload && !lipVideoFile) || (needsAudioUpload && !speechAudioUrl))) || lipSyncBusy) return;
     setLipSyncBusy(true);
     setLipSyncError("");
     if (!resumableTask) {
@@ -3234,6 +3259,9 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         wallet?: { points?: number };
         estimatedPoints?: number;
         audioDuration?: number;
+        resumeAvailable?: boolean;
+        failedStage?: string;
+        checkpoint?: { videoUploaded?: boolean; audioUploaded?: boolean };
       };
       if (resumableTask) {
         data = {
@@ -3245,19 +3273,28 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           progress: lipSyncProgress,
         };
       } else {
-        const audioResponse = await fetch(speechAudioUrl, { cache: "no-store" });
-        if (!audioResponse.ok) throw new Error("口播音频读取失败，请重新生成音频。");
-        const audioBlob = await audioResponse.blob();
-        const isWav = audioBlob.type.includes("wav");
-        const audioFileForUpload = new File([audioBlob], isWav ? "speech.wav" : "speech.mp3", { type: audioBlob.type || "audio/mpeg" });
+        const submission = uploadCheckpoint || {
+          requestId: `lip_sync_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`,
+          projectName: "对口型视频",
+          videoUploaded: false,
+          audioUploaded: false,
+        };
         const form = new FormData();
-        form.append("video", lipVideoFile as File, (lipVideoFile as File).name);
-        form.append("audio", audioFileForUpload, audioFileForUpload.name);
+        if (needsVideoUpload && lipVideoFile) form.append("video", lipVideoFile, lipVideoFile.name);
+        if (needsAudioUpload) {
+          const audioResponse = await fetch(speechAudioUrl, { cache: "no-store" });
+          if (!audioResponse.ok) throw new Error("口播音频读取失败，请重新生成音频。");
+          const audioBlob = await audioResponse.blob();
+          const isWav = audioBlob.type.includes("wav");
+          const audioFileForUpload = new File([audioBlob], isWav ? "speech.wav" : "speech.mp3", { type: audioBlob.type || "audio/mpeg" });
+          form.append("audio", audioFileForUpload, audioFileForUpload.name);
+        }
         form.append("width", String(lipVideoSize.width));
         form.append("height", String(lipVideoSize.height));
         form.append("audioDuration", String(speechAudioDuration));
-        form.append("projectName", "对口型视频");
-        form.append("requestId", `lip_sync_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`);
+        form.append("projectName", submission.projectName);
+        form.append("requestId", submission.requestId);
+        setLipSyncSubmission(submission);
 
         const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
         const responseText = await response.text();
@@ -3269,6 +3306,22 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           }
           throw new Error(responseText.trim() || `对口型接口返回异常（${response.status}）。`);
         }
+        const nextCheckpoint = data.requestId && data.resumeAvailable
+          ? {
+              requestId: data.requestId,
+              projectName: data.projectName || submission.projectName,
+              videoUploaded: Boolean(data.checkpoint?.videoUploaded),
+              audioUploaded: Boolean(data.checkpoint?.audioUploaded),
+            }
+          : response.ok && data.requestId
+            ? {
+                requestId: data.requestId,
+                projectName: data.projectName || submission.projectName,
+                videoUploaded: true,
+                audioUploaded: true,
+              }
+            : null;
+        setLipSyncSubmission(nextCheckpoint);
         if (!response.ok || !data.taskId) throw new Error(data.error || "对口型任务创建失败，请稍后重试。");
         if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
         setLipSyncPendingTask({
@@ -3296,9 +3349,11 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       if (!data.isFinal) throw new Error("对口型任务仍在处理中，任务已保存，可稍后继续查询。");
       if (data.state !== "success" || !data.videoUrl) {
         setLipSyncPendingTask(null);
+        setLipSyncSubmission(null);
         throw new Error(data.error || "对口型视频生成失败，本次积分已自动退回，可只重试当前步骤。");
       }
       setLipSyncPendingTask(null);
+      setLipSyncSubmission(null);
       setLipSyncProgress(100);
       // The provider URL is playable as soon as the task finishes. Do not wait
       // for the whole MP4 to be copied through the application server first.
@@ -5266,10 +5321,10 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   if (workspace === "lip-sync") {
     const voiceReady = Boolean(selectedVoice) && (voiceSource === "saved" || uploadedVoiceReady);
     const canGenerateSpeechAudio = voiceReady && Boolean(script.trim());
-    const canGenerateLipSync = Boolean(lipSyncPendingTask) || (speechAudioReady
+    const canGenerateLipSync = Boolean(lipSyncPendingTask) || Boolean(lipSyncSubmission) || (speechAudioReady
       && Boolean(speechAudioUrl)
       && Boolean(lipVideoFile));
-    const lipSyncLocked = lipSyncBusy || Boolean(lipSyncPendingTask);
+    const lipSyncLocked = lipSyncBusy || Boolean(lipSyncPendingTask) || Boolean(lipSyncSubmission);
     const currentSavedVoice = savedVoices.find((item) => item.voiceId === selectedVoice);
     const currentVoiceName = currentSavedVoice?.name || (voiceSource === "upload" ? voiceName || "待克隆声音" : "尚未选择声音");
     const lipSyncEstimatedPoints = speechAudioDuration > 0 ? billablePointsFromCost(lipSyncPoints(speechAudioDuration, true)) : null;
@@ -5280,6 +5335,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       setSpeechAudioReady(false);
       setSpeechAudioUrl("");
       setSpeechPendingTask(null);
+      setLipSyncSubmission(null);
+      setLipSyncPendingTask(null);
       setSpeechError("");
       setVoiceError("");
       setVoiceNotice("");
@@ -5323,13 +5380,13 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           </section>
           <section className={`video-builder-card lip-sync-step-card ${speechAudioReady ? "is-complete" : voiceReady ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>02</span><div><b>生成口播音频</b><small>{speechAudioReady ? "音频已生成，可以试听" : "输入文案并调整说话速度"}</small></div>{speechAudioReady ? <em>已完成</em> : voiceReady ? <em>当前步骤</em> : <em>等待声音</em>}</div>
-            <textarea value={script} disabled={lipSyncLocked} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
+            <textarea value={script} disabled={lipSyncLocked} onChange={(event) => { setScript(event.target.value); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setLipSyncSubmission(null); setLipSyncPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播文案" />
             <div className="video-speech-actions">
               <button type="button" className="benchmark-entry-button" disabled={speechBusy || scriptRewriteBusy || lipSyncLocked} onClick={() => { setBenchmarkError(""); openVideoWorkspace("ai-benchmark"); }}>AI 对标</button>
               <button type="button" disabled={scriptRewriteBusy || script.trim().length < 2 || lipSyncLocked} onClick={() => void rewriteSpeechScript()}>{scriptRewriteBusy ? "正在生成口播文案…" : "AI 辅助改写"}</button>
               <label className="speech-speed-field">
                 <span>语速</span>
-                <select value={speechSpeed} disabled={speechBusy || lipSyncLocked} onChange={(event) => { setSpeechSpeed(Number(event.target.value)); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播语速">
+                <select value={speechSpeed} disabled={speechBusy || lipSyncLocked} onChange={(event) => { setSpeechSpeed(Number(event.target.value)); setSpeechAudioReady(false); setSpeechAudioUrl(""); setSpeechPendingTask(null); setLipSyncSubmission(null); setLipSyncPendingTask(null); setSpeechError(""); setLipSyncResultUrl(""); }} aria-label="口播语速">
                   <option value={0.75}>慢速 · 0.75×</option>
                   <option value={1}>正常 · 1.0×</option>
                   <option value={1.25}>稍快 · 1.25×</option>
@@ -5344,17 +5401,17 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           </section>
           <section className={`video-builder-card lip-sync-step-card ${lipVideoName ? "is-complete" : speechAudioReady ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>03</span><div><b>上传本人视频</b><small>{lipVideoName ? "人物视频已就绪" : "使用正脸、清晰、嘴部无遮挡的视频"}</small></div>{lipVideoName ? <em>已完成</em> : speechAudioReady ? <em>当前步骤</em> : <em>等待口播</em>}</div>
-            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" disabled={lipSyncLocked} onChange={(event) => { const file = event.target.files?.[0] ?? null; if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current); const previewUrl = file ? URL.createObjectURL(file) : ""; lipVideoPreviewObjectUrl.current = previewUrl; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(previewUrl); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
+            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" disabled={lipSyncLocked} onChange={(event) => { const file = event.target.files?.[0] ?? null; if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current); const previewUrl = file ? URL.createObjectURL(file) : ""; lipVideoPreviewObjectUrl.current = previewUrl; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(previewUrl); setLipSyncSubmission(null); setLipSyncPendingTask(null); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
             {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 })} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card lip-sync-final-card ${lipSyncResultUrl ? "is-complete" : canGenerateLipSync ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>04</span><div><b>生成对口型视频</b><small>{lipSyncResultUrl ? "成片已保存，可继续网感剪辑" : "声音和人物视频将自动同步"}</small></div>{lipSyncResultUrl ? <em>已完成</em> : canGenerateLipSync ? <em>可以生成</em> : <em>等待素材</em>}</div>
             <div className="lip-sync-final-actions">
-              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || (!lipSyncPendingTask && !lipSyncEstimatedPoints)} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : lipSyncPendingTask ? "继续查询生成结果" : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
+              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || (!lipSyncPendingTask && !lipSyncSubmission && !lipSyncEstimatedPoints)} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : lipSyncPendingTask ? "继续查询生成结果" : lipSyncSubmission ? `继续上传并生成${lipSyncEstimatedPoints ? ` · 预计${lipSyncEstimatedPoints}积分` : ""}` : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInSuperEditor}>{lipSyncResultUrl ? "✦ 导入AI超级剪辑" : "生成后可导入AI超级剪辑"}</button>
             </div>
-            {lipSyncError ? <div className="video-agent-error" role="alert"><b>{lipSyncError}</b><span>{lipSyncPendingTask ? "声音、音频、视频和任务编号均已保存，点击“继续查询生成结果”即可。" : "前面已完成的步骤不会丢失，只需重试当前步骤。"}</span></div> : null}
+            {lipSyncError ? <div className="video-agent-error" role="alert"><b>{lipSyncError}</b><span>{lipSyncPendingTask ? "声音、音频、视频和任务编号均已保存，点击“继续查询生成结果”即可。" : lipSyncSubmission ? "已上传成功的素材不会重复上传，点击“继续上传并生成”只执行失败环节。" : "前面已完成的步骤不会丢失，只需重试当前步骤。"}</span></div> : null}
           </section>
         </div>
         <aside className="video-builder-preview lip-sync-preview">

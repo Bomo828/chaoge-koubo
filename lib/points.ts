@@ -206,6 +206,32 @@ export async function reserveAiPoints(
   return { requestId, memberId: member.id, action, reservedCost };
 }
 
+export function getActiveAiPointReservation(
+  member: MemberSession,
+  action: AiPointAction,
+  rawRequestId: unknown,
+): Reservation | null {
+  const requestId = normalizeRequestId(rawRequestId);
+  const charge = getDatabase().prepare(`
+    SELECT request_id, user_id, action, reserved_cost, actual_cost, state
+    FROM ai_point_charges WHERE request_id = ? AND user_id = ? LIMIT 1
+  `).get(requestId, member.id) as ChargeRow | undefined;
+  if (!charge) return null;
+  if (charge.action !== action) throw new PointsError("这次 AI 请求与原任务类型不一致。", 409);
+  if (charge.state !== "reserved") {
+    throw new PointsError("这次 AI 请求已经结算，请重新发起。", 409, {
+      points: memberPoints(member.id),
+      required: charge.reserved_cost,
+    });
+  }
+  return {
+    requestId: charge.request_id,
+    memberId: charge.user_id,
+    action: charge.action,
+    reservedCost: Math.max(0, Number(charge.reserved_cost) || 0),
+  };
+}
+
 const actionReasons: Record<AiPointAction, string> = {
   prompt_optimize: "AI 优化生成要求",
   chat_assistant: "AI 助手对话",
