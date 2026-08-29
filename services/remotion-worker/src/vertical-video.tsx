@@ -43,6 +43,74 @@ const template10BrushTitleFontFamily = '"Merchant Template10 Brush", "Merchant B
 const template11SansFontFamily = '"Merchant Template11 Sans", "Merchant Sans", sans-serif';
 const template12SansFontFamily = '"Merchant Template12 Sans", "Merchant Sans", sans-serif';
 
+const protectedOpeningTitlePhrases = [
+  "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
+  "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
+  "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
+  "网感", "口播视频", "AI剪辑", "AI超级剪辑",
+  "市场动态", "会员中心", "短视频", "供应链", "创作平台",
+];
+
+const protectedTextRanges = (value: string, phrases: string[]) => phrases.flatMap((phrase) => {
+  const ranges: Array<[number, number]> = [];
+  let cursor = value.indexOf(phrase);
+  while (cursor >= 0) {
+    ranges.push([cursor, cursor + phrase.length]);
+    cursor = value.indexOf(phrase, cursor + 1);
+  }
+  return ranges;
+});
+
+const safeTextBreak = (position: number, ranges: Array<[number, number]>) => (
+  !ranges.some(([start, end]) => start < position && position < end)
+);
+
+const captionGlyphWidthRatio = (character: string) => {
+  if (/\p{Script=Han}/u.test(character)) return 1.08;
+  if (/[A-Z]/.test(character)) return .72;
+  if (/[a-z0-9]/.test(character)) return .60;
+  if (/\s/.test(character)) return .32;
+  return .72;
+};
+
+/**
+ * SVG text with mixed fonts and enlarged keyword tspans cannot rely on a
+ * character limit alone.  Estimate the complete visual row, reduce the font
+ * within a narrow readability range, then cap SVG textLength as a final hard
+ * safe-area guard.  This makes an imperfect AI line break safe to render.
+ */
+const fitCaptionSvgLine = (options: {
+  line: string;
+  characterOffset: number;
+  keywordStart: number;
+  keywordLength: number;
+  baseFontSize: number;
+  keywordScale: number;
+  normalSpacing: number;
+  keywordSpacing: number;
+  safeWidth: number;
+  minimumScale?: number;
+}) => {
+  const estimate = (fontScale: number) => Array.from(options.line).reduce((width, character, localIndex) => {
+    const characterIndex = options.characterOffset + localIndex;
+    const highlighted = options.keywordStart >= 0
+      && characterIndex >= options.keywordStart
+      && characterIndex < options.keywordStart + options.keywordLength;
+    const size = options.baseFontSize * fontScale * (highlighted ? options.keywordScale : 1);
+    return width + size * captionGlyphWidthRatio(character)
+      + (highlighted ? options.keywordSpacing : options.normalSpacing);
+  }, 0);
+  const originalWidth = estimate(1);
+  const minimumScale = Math.max(.72, Math.min(1, options.minimumScale ?? .78));
+  const fontScale = Math.max(minimumScale, Math.min(1, options.safeWidth / Math.max(1, originalWidth)));
+  const estimatedWidth = estimate(fontScale);
+  return {
+    baseFontSize: Math.round(options.baseFontSize * fontScale * 10) / 10,
+    keywordFontSize: Math.round(options.baseFontSize * fontScale * options.keywordScale * 10) / 10,
+    textLength: Math.max(1, Math.round(Math.min(options.safeWidth, estimatedWidth))),
+  };
+};
+
 let bundledFontsPromise: Promise<void> | null = null;
 
 const loadBundledFonts = () => {
@@ -131,10 +199,18 @@ const splitOpeningTitle = (value: string) => {
     .split(/[|｜]/)
     .map((line) => line.replace(/[，。！？；：]/g, "").trim())
     .filter(Boolean);
-  if (explicitLines.length >= 2) {
+  const explicitCompact = explicitLines.join("");
+  const explicitBreak = explicitLines[0]?.length ?? 0;
+  const explicitBreakIsSafe = safeTextBreak(
+    explicitBreak,
+    protectedTextRanges(explicitCompact, protectedOpeningTitlePhrases),
+  );
+  if (explicitLines.length >= 2 && explicitBreakIsSafe) {
     return [explicitLines[0], explicitLines.slice(1).join("")];
   }
-  const compact = explicitLines[0] ?? value.replace(/[，。！？；：]/g, "").trim();
+  const compact = explicitLines.length >= 2
+    ? explicitCompact
+    : explicitLines[0] ?? value.replace(/[，。！？；：]/g, "").trim();
   if (compact.length <= 9) return [compact];
   const middle = compact.length / 2;
   const candidates = new Set<number>();
@@ -144,22 +220,8 @@ const splitOpeningTitle = (value: string) => {
     "更", "培训", "一定", "千万", "如果", "但是", "所以", "可以",
     "需要", "通过", "商家", "用户", "客户", "品牌", "平台", "机会",
   ];
-  const protectedPhrases = [
-    "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
-    "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
-    "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
-    "市场动态", "会员中心", "短视频", "供应链", "创作平台",
-  ];
-  const protectedRanges = protectedPhrases.flatMap((phrase) => {
-    const ranges: Array<[number, number]> = [];
-    let cursor = compact.indexOf(phrase);
-    while (cursor >= 0) {
-      ranges.push([cursor, cursor + phrase.length]);
-      cursor = compact.indexOf(phrase, cursor + 1);
-    }
-    return ranges;
-  });
-  const safe = (position: number) => !protectedRanges.some(([start, end]) => start < position && position < end);
+  const protectedRanges = protectedTextRanges(compact, protectedOpeningTitlePhrases);
+  const safe = (position: number) => safeTextBreak(position, protectedRanges);
   markers.forEach((marker) => {
     let cursor = compact.indexOf(marker);
     while (cursor >= 0) {
@@ -204,22 +266,41 @@ const splitCaptionLines = (value: string, maxChars: number) => {
 };
 
 const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: number) => {
-  const directed = (caption.captionLines ?? [])
-    .map((line) => line.replace(/\s+/g, "").trim())
-    .filter(Boolean);
-  if (directed.length >= 1 && directed.length <= 2 && directed.join("") === value) return directed;
-  if (value.length <= maxChars) return [value];
-
-  const characters = Array.from(value);
   const keyword = (caption.keyword ?? "").replace(/\s+/g, "");
   const keywordStart = keyword ? value.indexOf(keyword) : -1;
   const keywordEnd = keywordStart >= 0 ? keywordStart + keyword.length : -1;
+  const visualUnits = (text: string, offset = 0) => Array.from(text).reduce((width, character, localIndex) => {
+    const characterIndex = offset + localIndex;
+    const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordEnd;
+    return width + captionGlyphWidthRatio(character) / 1.08 * (highlighted ? 1.14 : 1);
+  }, 0);
+  const directed = (caption.captionLines ?? [])
+    .map((line) => line.replace(/\s+/g, "").trim())
+    .filter(Boolean);
+  if (directed.length >= 1 && directed.length <= 2 && directed.join("") === value) {
+    let directedOffset = 0;
+    const directedWidths = directed.map((line) => {
+      const width = visualUnits(line, directedOffset);
+      directedOffset += Array.from(line).length;
+      return width;
+    });
+    const widest = Math.max(...directedWidths);
+    const narrowest = Math.min(...directedWidths);
+    const balanced = directed.length === 1 || narrowest / Math.max(1, widest) >= .46;
+    // AI is allowed to propose line breaks, but the renderer owns the final
+    // safe-area decision. Reject rows that are visibly too wide or lopsided.
+    if (widest <= maxChars * 1.12 && balanced) return directed;
+  }
+  if (value.length <= maxChars) return [value];
+
+  const characters = Array.from(value);
   const midpoint = characters.length / 2;
   const minimumSide = Math.max(2, Math.min(4, Math.floor(characters.length / 3)));
   const protectedPhrases = [
     "商家", "入驻", "新机会", "机会", "开放入驻", "首批类目", "激励翻倍",
     "华为", "小红书", "朋友圈", "直播间", "微信支付", "人工智能",
     "对口型", "一键网感", "超级剪辑", "市场动态", "会员中心",
+    "网感", "口播视频", "AI剪辑", "AI超级剪辑",
     "酒店景区旅行社", "体育场馆", "品牌", "平台",
   ];
   const protectedRanges: Array<[number, number]> = [];
@@ -253,9 +334,12 @@ const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: numb
     const score = (position: number) => {
       const left = value.slice(0, position);
       const right = value.slice(position);
-      const overflow = Math.max(0, position - maxChars) + Math.max(0, characters.length - position - maxChars);
+      const leftWidth = visualUnits(left, 0);
+      const rightWidth = visualUnits(right, position);
+      const overflow = Math.max(0, leftWidth - maxChars) + Math.max(0, rightWidth - maxChars);
       return overflow * 12
-        + Math.abs(position - midpoint)
+        + Math.abs(leftWidth - rightWidth)
+        + Math.abs(position - midpoint) * .2
         + (invalidLeft.some((item) => left.endsWith(item)) ? 10 : 0)
         + (invalidRight.some((item) => right.startsWith(item)) ? 10 : 0)
         - (semantic.has(position) ? 7 : 0);
@@ -580,11 +664,23 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
         <svg width="936" height={svgHeight} viewBox={`0 0 936 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 896, overflow: "visible", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.58))"}}>
           {captionLines.map((line, lineIndex) => {
             const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
-            return <text key={`${line}-${lineIndex}`} x="468" y={74 + lineIndex * 89} textAnchor="middle" fill={style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth="4.4" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={brushFontFamily} fontSize={baseFontSize} fontWeight="600" letterSpacing=".3">
+            const fitted = fitCaptionSvgLine({
+              line,
+              characterOffset,
+              keywordStart,
+              keywordLength: keyword?.length ?? 0,
+              baseFontSize,
+              keywordScale: 1.14,
+              normalSpacing: .3,
+              keywordSpacing: -1.7,
+              safeWidth: 884,
+              minimumScale: .78,
+            });
+            return <text key={`${line}-${lineIndex}`} x="468" y={74 + lineIndex * 89} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill={style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth="4.4" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={brushFontFamily} fontSize={fitted.baseFontSize} fontWeight="600" letterSpacing=".3">
               {Array.from(line).map((character, localIndex) => {
                 const characterIndex = characterOffset + localIndex;
                 const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
-                return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth={highlighted ? 5 : 4.4} paintOrder="stroke fill" fontFamily={highlighted ? kineticFontFamily : brushFontFamily} fontSize={highlighted ? Math.round(baseFontSize * 1.14) : baseFontSize} fontWeight={highlighted ? 950 : 600} letterSpacing={highlighted ? "-1.7" : ".3"}>{character}</tspan>;
+                return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth={highlighted ? 5 : 4.4} paintOrder="stroke fill" fontFamily={highlighted ? kineticFontFamily : brushFontFamily} fontSize={highlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight={highlighted ? 950 : 600} letterSpacing={highlighted ? "-1.7" : ".3"}>{character}</tspan>;
               })}
             </text>;
           })}
