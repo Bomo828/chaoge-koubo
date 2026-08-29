@@ -11,18 +11,25 @@ import {
 } from "../../../../lib/viral-workflow";
 import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 import { acceptViralCaptionCorrection } from "../../../../lib/viral-text-integrity";
+import {
+  buildViralCaptionSkillRequest,
+  buildViralCaptionSkillSystemPrompt,
+  detectViralCaptionSkillLanguage,
+  normalizeViralKeywordImportance,
+  viralCaptionSkillTitleIsValid,
+  VIRAL_CAPTION_AI_MODEL,
+  VIRAL_CAPTION_AI_TIMEOUT_MS,
+} from "../../../../lib/viral-caption-ai-skill";
 
 type ProviderResponse = {
   choices?: Array<{ message?: { content?: unknown } }>;
   output_text?: string;
 };
 
-const MODEL = "gpt-5.4-mini";
 // A complete title/keyword/director plan for 10-20 captions regularly takes
 // longer than eight seconds on the shared provider.  The previous limit made
 // healthy AI requests look like failures and silently exposed the local
 // fallback as if it were an AI result.
-const DIRECTOR_TIMEOUT_MS = 30_000;
 const DIRECTOR_CACHE_MAX = 128;
 const directorCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>();
 const NODES = new Set<ViralCaptionPlanItem["contentNode"]>([
@@ -191,37 +198,29 @@ export async function POST(request: Request) {
   const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
   const fallback = localPlan(source, script);
   const input = source.map((caption, id) => ({ id, start: caption.start, end: caption.end, text: caption.text }));
-  const key = cacheKey({ prompt: VIRAL_DIRECTOR_PROMPT_VERSION, model: MODEL, templateId, script, input });
+  const sourceText = script || source.map((item) => item.text).join("。");
+  const sourceLanguage = detectViralCaptionSkillLanguage(sourceText);
+  const key = cacheKey({ prompt: VIRAL_DIRECTOR_PROMPT_VERSION, model: VIRAL_CAPTION_AI_MODEL, templateId, script, input });
   const cached = cachedDirectorPlan(key);
   if (cached) return Response.json({ ...cached, cache: "hit" });
-  const system = `你是专业竖屏口播短视频的字幕总监。用户已经确认了口播文字和逐句时间轴，你只做一次性轻量校正与导演标注。
-规则：
-1. 不改变id、start、end和条目数量，不重新断句，不删减信息，不添加原文没有的内容；只校正确定的同音错字、品牌名和明显错字。
-2. keyword必须是corrected_text中原样连续出现的2到8个字；普通承接句可以为空，不要每句都强行提亮。数字可单独提亮。
-2.1 问候、自我介绍、工具来源和普通名词不提亮；“大家好、我是、codex、AI、视频、工具、剪辑”单独出现时都不是关键词。像“我用codex做了一款”应返回空字符串，“AI剪辑口播视频的工具”可选择“AI剪辑”或“口播视频工具”。
-2.2 先理解整条口播的核心承诺，再选完整的利益点、反差、结论、数字、动作结果或行动号召。字幕超过4条时必须规划1到3个关键词；整条视频通常仅15%到35%的字幕需要关键词，严禁每句都提亮。
-3. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting。
-4. translation输出自然简短英文字幕；原文为英文时输出简短中文。
-5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头，必须符合自然中文语序。例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
-6. title_lines必须把title按完整语义分为1到2行；caption_lines只负责同一条字幕内部的视觉换行，最多2行。各行拼接必须与原文字完全一致，禁止拆开品牌名、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。
-7. camera_intent只表达镜头意图：hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。不要输出具体像素、时间或素材文件名。
-8. bgm_mood只能是calm/warm/professional/uplifting/neutral。
-只返回JSON：{"title":"标题","title_lines":["第一行","第二行"],"bgm_mood":"professional","items":[{"id":0,"corrected_text":"原句","caption_lines":["第一行","第二行"],"keyword":"关键词","translation":"English caption","content_node":"hook","weight":0.9,"camera_intent":"push-in","transition_intent":"cut","sfx_role":"hook"}]}。`;
+  const system = buildViralCaptionSkillSystemPrompt({
+    language: sourceLanguage,
+    itemKey: "items",
+    idBase: 0,
+  });
   const requestStartedAt = Date.now();
   try {
     const response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
       method: "POST",
-      signal: AbortSignal.timeout(DIRECTOR_TIMEOUT_MS),
-      body: JSON.stringify({
-        model: MODEL,
-        temperature: 0.05,
-        max_tokens: Math.max(900, Math.min(3600, source.length * 105)),
-        response_format: { type: "json_object" },
+      signal: AbortSignal.timeout(VIRAL_CAPTION_AI_TIMEOUT_MS),
+      body: JSON.stringify(buildViralCaptionSkillRequest({
+        captionCount: source.length,
+        maxTokens: source.length * 105,
         messages: [
           { role: "system", content: system },
-          { role: "user", content: `完整口播：${script || source.map((item) => item.text).join("。")}\n确认时间轴：${JSON.stringify(input)}` },
+          { role: "user", content: `完整口播：${sourceText}\n确认时间轴：${JSON.stringify(input)}` },
         ],
-      }),
+      })),
     });
     const parsed = parseJson(extractText(response));
     const items = Array.isArray(parsed.items) ? parsed.items : [];
@@ -234,11 +233,8 @@ export async function POST(request: Request) {
       else if (responseIndex < source.length && !itemsById.has(responseIndex)) itemsById.set(responseIndex, record);
     });
     if (!itemsById.size) throw new Error("AI 没有返回可用的逐句规划。");
-    const cameraIntents = new Set(["hold", "push-in", "pull-back", "reframe", "close-up", "wide"]);
-    const transitionIntents = new Set(["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"]);
-    const sfxRoles = new Set(["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"]);
     if (typeof parsed.title !== "string" || !parsed.title.trim()) throw new Error("AI 没有返回完整标题。");
-    const captions = markViralKeywordSfx(source.map((caption, index) => {
+    const plannedCaptions = source.map((caption, index) => {
       const raw = itemsById.get(index) || {};
       const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
       const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
@@ -250,16 +246,8 @@ export async function POST(request: Request) {
       const keyword = candidate && plain(text).includes(plain(candidate))
         ? sanitizeViralKeyword(text, candidate, node, contentWeight)
         : "";
+      const keywordImportance = normalizeViralKeywordImportance(raw.keyword_importance, Boolean(keyword));
       const local = localIntents(node, contentWeight);
-      const cameraIntent = cameraIntents.has(String(raw.camera_intent))
-        ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"]
-        : local.cameraIntent;
-      const transitionIntent = transitionIntents.has(String(raw.transition_intent))
-        ? raw.transition_intent as ViralCaptionPlanItem["transitionIntent"]
-        : local.transitionIntent;
-      const sfxRole = sfxRoles.has(String(raw.sfx_role))
-        ? raw.sfx_role as ViralCaptionPlanItem["sfxRole"]
-        : local.sfxRole;
       return {
         ...caption,
         text,
@@ -268,19 +256,25 @@ export async function POST(request: Request) {
         contentNode: node,
         contentWeight,
         keywordOrigin: keyword ? "ai" as const : "none" as const,
+        ...(keyword ? {
+          keywordImportance: keywordImportance === "primary" ? "primary" as const : "regular" as const,
+          ...(keywordImportance === "primary" ? { keywordSfx: true } : {}),
+        } : {}),
         captionLineMode: lineLayout.mode,
         captionLines: lineLayout.lines,
-        cameraIntent,
-        transitionIntent,
-        sfxRole,
+        ...local,
       };
-    }), duration);
-    if (source.length > 4 && !captions.some((caption) => caption.keywordOrigin === "ai" && caption.keyword)) {
+    });
+    if (source.length > 4 && !plannedCaptions.some((caption) => caption.keywordOrigin === "ai" && caption.keyword)) {
       throw new Error("AI 没有完成语义关键词规划。");
     }
+    const captions = markViralKeywordSfx(plannedCaptions, duration);
     const rawTitle = typeof parsed.title === "string" && parsed.title.trim()
       ? normalizeViralTitleSyntax(parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
       : fallback.title;
+    if (!viralCaptionSkillTitleIsValid(rawTitle.replace(/\n/g, ""), sourceLanguage)) {
+      throw new Error("AI 返回的标题不是完整自然语义。");
+    }
     const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
     const title = titleLayout.serializedTitle;
     const directorPlan = buildViralDirectorPlan({
@@ -291,7 +285,7 @@ export async function POST(request: Request) {
       captions,
       bgmMood: parsed.bgm_mood as "calm" | "warm" | "professional" | "uplifting" | "neutral",
       source: "ai",
-      model: MODEL,
+      model: VIRAL_CAPTION_AI_MODEL,
       degraded: false,
     });
     const result = {
@@ -300,7 +294,7 @@ export async function POST(request: Request) {
       captions: directorPlan.captions,
       planReady: true,
       degraded: false,
-      model: MODEL,
+      model: VIRAL_CAPTION_AI_MODEL,
       directorPlan,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",

@@ -17,7 +17,7 @@ export type ViralCaptionPlanItem = {
 };
 
 export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
-export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-semantic-lock-v3";
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-semantic-lock-v4-tt55-caption-skill";
 
 export type ViralBgmMood = "calm" | "warm" | "professional" | "uplifting" | "neutral";
 

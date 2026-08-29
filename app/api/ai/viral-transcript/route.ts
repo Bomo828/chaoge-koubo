@@ -13,6 +13,13 @@ import {
   sanitizeViralKeyword,
   type ViralCaptionPlanItem,
 } from "../../../../lib/viral-workflow";
+import {
+  buildViralCaptionSkillRequest,
+  buildViralCaptionSkillSystemPrompt,
+  normalizeViralKeywordImportance,
+  VIRAL_CAPTION_AI_MODEL,
+  VIRAL_CAPTION_AI_TIMEOUT_MS,
+} from "../../../../lib/viral-caption-ai-skill";
 
 type Caption = ViralCaptionPlanItem;
 
@@ -23,11 +30,9 @@ type ProviderResponse = {
 
 // The transcript has already been produced by Tencent Flash ASR. One short AI
 // pass is enough; render workers must never repeat this request.
-const TRANSCRIPT_MODEL = "gpt-5.4-mini";
 // The provider needs enough time to return a structured plan for the whole
 // timeline. Eight seconds caused normal requests to be discarded and made the
 // local fallback appear to be the AI result.
-const TRANSCRIPT_TIMEOUT_MS = 30_000;
 const TRANSCRIPT_CACHE_MAX = 96;
 const transcriptCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>();
 
@@ -123,7 +128,7 @@ function completeTitle(value: unknown) {
   const title = value
     .replace(/[《》“”"'‘’：:。！？!?，,；;、*#\s]+/gu, "")
     .trim();
-  if (title.length < 6 || title.length > 16) return "";
+  if (title.length < 8 || title.length > 16) return "";
   const incompleteEndings = ["不是", "而是", "但是", "因为", "所以", "以及", "还有", "对于", "关于", "已经", "正在", "很多岗位", "这个问题", "这件事"];
   if (incompleteEndings.some((ending) => title.endsWith(ending))) return "";
   if (title.includes("不是")) {
@@ -263,6 +268,7 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
     const keyword = candidate && plainText(caption.text).includes(plainText(candidate))
       ? sanitizeViralKeyword(caption.text, candidate, node, weight)
       : "";
+    const keywordImportance = normalizeViralKeywordImportance(raw.keyword_importance, Boolean(keyword));
     const local = localIntents(node, weight);
     return {
       ...caption,
@@ -271,9 +277,11 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
       contentNode: node,
       contentWeight: weight,
       keywordOrigin: keyword ? "ai" as const : "none" as const,
-      cameraIntent: ["hold", "push-in", "pull-back", "reframe", "close-up", "wide"].includes(String(raw.camera_intent)) ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"] : local.cameraIntent,
-      transitionIntent: ["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"].includes(String(raw.transition_intent)) ? raw.transition_intent as ViralCaptionPlanItem["transitionIntent"] : local.transitionIntent,
-      sfxRole: ["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"].includes(String(raw.sfx_role)) ? raw.sfx_role as ViralCaptionPlanItem["sfxRole"] : local.sfxRole,
+        ...(keyword ? {
+          keywordImportance: keywordImportance === "primary" ? "primary" as const : "regular" as const,
+          ...(keywordImportance === "primary" ? { keywordSfx: true } : {}),
+        } : {}),
+      ...local,
     };
   });
   return markViralKeywordSfx(enriched, duration);
@@ -281,16 +289,14 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
 
 function semanticPlanIsComplete(items: Record<string, unknown>[], expectedLength: number) {
   const nodes = new Set(["hook", "pain_reversal", "core_viewpoint", "number_benefit", "example_step", "brand_entity", "cta", "supporting"]);
-  const cameras = new Set(["hold", "push-in", "pull-back", "reframe", "close-up", "wide"]);
-  const transitions = new Set(["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"]);
-  const sfxRoles = new Set(["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"]);
+  const importance = new Set(["none", "regular", "primary"]);
   return items.length === expectedLength && items.every((item) => (
     nodes.has(String(item.content_node))
-    && cameras.has(String(item.camera_intent))
-    && transitions.has(String(item.transition_intent))
-    && sfxRoles.has(String(item.sfx_role))
+    && importance.has(String(item.keyword_importance))
     && Number.isFinite(Number(item.weight))
     && typeof item.keyword === "string"
+    && typeof item.corrected_text === "string"
+    && Array.isArray(item.caption_lines)
   ));
 }
 
@@ -318,8 +324,8 @@ export async function POST(request: Request) {
     const sourceText = lockedCaptions.map((item) => item.text).join(sourceLanguage === "en" ? " " : "");
     const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
     const cacheKey = transcriptCacheKey({
-      version: "viral-transcript-semantic-lock-v3-ai-source-of-truth",
-      model: TRANSCRIPT_MODEL,
+      version: "viral-transcript-semantic-lock-v4-tt55-caption-skill",
+      model: VIRAL_CAPTION_AI_MODEL,
       templateId,
       duration,
       sourceCaptions: lockedCaptions,
@@ -327,22 +333,11 @@ export async function POST(request: Request) {
     });
     const cached = readTranscriptCache(cacheKey);
     if (cached) return Response.json({ ...cached, cache: "hit" });
-    const system = `你是多语言短视频口播校对师。输入包含已经锁定的真实时间轴。每条都有固定id；你只能校正文字和设计语义，绝不能新增、删除、合并、拆分字幕，也不能修改start/end。
-要求：
-1. 保留原口播的全部有效信息，不总结、不缩写、不加入营销文案，不虚构原片没有说过的内容。
-2. 结合整段上下文和关键画面校正同音错字、品牌名、机构名、数字与明显漏字；不能确认时保留原词。
-3. 每条id、start、end及条目数量已经锁定。只返回相同id的corrected_text，不能重分段或重新估算时间。
-4. corrected_text只允许修正同音错字、品牌名、机构名、数字和标点；不得改写句意。无法确认时原样返回。
-5. 输出句子的纯文字按顺序拼接后，应与原始口播基本一致。
-6. 标题必须先理解完整口播的主题、对象和最终结论后再提炼，保持原语言，不能截取第一句，也不能把开头两段机械拼接。中文标题8到15字；英文标题3到12个单词。标题必须可以独立阅读，不能停在连接词或半句话处。
-7. 避免残句：上一条不能停在“的、和、与、就、都、也、在、让、属于、无论”等未完成词语，下一条不能以“的、就、都、也、才、属于、想念的”等承接词开头。“也有让人一吃就想念的经典风味”“无论是早餐午餐还是下午茶”这类结构必须保持完整。
-8. caption_lines只负责当前字幕内部的视觉换行，最多2行；不能借换行改变或拆分时间轴。两行拼接必须等于corrected_text。
-9. title_lines必须把title按完整语义分为1到2行；禁止拆开品牌名、主体、动作、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。标题要符合自然中文语序，例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
-10. 在同一次请求中为每条字幕补充keyword、content_node、weight、camera_intent、transition_intent、sfx_role和translation。镜头与转场只表达语义意图，不输出具体时间和像素。
-11. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；camera_intent只能是hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。普通承接句不要强加音效。
-12. keyword必须是当前corrected_text中连续出现的完整语义短语，通常2至8字；数字可单独提亮。问候、自我介绍、工具来源和普通承接句一律为空；“大家好、我是、我、codex、AI、视频、工具、剪辑”不能单独作为关键词。像“我用codex做了一款”必须为空，“AI剪辑口播视频的工具”可选“AI剪辑”或“口播视频工具”。字幕超过4条时必须规划1至3个真正有意义的关键词；整条视频通常仅15%至35%的字幕需要关键词，严禁为了数量强行提亮。
-13. bgm_mood只能是calm/warm/professional/uplifting/neutral。
-只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","bgm_mood":"professional","captions":[{"id":1,"corrected_text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"],"keyword":"提升","translation":"Improve your skills","content_node":"hook","weight":0.9,"camera_intent":"push-in","transition_intent":"cut","sfx_role":"hook"}]}。`;
+    const system = buildViralCaptionSkillSystemPrompt({
+      language: sourceLanguage,
+      itemKey: "captions",
+      idBase: 1,
+    });
     const content = [
       {
         type: "text",
@@ -357,21 +352,19 @@ export async function POST(request: Request) {
     try {
       response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
         method: "POST",
-        signal: AbortSignal.timeout(TRANSCRIPT_TIMEOUT_MS),
-        body: JSON.stringify({
-          model: TRANSCRIPT_MODEL,
-          temperature: 0.05,
-          max_tokens: tokenBudget,
-          response_format: { type: "json_object" },
+        signal: AbortSignal.timeout(VIRAL_CAPTION_AI_TIMEOUT_MS),
+        body: JSON.stringify(buildViralCaptionSkillRequest({
+          captionCount: lockedCaptions.length,
+          maxTokens: tokenBudget,
           messages: [
             { role: "system", content: system },
             { role: "user", content },
           ],
-        }),
+        })),
       });
       if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
       endpoint = "chat-completions";
-      selectedModel = TRANSCRIPT_MODEL;
+      selectedModel = VIRAL_CAPTION_AI_MODEL;
     } catch {
       response = null;
     }
@@ -414,6 +407,7 @@ export async function POST(request: Request) {
       ? rawPlan.filter((item) => (
         typeof item.content_node === "string"
         || typeof item.keyword === "string"
+        || typeof item.keyword_importance === "string"
         || typeof item.translation === "string"
       )).length / lockedCaptions.length
       : 0;
@@ -422,7 +416,7 @@ export async function POST(request: Request) {
       && aiPlan.accepted
       && aiTitle
       && (semanticPlanIsComplete(rawPlan, lockedCaptions.length) || semanticCoverage >= 0.6)
-      && (lockedCaptions.length <= 4 || keywordCount > 0),
+      && (lockedCaptions.length <= 4 || keywordCount > 0)
     );
     const result = {
       title,
@@ -430,7 +424,7 @@ export async function POST(request: Request) {
       summary: typeof parsed.summary === "string"
         ? parsed.summary.trim().slice(0, 180)
         : response
-          ? "AI 已在锁定时间轴上完成文案校正、标题与字幕排版。"
+          ? "TT-5.5 已在锁定时间轴上完成标题、字幕排版、提亮词与重点词规划。"
           : "AI 规划未完成，当前仅保留真实时间轴，不会机械补充关键词；请重试 AI 识别并排版。",
       captions: directorPlan.captions,
       directorPlan,
