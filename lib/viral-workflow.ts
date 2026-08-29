@@ -129,6 +129,10 @@ export function sanitizeViralKeyword(
  */
 export function markViralKeywordSfx(captions: ViralCaptionPlanItem[], duration?: number) {
   const result = captions.map((caption) => ({ ...caption }));
+  const hasDirectedImportance = result.some((caption) => (
+    Boolean(String(caption.keyword || "").trim())
+    && (caption.keywordImportance === "primary" || caption.keywordImportance === "regular")
+  ));
   const totalDuration = Math.max(
     1,
     Number(duration) || Math.max(...result.map((caption) => caption.end), 1),
@@ -139,6 +143,7 @@ export function markViralKeywordSfx(captions: ViralCaptionPlanItem[], duration?:
     const keyword = String(caption.keyword || "").trim();
     if (!keyword || !caption.text.replace(/\s+/g, "").includes(keyword.replace(/\s+/g, ""))) return [];
     if (caption.keywordSfx === false) return [];
+    if (hasDirectedImportance && caption.keywordImportance !== "primary" && caption.keywordSfx !== true) return [];
     const node = caption.contentNode || "supporting";
     const score = KEYWORD_SFX_NODE_SCORE[node]
       + Math.max(0, Math.min(1, Number(caption.contentWeight) || 0.45)) * 2
@@ -156,11 +161,18 @@ export function markViralKeywordSfx(captions: ViralCaptionPlanItem[], duration?:
   // protection window. Keep one explicit key word rather than returning none.
   if (!selected.length && candidates.length) selected.push(candidates.sort((a, b) => b.score - a.score)[0].index);
   const selectedSet = new Set(selected);
-  return result.map((caption, index) => ({
-    ...caption,
-    keywordSfx: selectedSet.has(index),
-    keywordImportance: selectedSet.has(index) ? "primary" as const : "regular" as const,
-  }));
+  return result.map((caption, index) => {
+    const hasKeyword = Boolean(String(caption.keyword || "").trim());
+    const base = { ...caption };
+    delete base.keywordImportance;
+    return {
+      ...base,
+      keywordSfx: hasKeyword && selectedSet.has(index),
+      ...(hasKeyword ? {
+        keywordImportance: selectedSet.has(index) ? "primary" as const : "regular" as const,
+      } : {}),
+    };
+  });
 }
 
 function shortText(value: unknown, max: number) {
@@ -187,7 +199,16 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
     const contentWeight = Number.isFinite(Number(record.contentWeight))
       ? Math.max(0, Math.min(1, Number(record.contentWeight)))
       : 0.5;
-    const keyword = sanitizeViralKeyword(text, shortText(record.keyword, 16), node, contentWeight);
+    const candidateKeyword = shortText(record.keyword, 16);
+    // TT-5.5 has already made the semantic selection. This sanitizer is also
+    // used for older local plans, so keep the local confidence gate for those
+    // while preserving explicit AI-selected keywords through serialization.
+    const keyword = sanitizeViralKeyword(
+      text,
+      candidateKeyword,
+      node,
+      origin === "ai" && candidateKeyword ? Math.max(contentWeight, 0.75) : contentWeight,
+    );
     const compactText = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:]/g, "");
     const captionLines = Array.isArray(record.captionLines)
       ? record.captionLines
@@ -207,9 +228,9 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
       ...(translation ? { translation } : {}),
       ...(node ? { contentNode: node } : {}),
       ...(Number.isFinite(Number(record.contentWeight)) ? { contentWeight } : {}),
-      ...(origin ? { keywordOrigin: origin } : {}),
+      ...(keyword && origin ? { keywordOrigin: origin } : {}),
       ...(typeof record.keywordSfx === "boolean" ? { keywordSfx: record.keywordSfx } : {}),
-      ...(record.keywordImportance === "primary" || record.keywordImportance === "regular"
+      ...(keyword && (record.keywordImportance === "primary" || record.keywordImportance === "regular")
         ? { keywordImportance: record.keywordImportance as ViralCaptionPlanItem["keywordImportance"] }
         : {}),
       ...(validCaptionLines.length ? {

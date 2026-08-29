@@ -11,6 +11,8 @@ Maintain one semantic source of truth for Merchant Studio templates 9–12.
 
 - Treat ASR or an imported manifest as the authority for `id`, `start`, `end`, and item count.
 - Use AI only for grounded text correction, title planning, visual line breaks, highlight phrases, and sparse primary-keyword decisions.
+- Send only the complete transcript plus the locked caption timeline to this agent. Do not attach video frames or make it repeat ASR.
+- Keep timestamps on the server and send the model compact `[id, text]` entries. Accept the compact `t/tl/i/x/l/k/p/z` schema and attach the result back to the unchanged timeline by id.
 - Never let the model modify the timeline, merge captions, invent claims, choose media files, or emit rendering coordinates.
 - Keep ordinary highlights visually richer than the soundtrack. Only `primary` keywords may request a keyword sound effect.
 
@@ -20,6 +22,7 @@ Maintain one semantic source of truth for Merchant Studio templates 9–12.
 - Call the configured Open AI Platform through `lib/lk888.ts`. The default model is `tt-5.5` and the endpoint is `/v1/chat/completions`.
 - Read the API key only through the encrypted admin credential or `LK888_API_KEY`. Never place a key in source, browser code, logs, screenshots, or skill files.
 - Both original-video ASR and imported lip-sync timelines must call the same skill after the timeline is available.
+- Derive camera, transition, content-node, weight, BGM and SFX-role fields after this call. They do not belong in the caption agent response.
 - Validate every model field before saving. Reject ungrounded corrections and keywords that do not occur continuously in the corrected caption.
 - On provider failure, preserve the locked timeline and show a retryable degraded state. Never label a local fallback as an AI result.
 

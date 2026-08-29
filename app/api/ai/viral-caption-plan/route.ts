@@ -17,6 +17,7 @@ import {
   buildViralCaptionSkillSystemPrompt,
   detectViralCaptionSkillLanguage,
   normalizeViralKeywordImportance,
+  viralCaptionKeywordTargets,
   viralCaptionSkillTitleIsValid,
   VIRAL_CAPTION_AI_MODEL,
   VIRAL_CAPTION_AI_TIMEOUT_MS,
@@ -186,10 +187,10 @@ export async function POST(request: Request) {
   const script = typeof body.script === "string" ? body.script.trim().slice(0, 12_000) : "";
   const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
   const fallback = localPlan(source, script);
-  const input = source.map((caption, id) => ({ id, start: caption.start, end: caption.end, text: caption.text }));
+  const input = source.map((caption, id) => ({ id, text: caption.text }));
   const sourceText = script || source.map((item) => item.text).join("。");
   const sourceLanguage = detectViralCaptionSkillLanguage(sourceText);
-  const key = cacheKey({ prompt: VIRAL_DIRECTOR_PROMPT_VERSION, model: VIRAL_CAPTION_AI_MODEL, templateId, script, input });
+  const key = cacheKey({ prompt: `${VIRAL_DIRECTOR_PROMPT_VERSION}-lean-v3-strict-targets`, model: VIRAL_CAPTION_AI_MODEL, templateId, script, input });
   const cached = cachedDirectorPlan(key);
   if (cached) return Response.json({ ...cached, cache: "hit" });
   const system = buildViralCaptionSkillSystemPrompt({
@@ -197,6 +198,7 @@ export async function POST(request: Request) {
     itemKey: "items",
     idBase: 0,
   });
+  const keywordTargets = viralCaptionKeywordTargets(source.length, duration);
   const requestStartedAt = Date.now();
   try {
     const response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
@@ -204,10 +206,13 @@ export async function POST(request: Request) {
       signal: AbortSignal.timeout(VIRAL_CAPTION_AI_TIMEOUT_MS),
       body: JSON.stringify(buildViralCaptionSkillRequest({
         captionCount: source.length,
-        maxTokens: source.length * 105,
+        maxTokens: 700 + source.length * 70,
         messages: [
           { role: "system", content: system },
-          { role: "user", content: `完整口播：${sourceText}\n确认时间轴：${JSON.stringify(input)}` },
+          {
+            role: "user",
+            content: `时间轴已在服务器锁定。共${source.length}条字幕，必须恰好为${keywordTargets.keywordTarget}条填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}条p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(input.map((item) => [item.id, item.text]))}`,
+          },
         ],
       })),
     });
@@ -217,12 +222,21 @@ export async function POST(request: Request) {
     items.forEach((item, responseIndex) => {
       if (!item || typeof item !== "object") return;
       const record = item as Record<string, unknown>;
-      const id = Number(record.id);
-      if (Number.isInteger(id) && id >= 0 && id < source.length) itemsById.set(id, record);
-      else if (responseIndex < source.length && !itemsById.has(responseIndex)) itemsById.set(responseIndex, record);
+      const id = Number(record.id ?? record.i);
+      const normalized = {
+        ...record,
+        corrected_text: record.corrected_text ?? record.x,
+        caption_lines: record.caption_lines ?? record.l,
+        keyword: record.keyword ?? record.k,
+        keyword_importance: record.keyword_importance ?? record.p,
+        translation: record.translation ?? record.z,
+      };
+      if (Number.isInteger(id) && id >= 0 && id < source.length) itemsById.set(id, normalized);
+      else if (responseIndex < source.length && !itemsById.has(responseIndex)) itemsById.set(responseIndex, normalized);
     });
     if (!itemsById.size) throw new Error("AI 没有返回可用的逐句规划。");
-    if (typeof parsed.title !== "string" || !parsed.title.trim()) throw new Error("AI 没有返回完整标题。");
+    const parsedTitle = typeof parsed.title === "string" ? parsed.title : typeof parsed.t === "string" ? parsed.t : "";
+    if (!parsedTitle.trim()) throw new Error("AI 没有返回完整标题。");
     const plannedCaptions = source.map((caption, index) => {
       const raw = itemsById.get(index) || {};
       const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
@@ -233,7 +247,7 @@ export async function POST(request: Request) {
       const contentWeight = Math.max(0, Math.min(1, Number.isFinite(Number(raw.weight)) ? Number(raw.weight) : 0.5));
       const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
       const keyword = candidate && plain(text).includes(plain(candidate))
-        ? sanitizeViralKeyword(text, candidate, node, contentWeight)
+        ? sanitizeViralKeyword(text, candidate, node, candidate ? Math.max(contentWeight, 0.75) : contentWeight)
         : "";
       const keywordImportance = normalizeViralKeywordImportance(raw.keyword_importance, Boolean(keyword));
       const local = localIntents(node, contentWeight);
@@ -254,17 +268,28 @@ export async function POST(request: Request) {
         ...local,
       };
     });
-    if (source.length > 4 && !plannedCaptions.some((caption) => caption.keywordOrigin === "ai" && caption.keyword)) {
-      throw new Error("AI 没有完成语义关键词规划。");
+    const aiKeywordCount = plannedCaptions.filter((caption) => caption.keywordOrigin === "ai" && caption.keyword).length;
+    const aiPrimaryCount = plannedCaptions.filter((caption) => (
+      caption.keywordOrigin === "ai"
+      && caption.keyword
+      && caption.keywordImportance === "primary"
+    )).length;
+    if (
+      aiKeywordCount < keywordTargets.minimumKeywords
+      || aiKeywordCount > keywordTargets.maximumKeywords
+      || aiPrimaryCount < Math.min(1, keywordTargets.primaryTarget)
+      || aiPrimaryCount > keywordTargets.primaryTarget
+    ) {
+      throw new Error("AI 没有完成约定数量的提亮关键词与重点词规划。");
     }
     const captions = markViralKeywordSfx(plannedCaptions, duration);
-    const rawTitle = typeof parsed.title === "string" && parsed.title.trim()
-      ? normalizeViralTitleSyntax(parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
+    const rawTitle = parsedTitle.trim()
+      ? normalizeViralTitleSyntax(parsedTitle.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
       : fallback.title;
     if (!viralCaptionSkillTitleIsValid(rawTitle.replace(/\n/g, ""), sourceLanguage)) {
       throw new Error("AI 返回的标题不是完整自然语义。");
     }
-    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
+    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines ?? parsed.tl);
     const title = titleLayout.serializedTitle;
     const directorPlan = buildViralDirectorPlan({
       templateId,
@@ -284,6 +309,8 @@ export async function POST(request: Request) {
       planReady: true,
       degraded: false,
       model: VIRAL_CAPTION_AI_MODEL,
+      planningRole: "tt55-caption-director",
+      timelineRole: "upstream-timing-only",
       directorPlan,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",

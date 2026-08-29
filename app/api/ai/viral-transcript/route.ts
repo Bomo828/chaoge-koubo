@@ -18,6 +18,7 @@ import {
   buildViralCaptionSkillRequest,
   buildViralCaptionSkillSystemPrompt,
   normalizeViralKeywordImportance,
+  viralCaptionKeywordTargets,
   VIRAL_CAPTION_AI_MODEL,
   VIRAL_CAPTION_AI_TIMEOUT_MS,
 } from "../../../../lib/viral-caption-ai-skill";
@@ -168,13 +169,22 @@ function fixedAiCaptions(value: unknown, source: Caption[]) {
   value.forEach((item, responseIndex) => {
     if (!item || typeof item !== "object") return;
     const record = item as Record<string, unknown>;
-    const rawId = Number(record.id);
+    const rawId = Number(record.id ?? record.i);
     const index = Number.isInteger(rawId) && rawId >= 1 && rawId <= source.length
       ? rawId - 1
       : responseIndex < source.length
         ? responseIndex
         : -1;
-    if (index >= 0 && !byId.has(index)) byId.set(index, record);
+    if (index >= 0 && !byId.has(index)) {
+      byId.set(index, {
+        ...record,
+        corrected_text: record.corrected_text ?? record.x,
+        caption_lines: record.caption_lines ?? record.l,
+        keyword: record.keyword ?? record.k,
+        keyword_importance: record.keyword_importance ?? record.p,
+        translation: record.translation ?? record.z,
+      });
+    }
   });
   const coverage = byId.size / source.length;
   if (coverage < 0.6) return { captions: source, rawItems: [], accepted: false, coverage };
@@ -254,8 +264,11 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
       : localNode(caption.text, index, captions.length);
     const weight = Math.max(0, Math.min(1, Number(raw.weight) || (index === 0 || index === captions.length - 1 ? 0.9 : 0.55)));
     const candidate = typeof raw.keyword === "string" ? raw.keyword.replace(/\s+/g, "").slice(0, 8) : "";
+    // A keyword explicitly selected by TT-5.5 has already passed the semantic
+    // director. Do not let the old local "supporting sentence" weight rule
+    // erase it merely because the compact AI schema does not return node/weight.
     const keyword = candidate && plainText(caption.text).includes(plainText(candidate))
-      ? sanitizeViralKeyword(caption.text, candidate, node, weight)
+      ? sanitizeViralKeyword(caption.text, candidate, node, candidate ? Math.max(weight, 0.75) : weight)
       : "";
     const keywordImportance = normalizeViralKeywordImportance(raw.keyword_importance, Boolean(keyword));
     const local = localIntents(node, weight);
@@ -277,16 +290,25 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
 }
 
 function semanticPlanIsComplete(items: Record<string, unknown>[], expectedLength: number) {
-  const nodes = new Set(["hook", "pain_reversal", "core_viewpoint", "number_benefit", "example_step", "brand_entity", "cta", "supporting"]);
   const importance = new Set(["none", "regular", "primary"]);
   return items.length === expectedLength && items.every((item) => (
-    nodes.has(String(item.content_node))
-    && importance.has(String(item.keyword_importance))
-    && Number.isFinite(Number(item.weight))
+    importance.has(String(item.keyword_importance))
     && typeof item.keyword === "string"
     && typeof item.corrected_text === "string"
     && Array.isArray(item.caption_lines)
+    && typeof item.translation === "string"
   ));
+}
+
+function safePlanningFailure(error: unknown) {
+  const value = error instanceof Error ? error.message : String(error || "");
+  if (/timeout|timed out|aborted|超时/i.test(value)) {
+    return "TT-5.5 规划响应超时，请重试。";
+  }
+  if (/JSON|结构化|可用的口播文案/i.test(value)) {
+    return "TT-5.5 返回的字幕计划格式不完整，请重试。";
+  }
+  return "TT-5.5 规划服务暂时不可用，请稍后重试。";
 }
 
 export async function POST(request: Request) {
@@ -296,7 +318,6 @@ export async function POST(request: Request) {
   try {
     const body = await request.json() as {
       captions?: unknown;
-      frames?: unknown;
       duration?: unknown;
       templateId?: unknown;
     };
@@ -306,19 +327,14 @@ export async function POST(request: Request) {
       return Response.json({ error: "没有读取到视频中的原始口播，请确认视频带有清晰人声。" }, { status: 400 });
     }
     const lockedCaptions = segmentViralCaptions(sourceCaptions);
-    const frames = Array.isArray(body.frames)
-      ? body.frames.filter((item): item is string => typeof item === "string" && /^data:image\/(?:jpeg|png|webp);base64,/i.test(item)).slice(0, 5)
-      : [];
     const sourceLanguage = languageOf(lockedCaptions.map((item) => item.text).join(" "));
-    const sourceText = lockedCaptions.map((item) => item.text).join(sourceLanguage === "en" ? " " : "");
     const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
     const cacheKey = transcriptCacheKey({
-      version: "viral-transcript-semantic-lock-v4-tt55-caption-skill",
+      version: "viral-transcript-semantic-lock-v7-tt55-preserve-ai-keywords",
       model: VIRAL_CAPTION_AI_MODEL,
       templateId,
       duration,
       sourceCaptions: lockedCaptions,
-      frameHashes: frames.map((frame) => transcriptCacheKey(frame)),
     });
     const cached = readTranscriptCache(cacheKey);
     if (cached) return Response.json({ ...cached, cache: "hit" });
@@ -327,17 +343,13 @@ export async function POST(request: Request) {
       itemKey: "captions",
       idBase: 1,
     });
-    const content = [
-      {
-        type: "text",
-        text: `原始口播语言：${sourceLanguage === "en" ? "英文；标题和字幕必须全部使用英文" : "中文"}\n视频时长：${duration.toFixed(2)}秒\n锁定口播时间轴：${JSON.stringify(lockedCaptions.map((item, index) => ({ id: index + 1, start: item.start, end: item.end, text: item.text })))}\n原始口播全文：${sourceText}`,
-      },
-      ...frames.map((url) => ({ type: "image_url", image_url: { url, detail: "low" } })),
-    ];
-    const tokenBudget = Math.max(1200, Math.min(3000, plainText(sourceText).length * 6));
+    const keywordTargets = viralCaptionKeywordTargets(lockedCaptions.length, duration);
+    const content = `口播语言：${sourceLanguage === "en" ? "英文" : "中文"}。时间轴已在服务器锁定。共${lockedCaptions.length}条字幕，必须恰好为${keywordTargets.keywordTarget}条填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}条p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(lockedCaptions.map((item, index) => [index + 1, item.text]))}`;
+    const tokenBudget = Math.max(800, Math.min(1900, 700 + lockedCaptions.length * 70));
     let endpoint: "chat-completions" | "local" = "local";
     let selectedModel: string = "local-segmentation";
     let response: ProviderResponse | null = null;
+    let planningFailure = "";
     try {
       response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
         method: "POST",
@@ -354,14 +366,16 @@ export async function POST(request: Request) {
       if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
       endpoint = "chat-completions";
       selectedModel = VIRAL_CAPTION_AI_MODEL;
-    } catch {
+    } catch (error) {
+      planningFailure = safePlanningFailure(error);
       response = null;
     }
     let parsed: Record<string, unknown> = {};
     if (response) {
       try {
         parsed = parseAiJsonObject(extractText(response), "大模型没有返回可用的口播文案。");
-      } catch {
+      } catch (error) {
+        planningFailure = safePlanningFailure(error);
         response = null;
         endpoint = "local";
         selectedModel = "local-segmentation";
@@ -371,14 +385,14 @@ export async function POST(request: Request) {
     const rawPlan = aiPlan.accepted ? aiPlan.rawItems : [];
     const captions = directedCaptions(captionsWithSemanticLines(aiPlan.captions, rawPlan), rawPlan, duration);
     const titleCandidates = [
-      parsed.title,
+      parsed.title ?? parsed.t,
       ...(Array.isArray(parsed.titleCandidates) ? parsed.titleCandidates : []),
     ];
     const aiTitle = titleCandidates
       .map((candidate) => completeTitle(normalizeViralTitleSyntax(typeof candidate === "string" ? candidate : "")))
       .find((candidate) => candidate && languageOf(candidate) === sourceLanguage) || "";
     const rawTitle = aiTitle || (sourceLanguage === "en" ? fallbackEnglishTitle(captions) : fallbackChineseTitle(captions));
-    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
+    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines ?? parsed.tl);
     const title = titleLayout.serializedTitle;
     const directorPlan = buildViralDirectorPlan({
       templateId,
@@ -392,10 +406,14 @@ export async function POST(request: Request) {
       degraded: !response || !aiPlan.accepted,
     });
     const keywordCount = captions.filter((caption) => caption.keywordOrigin === "ai" && caption.keyword).length;
+    const primaryKeywordCount = captions.filter((caption) => (
+      caption.keywordOrigin === "ai"
+      && caption.keyword
+      && caption.keywordImportance === "primary"
+    )).length;
     const semanticCoverage = rawPlan.length
       ? rawPlan.filter((item) => (
-        typeof item.content_node === "string"
-        || typeof item.keyword === "string"
+        typeof item.keyword === "string"
         || typeof item.keyword_importance === "string"
         || typeof item.translation === "string"
       )).length / lockedCaptions.length
@@ -405,7 +423,10 @@ export async function POST(request: Request) {
       && aiPlan.accepted
       && aiTitle
       && (semanticPlanIsComplete(rawPlan, lockedCaptions.length) || semanticCoverage >= 0.6)
-      && (lockedCaptions.length <= 4 || keywordCount > 0)
+      && keywordCount >= keywordTargets.minimumKeywords
+      && keywordCount <= keywordTargets.maximumKeywords
+      && primaryKeywordCount >= Math.min(1, keywordTargets.primaryTarget)
+      && primaryKeywordCount <= keywordTargets.primaryTarget
     );
     const result = {
       title,
@@ -420,12 +441,14 @@ export async function POST(request: Request) {
       planReady,
       model: selectedModel,
       endpoint,
+      planningRole: "tt55-caption-director",
+      timelineRole: "asr-timing-only",
       degraded: !planReady,
       warning: planReady
         ? ""
         : response
           ? "AI 已返回部分内容，但标题或关键词规划不完整。请点击重新 AI 规划，不要把当前结果当作最终 AI 方案。"
-          : "AI 规划请求未成功，当前仅保留真实时间轴。请点击重新 AI 规划，不要把当前结果当作最终 AI 方案。",
+          : `${planningFailure || "TT-5.5 规划请求未成功。"} 当前仅保留真实时间轴，请点击重新 AI 规划。`,
       cache: "miss",
     };
     if (planReady) writeTranscriptCache(cacheKey, result);

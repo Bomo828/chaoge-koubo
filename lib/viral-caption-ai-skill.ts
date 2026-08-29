@@ -1,5 +1,5 @@
 export const VIRAL_CAPTION_AI_SKILL_ID = "talking-head-caption-director";
-export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v1";
+export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v3-strict";
 export const VIRAL_CAPTION_AI_MODEL = process.env.VIRAL_CAPTION_AI_MODEL?.trim() || "tt-5.5";
 const configuredTimeout = Number(process.env.VIRAL_CAPTION_AI_TIMEOUT_MS?.trim() || Number.NaN);
 export const VIRAL_CAPTION_AI_TIMEOUT_MS = Number.isFinite(configuredTimeout)
@@ -8,6 +8,20 @@ export const VIRAL_CAPTION_AI_TIMEOUT_MS = Number.isFinite(configuredTimeout)
 
 export type ViralCaptionSkillLanguage = "zh" | "en";
 export type ViralKeywordImportance = "none" | "regular" | "primary";
+
+export function viralCaptionKeywordTargets(captionCount: number, duration: number) {
+  const safeCount = Math.max(1, Math.round(Number(captionCount) || 1));
+  const keywordTarget = safeCount <= 4
+    ? 1
+    : Math.max(2, Math.min(6, Math.round(safeCount * 0.27)));
+  const primaryTarget = duration > 90 ? 3 : duration > 45 ? 2 : 1;
+  return {
+    keywordTarget,
+    primaryTarget: Math.min(primaryTarget, keywordTarget),
+    minimumKeywords: Math.max(1, keywordTarget - 1),
+    maximumKeywords: Math.min(safeCount, keywordTarget + 1),
+  };
+}
 
 export function detectViralCaptionSkillLanguage(value: string): ViralCaptionSkillLanguage {
   const cjk = (value.match(/[\u3400-\u9fff]/g) || []).length;
@@ -43,43 +57,26 @@ export function buildViralCaptionSkillSystemPrompt(options?: {
   const itemKey = options?.itemKey || "items";
   const idBase = options?.idBase ?? 0;
   const languageRule = language === "en"
-    ? "原片主要语言为英文。标题、corrected_text和caption_lines保持英文；translation输出简短自然中文。"
-    : "原片主要语言为中文。标题、corrected_text和caption_lines保持中文；translation输出简短自然英文。";
+    ? "英文口播：title、corrected_text、caption_lines用英文，translation用简短中文。"
+    : "中文口播：title、corrected_text、caption_lines用中文，translation用简短自然英文。";
 
-  return `你是“口播标题字幕导演”，只负责口播标题、字幕校正与视觉换行、提亮关键词和重点词规划。不要规划镜头、转场、背景音乐或具体音效文件。
+  // Keep this agent deliberately narrow. ASR already supplied the accurate
+  // timeline; camera, transition and SFX intent are derived after this pass.
+  // Asking the model for unrelated fields made short scripts time out.
+  return `你是“口播标题字幕导演”。输入已经含精确时间轴，你只做：文字校正、标题、视觉换行、提亮词、重点词和双语翻译。
 
-不可违反的输入约束：
-1. 输入时间轴已锁定。不得新增、删除、合并、拆分条目，不得修改id、start、end或条目数量。
-2. corrected_text只能修正确定的同音错字、品牌名、机构名、数字、明显漏字和标点；不得总结、改写、扩写或虚构。不能确定时保留原文。
-3. ${languageRule}
+硬规则：
+1. id和条目数量必须与输入完全一致；不得改时间、增删、合并或拆分条目。
+2. corrected_text只能修正确定的错字、品牌名、数字和标点；不得总结、改写、扩写。${languageRule}
+3. 标题先理解全文再提炼，不能用问候或机械拼接前两句。中文8到16字；英文3到12词。title_lines为1到2行，拼接后等于title，不能拆固定短语。
+4. caption_lines为1到2行，拼接后等于corrected_text。按完整语义短语换行，不让“的、了、和、与、在、就、都、把、被”等虚词孤立在行首或行尾，不拆品牌名和数字单位；短句保持单行。
+5. keyword必须是corrected_text中连续出现的2到8字完整信息短语；数字可单独提亮。问候、自我介绍及“我、codex、AI、视频、工具、剪辑”等泛词不能单独提亮。用户消息会给出本次目标数量，必须按目标选择分散且有信息量的keyword，其余为空。
+6. keyword_importance只能是none、regular、primary。无keyword则none；普通提亮为regular；primary只给全片最重要的钩子、利益数字、反差、结论或行动号召，60秒内0到3个且尽量间隔4秒，会触发音效，宁缺毋滥。
+7. 输入条目使用[id,原句]精简数组。按id逐条处理，不要重复输出时间轴。
+8. 只返回一个紧凑JSON对象，不要Markdown、解释、前后缀或第二个JSON。
 
-标题规则：
-4. 先理解完整口播的主题、对象、利益点和结论，再提炼一个可独立阅读的标题。不能复制问候语，不能机械拼接前两句。
-5. 中文标题8到16字，英文标题3到12个单词。标题要符合自然语序，不得停在“的、和、与、就、都、也、在、让、属于、因为、所以、但是”等未完成词语。
-6. title_lines为1到2行，拼接后必须等于title；不得拆开品牌名、产品名、主体、动作及固定短语。
-
-字幕排版规则：
-7. caption_lines只处理当前条目内部的视觉换行，最多2行；去掉换行后必须与corrected_text完全一致。
-8. 优先按完整语义短语换行；不能把“的、了、和、与、或、在、就、都、也、才、把、被”等虚词孤立在行首或行尾，不能拆开品牌名、数字单位和固定短语。
-9. 短句保持单行；文字较长时才用两行。两行长度尽量均衡，但语义完整优先于字数平均。
-
-提亮关键词规则：
-10. keyword必须是corrected_text中原样连续出现的完整语义短语，中文通常2到8字；数字和百分比可单独提亮。每条最多1个keyword。
-11. 只选择真正承载信息的内容：核心观点、利益点、反差、结论、数字、动作结果、品牌/产品名或行动号召。普通承接句允许keyword为空。
-12. 问候、自我介绍、工具来源和泛化普通名词不提亮。“大家好、我是、我、codex、AI、视频、工具、剪辑”不能单独成为keyword。
-13. 整条视频通常只有15%到35%的字幕出现提亮词。不要为了数量强行提亮，也不要相邻多条重复提亮同一个泛词。
-
-重点词规则：
-14. keyword_importance只能是none、regular或primary。keyword为空时必须为none；普通提亮为regular；真正的重点词才为primary。
-15. primary必须是提亮词中的稀疏子集，只用于全片最重要的钩子、数字利益、关键反差、核心结论或行动号召。60秒内通常1到3个，彼此尽量间隔4秒以上；如果没有足够重要的词可以不设primary，不要为了满足数量强行设置。
-16. primary会触发重点音效，所以宁缺毋滥。问候、自我介绍和普通承接词禁止设为primary。
-
-语义标签：
-17. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；weight为0到1，表示信息重要度。
-18. 例子：“大家好，我是潮哥”不提亮；“我用codex做了一款”不提亮；“AI剪辑口播视频的工具”可提亮“AI剪辑”，通常为regular；“一键网感让整个视频网感十足”可提亮“一键网感”，若它是全片核心承诺可设为primary。
-
-只返回JSON，不要Markdown，不要解释。id从${idBase}开始并与输入逐条对应：
-{"skill":"${VIRAL_CAPTION_AI_SKILL_ID}","version":"${VIRAL_CAPTION_AI_SKILL_VERSION}","title":"完整标题","title_lines":["第一行","第二行"],"summary":"一句规划说明","${itemKey}":[{"id":${idBase},"corrected_text":"校正后的原句","caption_lines":["第一行","第二行"],"keyword":"提亮词或空字符串","keyword_importance":"none|regular|primary","translation":"简短翻译","content_node":"hook","weight":0.9}]}。`;
+为减少延迟，必须使用以下短字段：t=标题，tl=标题行，i=id，x=校正原句，l=字幕行，k=提亮词，p=none|regular|primary，z=简短翻译。
+输出：{"t":"完整标题","tl":["第一行","第二行"],"${itemKey}":[{"i":${idBase},"x":"校正原句","l":["第一行","第二行"],"k":"提亮词或空字符串","p":"none|regular|primary","z":"简短翻译"}]}。`;
 }
 
 export function buildViralCaptionSkillRequest(input: {
@@ -89,10 +86,10 @@ export function buildViralCaptionSkillRequest(input: {
 }) {
   return {
     model: VIRAL_CAPTION_AI_MODEL,
-    temperature: 0.05,
+    temperature: 0.02,
     max_tokens: Math.max(
-      900,
-      Math.min(3600, Number(input.maxTokens) || input.captionCount * 95),
+      800,
+      Math.min(1900, Number(input.maxTokens) || 700 + input.captionCount * 70),
     ),
     response_format: { type: "json_object" },
     messages: input.messages,

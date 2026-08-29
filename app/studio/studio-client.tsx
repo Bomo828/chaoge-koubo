@@ -2303,7 +2303,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           keyword: undefined,
           keywordOrigin: "none" as const,
           keywordSfx: false,
-          keywordImportance: "regular" as const,
+          keywordImportance: undefined,
         }),
         captionLineMode: layout.mode,
         captionLines: layout.lines,
@@ -3922,7 +3922,6 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       const directVideoAi = [
         "direct-video-multimodal",
       ].includes(job.analysis_mode || "");
-      const frames: string[] = [];
       const sourceDuration = Math.max(1, Number(job.metadata?.duration) || 60);
 
       // Title generation, phrase segmentation and timestamp alignment all
@@ -3938,7 +3937,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           const aiResponse = await fetch("/api/ai/viral-transcript", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ captions, frames, duration: sourceDuration, templateId: viralTemplate }),
+            body: JSON.stringify({ captions, duration: sourceDuration, templateId: viralTemplate }),
           });
           const aiData = await aiResponse.json() as {
             error?: string;
