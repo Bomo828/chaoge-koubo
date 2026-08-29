@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getMemberSession } from "../../../member-session";
 import { lk888Fetch } from "../../../../lib/lk888";
+import { parseAiJsonObject } from "../../../../lib/ai-json";
 import {
   buildViralDirectorPlan,
   markViralKeywordSfx,
@@ -47,18 +48,6 @@ function extractText(value: unknown): string {
     if (text) return text;
   }
   return "";
-}
-
-function parseJson(value: string) {
-  const cleaned = value.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new Error("AI 没有返回结构化字幕规划。");
-    return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
-  }
 }
 
 function plain(value: string) {
@@ -222,7 +211,7 @@ export async function POST(request: Request) {
         ],
       })),
     });
-    const parsed = parseJson(extractText(response));
+    const parsed = parseAiJsonObject(extractText(response), "AI 没有返回结构化字幕规划。");
     const items = Array.isArray(parsed.items) ? parsed.items : [];
     const itemsById = new Map<number, Record<string, unknown>>();
     items.forEach((item, responseIndex) => {

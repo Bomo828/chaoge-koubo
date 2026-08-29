@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
+import { parseAiJsonObject } from "../../../../lib/ai-json";
 import { repairEnglishWordFragments, segmentViralCaptions } from "../../../../lib/viral-caption-segmentation";
 import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 import {
@@ -71,18 +72,6 @@ function extractText(value: unknown): string {
     if (result) return result;
   }
   return "";
-}
-
-function parseJson(content: string) {
-  const cleaned = content.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
-  try {
-    return JSON.parse(cleaned) as Record<string, unknown>;
-  } catch {
-    const start = cleaned.indexOf("{");
-    const end = cleaned.lastIndexOf("}");
-    if (start < 0 || end <= start) throw new AiProviderError("大模型没有返回可用的口播文案。", 502);
-    return JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
-  }
 }
 
 function plainText(value: string) {
@@ -371,7 +360,7 @@ export async function POST(request: Request) {
     let parsed: Record<string, unknown> = {};
     if (response) {
       try {
-        parsed = parseJson(extractText(response));
+        parsed = parseAiJsonObject(extractText(response), "大模型没有返回可用的口播文案。");
       } catch {
         response = null;
         endpoint = "local";
