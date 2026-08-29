@@ -3813,6 +3813,14 @@
 .viral-transcript-dialog > header button { width: 38px; height: 38px; border: 1px solid #34468c; border-radius: 9px; background: #101738; color: #b2bce8; font-size: 24px; line-height: 1; }
 .viral-transcript-dialog > header button:hover { border-color: #59d9e8; color: #f6f3ef; }
 .viral-transcript-dialog-body { min-height: 0; padding: 20px 22px; overflow-y: auto; scrollbar-color: #536bd0 #101738; scrollbar-width: thin; }
+.viral-dialog-ai-status { margin-bottom: 16px; padding: 13px 14px; display: flex; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid rgba(255,118,95,.7); border-radius: 11px; background: rgba(255,118,95,.1); }
+.viral-dialog-ai-status > div { min-width: 0; display: grid; gap: 4px; }
+.viral-dialog-ai-status strong { color: #ffd1c9; font-size: 13px; }
+.viral-dialog-ai-status span { color: #d9def5; font-size: 12px; line-height: 1.55; }
+.viral-dialog-ai-status > button { flex: 0 0 auto; min-width: 126px; height: 38px; padding: 0 14px; border: 1px solid #ff4d8d; border-radius: 9px; background: #ff4d8d; color: #190b11; font-size: 12px; font-weight: 900; }
+.viral-dialog-ai-status > button:disabled { opacity: .55; cursor: wait; }
+.viral-dialog-ai-status.is-ready { justify-content: flex-start; border-color: rgba(89,217,232,.55); background: rgba(89,217,232,.08); }
+.viral-dialog-ai-status.is-ready strong { color: #59d9e8; }
 .viral-dialog-title-field > span { margin-bottom: 8px; display: block; color: #b2bce8; font-size: 12px; font-weight: 800; }
 .viral-dialog-title-field > div { position: relative; }
 .viral-dialog-title-field input,.viral-dialog-caption-list input { width: 100%; outline: 0; border: 1px solid #34468c; border-radius: 10px; background: #101738; color: #f6f3ef; font: inherit; }
@@ -3857,6 +3865,8 @@
   .viral-transcript-dialog > header { min-height: 64px; padding: 0 16px; }
   .viral-transcript-dialog > header h2 { font-size: 19px; }
   .viral-transcript-dialog-body { padding: 16px; }
+  .viral-dialog-ai-status { align-items: stretch; flex-direction: column; }
+  .viral-dialog-ai-status > button { width: 100%; }
   .viral-dialog-caption-head { display: none; }
   .viral-dialog-caption-row { padding: 10px; grid-template-columns: minmax(0,1fr) 88px; gap: 8px; border: 1px solid #2b3c7b; border-radius: 12px; background: rgba(16,23,56,.45); }
   .viral-dialog-caption-row > span,.viral-dialog-caption-row > .viral-dialog-caption-text { grid-column: 1 / -1; }

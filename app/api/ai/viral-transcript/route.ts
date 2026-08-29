@@ -24,7 +24,10 @@ type ProviderResponse = {
 // The transcript has already been produced by Tencent Flash ASR. One short AI
 // pass is enough; render workers must never repeat this request.
 const TRANSCRIPT_MODEL = "gpt-5.4-mini";
-const TRANSCRIPT_TIMEOUT_MS = 8_000;
+// The provider needs enough time to return a structured plan for the whole
+// timeline. Eight seconds caused normal requests to be discarded and made the
+// local fallback appear to be the AI result.
+const TRANSCRIPT_TIMEOUT_MS = 30_000;
 const TRANSCRIPT_CACHE_MAX = 96;
 const transcriptCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>();
 
@@ -164,23 +167,39 @@ function normalizeSourceCaptions(value: unknown, duration: number): Caption[] {
 }
 
 function fixedAiCaptions(value: unknown, source: Caption[]) {
-  if (!Array.isArray(value) || value.length !== source.length) {
-    return { captions: source, rawItems: [] as Record<string, unknown>[], accepted: false };
+  if (!Array.isArray(value) || !value.length) {
+    return { captions: source, rawItems: [] as Record<string, unknown>[], accepted: false, coverage: 0 };
   }
-  const rawItems = value.map((item) => item && typeof item === "object" ? item as Record<string, unknown> : {});
-  const idsAreFixed = rawItems.every((item, index) => Number(item.id) === index + 1);
-  if (!idsAreFixed) return { captions: source, rawItems: [], accepted: false };
+  const byId = new Map<number, Record<string, unknown>>();
+  value.forEach((item, responseIndex) => {
+    if (!item || typeof item !== "object") return;
+    const record = item as Record<string, unknown>;
+    const rawId = Number(record.id);
+    const index = Number.isInteger(rawId) && rawId >= 1 && rawId <= source.length
+      ? rawId - 1
+      : responseIndex < source.length
+        ? responseIndex
+        : -1;
+    if (index >= 0 && !byId.has(index)) byId.set(index, record);
+  });
+  const coverage = byId.size / source.length;
+  if (coverage < 0.6) return { captions: source, rawItems: [], accepted: false, coverage };
+  // Preserve the fixed timeline and fill any missing AI row with the original
+  // text. Missing camera/SFX fields are safely completed by deterministic
+  // defaults later instead of discarding the entire AI response.
+  const rawItems = source.map((_, index) => byId.get(index) || {});
   const corrected = source.map((caption, index) => phraseText(acceptViralCaptionCorrection(
     caption.text,
     rawItems[index].corrected_text ?? rawItems[index].text,
   )) || caption.text);
   if (!viralCorrectionBatchIsGrounded(source.map((item) => item.text), corrected)) {
-    return { captions: source, rawItems: [], accepted: false };
+    return { captions: source, rawItems, accepted: false, coverage };
   }
   return {
     captions: source.map((caption, index) => ({ ...caption, text: corrected[index] })),
     rawItems,
     accepted: true,
+    coverage,
   };
 }
 
@@ -321,7 +340,7 @@ export async function POST(request: Request) {
 9. title_lines必须把title按完整语义分为1到2行；禁止拆开品牌名、主体、动作、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。标题要符合自然中文语序，例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
 10. 在同一次请求中为每条字幕补充keyword、content_node、weight、camera_intent、transition_intent、sfx_role和translation。镜头与转场只表达语义意图，不输出具体时间和像素。
 11. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；camera_intent只能是hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。普通承接句不要强加音效。
-12. keyword必须是当前corrected_text中连续出现的完整语义短语，通常2至8字；数字可单独提亮。问候、自我介绍、工具来源和普通承接句一律为空；“大家好、我是、我、codex、AI、视频、工具、剪辑”不能单独作为关键词。像“我用codex做了一款”必须为空，“AI剪辑口播视频的工具”可选“AI剪辑”或“口播视频工具”。整条视频通常仅15%至35%的字幕需要关键词，允许只有1至3个，严禁为了数量强行提亮。
+12. keyword必须是当前corrected_text中连续出现的完整语义短语，通常2至8字；数字可单独提亮。问候、自我介绍、工具来源和普通承接句一律为空；“大家好、我是、我、codex、AI、视频、工具、剪辑”不能单独作为关键词。像“我用codex做了一款”必须为空，“AI剪辑口播视频的工具”可选“AI剪辑”或“口播视频工具”。字幕超过4条时必须规划1至3个真正有意义的关键词；整条视频通常仅15%至35%的字幕需要关键词，严禁为了数量强行提亮。
 13. bgm_mood只能是calm/warm/professional/uplifting/neutral。
 只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","bgm_mood":"professional","captions":[{"id":1,"corrected_text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"],"keyword":"提升","translation":"Improve your skills","content_node":"hook","weight":0.9,"camera_intent":"push-in","transition_intent":"cut","sfx_role":"hook"}]}。`;
     const content = [
@@ -390,11 +409,20 @@ export async function POST(request: Request) {
       model: selectedModel,
       degraded: !response || !aiPlan.accepted,
     });
+    const keywordCount = captions.filter((caption) => caption.keywordOrigin === "ai" && caption.keyword).length;
+    const semanticCoverage = rawPlan.length
+      ? rawPlan.filter((item) => (
+        typeof item.content_node === "string"
+        || typeof item.keyword === "string"
+        || typeof item.translation === "string"
+      )).length / lockedCaptions.length
+      : 0;
     const planReady = Boolean(
       response
       && aiPlan.accepted
       && aiTitle
-      && semanticPlanIsComplete(rawPlan, lockedCaptions.length),
+      && (semanticPlanIsComplete(rawPlan, lockedCaptions.length) || semanticCoverage >= 0.6)
+      && (lockedCaptions.length <= 4 || keywordCount > 0),
     );
     const result = {
       title,
@@ -410,6 +438,11 @@ export async function POST(request: Request) {
       model: selectedModel,
       endpoint,
       degraded: !planReady,
+      warning: planReady
+        ? ""
+        : response
+          ? "AI 已返回部分内容，但标题或关键词规划不完整。请点击重新 AI 规划，不要把当前结果当作最终 AI 方案。"
+          : "AI 规划请求未成功，当前仅保留真实时间轴。请点击重新 AI 规划，不要把当前结果当作最终 AI 方案。",
       cache: "miss",
     };
     if (planReady) writeTranscriptCache(cacheKey, result);

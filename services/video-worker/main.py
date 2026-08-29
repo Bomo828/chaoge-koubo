@@ -5156,7 +5156,19 @@ def process_job(job_id: str) -> None:
             )
             filter_complex = video_graph
             if metadata["has_audio"] and include_sfx:
-                filter_complex += f";[0:a:0][1:a:0]amix=inputs=2:duration=first:weights='1 {float(current_template.get('sfx_gain') or 0.14):.3f}':dropout_transition=0[aout]"
+                # Keep the audio graph compatible with the production FFmpeg.
+                # `amix=weights='1 0.2'` is accepted by some builds but is
+                # parsed as an invalid global argument by others.  Normalize
+                # both streams first and apply the SFX gain explicitly instead.
+                sfx_gain = float(current_template.get("sfx_gain") or 0.14)
+                filter_complex += (
+                    ";[0:a:0]aresample=48000,"
+                    "aformat=sample_fmts=fltp:channel_layouts=stereo[voice]"
+                    ";[1:a:0]aresample=48000,"
+                    "aformat=sample_fmts=fltp:channel_layouts=stereo,"
+                    f"volume={sfx_gain:.3f}[effects]"
+                    ";[voice][effects]amix=inputs=2:duration=first:dropout_transition=0[aout]"
+                )
             render_command = [
                 ffmpeg,
                 "-y",

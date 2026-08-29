@@ -2221,6 +2221,8 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [viralCaptions, setViralCaptions] = useState<ViralCaption[]>([]);
   const [viralBgmMood, setViralBgmMood] = useState<ViralBgmMood>("professional");
   const [viralCaptionPlanReady, setViralCaptionPlanReady] = useState(false);
+  const [viralCaptionPlanBusy, setViralCaptionPlanBusy] = useState(false);
+  const [viralCaptionPlanError, setViralCaptionPlanError] = useState("");
   const [viralCaptionsConfirmed, setViralCaptionsConfirmed] = useState(false);
   const [viralTranscriptDialogOpen, setViralTranscriptDialogOpen] = useState(false);
   const [viralReviewTitle, setViralReviewTitle] = useState("");
@@ -2319,6 +2321,48 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setViralCaptionsConfirmed(true);
     setViralTranscriptError("");
     setViralTranscriptDialogOpen(false);
+  }
+
+  async function retryViralCaptionPlan() {
+    if (!viralReviewCaptions.length || viralCaptionPlanBusy) return;
+    setViralCaptionPlanBusy(true);
+    setViralCaptionPlanError("");
+    try {
+      const duration = Math.max(1, viralReviewCaptions.at(-1)?.end || 1);
+      const response = await fetch("/api/ai/viral-caption-plan", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          script: viralReviewCaptions.map((caption) => caption.text).join("。"),
+          duration,
+          captions: viralReviewCaptions,
+          templateId: viralTemplate,
+        }),
+      });
+      const data = await response.json() as {
+        error?: string;
+        warning?: string;
+        title?: string;
+        captions?: ViralCaption[];
+        planReady?: boolean;
+        directorPlan?: { bgmMood?: ViralBgmMood };
+      };
+      if (!response.ok) throw new Error(data.error || "AI 规划请求失败，请稍后重试。");
+      if (!data.planReady || !data.title || !Array.isArray(data.captions) || data.captions.length !== viralReviewCaptions.length) {
+        throw new Error(data.warning || "AI 没有返回完整的标题与关键词方案，请重试。");
+      }
+      setViralReviewTitle(plainViralTitle(data.title));
+      setViralReviewCaptions(data.captions.map((caption) => ({ ...caption })));
+      setViralBgmMood(data.directorPlan?.bgmMood || "professional");
+      setViralCaptionPlanReady(true);
+      setViralAnalysisMode("ai");
+      setViralAnalysisSummary("AI 已重新理解完整口播，并完成标题、字幕换行、提亮关键词与重点词规划。");
+    } catch (error) {
+      setViralCaptionPlanReady(false);
+      setViralCaptionPlanError(error instanceof Error ? error.message : "AI 规划请求失败，请稍后重试。");
+    } finally {
+      setViralCaptionPlanBusy(false);
+    }
   }
 
   function openVideoWorkspace(nextWorkspace: VideoWorkspace) {
@@ -3639,6 +3683,9 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setViralBgmMood(speechViralBgmMood);
     setViralCaptionsConfirmed(Boolean(confirmedCaptions.length));
     setViralCaptionPlanReady(speechViralPlanReady);
+    setViralCaptionPlanError(speechViralPlanReady
+      ? ""
+      : "已复用对口型字幕时间轴，但 AI 标题与关键词规划尚未完成。请在确认文案时点击“重新 AI 规划”。");
     setViralAnalysisSummary(confirmedCaptions.length ? "已复用对口型口播的原始字幕时间轴，无需再次识别整条视频。" : "");
     setViralAnalysisMode(confirmedCaptions.length ? "ai" : "");
     setViralProcessingEngine("");
@@ -3895,6 +3942,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           });
           const aiData = await aiResponse.json() as {
             error?: string;
+            warning?: string;
             title?: string;
             summary?: string;
             captions?: ViralCaption[];
@@ -3910,8 +3958,11 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           aiSummary = aiData.summary || "大模型已完成口播错字校正与完整句整理。";
           setViralBgmMood(aiData.directorPlan?.bgmMood || "professional");
           setViralCaptionPlanReady(Boolean(aiData.planReady));
+          setViralCaptionPlanError(aiData.planReady ? "" : aiData.warning || "AI 规划未完成，请在确认前重新进行 AI 规划。");
         } catch (error) {
           aiSummary = `${error instanceof Error ? error.message : "大模型校对暂时不可用"} 已保留真实语音识别结果，并按完整句整理。`;
+          setViralCaptionPlanReady(false);
+          setViralCaptionPlanError(error instanceof Error ? error.message : "AI 规划未完成，请在确认前重试。");
         }
       }
       setViralCaptions(sentenceCaptions);
@@ -5742,6 +5793,10 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
             <button type="button" aria-label="关闭文案确认弹窗" onClick={() => setViralTranscriptDialogOpen(false)}>×</button>
           </header>
           <div className="viral-transcript-dialog-body">
+            {!viralCaptionPlanReady ? <div className="viral-dialog-ai-status" role="alert">
+              <div><strong>当前不是完整的 AI 规划结果</strong><span>{viralCaptionPlanError || "当前只保留了语音时间轴，请重新让 AI 规划标题、字幕和关键词。"}</span></div>
+              <button type="button" disabled={viralCaptionPlanBusy} onClick={() => void retryViralCaptionPlan()}>{viralCaptionPlanBusy ? "AI 规划中…" : "重新 AI 规划"}</button>
+            </div> : <div className="viral-dialog-ai-status is-ready"><strong>AI 规划已完成</strong><span>标题、字幕换行、提亮关键词和重点词均已生成，可继续手动调整。</span></div>}
             <label className="viral-dialog-title-field">
               <span>视频标题</span>
               <div><input autoFocus type="text" maxLength={viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralReviewTitle} onChange={(event) => setViralReviewTitle(event.target.value)} /><em>{viralReviewTitle.trim().length}/{viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em></div>

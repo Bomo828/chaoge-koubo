@@ -18,7 +18,11 @@ type ProviderResponse = {
 };
 
 const MODEL = "gpt-5.4-mini";
-const DIRECTOR_TIMEOUT_MS = 8_000;
+// A complete title/keyword/director plan for 10-20 captions regularly takes
+// longer than eight seconds on the shared provider.  The previous limit made
+// healthy AI requests look like failures and silently exposed the local
+// fallback as if it were an AI result.
+const DIRECTOR_TIMEOUT_MS = 30_000;
 const DIRECTOR_CACHE_MAX = 128;
 const directorCache = new Map<string, { expiresAt: number; value: Record<string, unknown> }>();
 const NODES = new Set<ViralCaptionPlanItem["contentNode"]>([
@@ -101,6 +105,30 @@ function localIntents(node: ViralCaptionPlanItem["contentNode"], weight: number)
   return { cameraIntent, transitionIntent, sfxRole };
 }
 
+function localFallbackTitle(captions: ViralCaptionPlanItem[], script: string) {
+  const candidates = [
+    ...captions.map((caption) => caption.text),
+    ...(script || "").split(/[。！？!?；;\n]/g),
+  ]
+    .map((value) => value.replace(/[，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·\s-]/g, ""))
+    .filter(Boolean)
+    .filter((value) => !/^(?:大家好|你好|我是|我叫|来自|今天给大家|我用)/.test(value));
+  const trimmed = candidates.map((value) => value
+    .replace(/^(?:最大的特点就是|它的特点就是|核心就是|重点就是|做到|然后|所以|其实)/, "")
+    .slice(0, 20));
+  const semantic = trimmed
+    .filter((value) => value.length >= 6)
+    .sort((left, right) => {
+      const score = (value: string) => (
+        Number(/提升|增长|效率|收益|省|免费|机会|方法|价值|网感|真实|关键|结果|入驻|解决/.test(value)) * 8
+        + Number(value.length >= 8 && value.length <= 16) * 5
+        - Math.max(0, value.length - 16)
+      );
+      return score(right) - score(left);
+    })[0];
+  return semantic?.slice(0, 16) || "口播核心观点";
+}
+
 function localPlan(captions: ViralCaptionPlanItem[], script: string) {
   const planned = captions.map((caption, index) => {
     const lineLayout = planViralCaptionLayout(caption.text, caption.captionLines, 10);
@@ -123,10 +151,7 @@ function localPlan(captions: ViralCaptionPlanItem[], script: string) {
       ...localIntents(contentNode, contentWeight),
     };
   });
-  const first = (script || captions.map((caption) => caption.text).join(""))
-    .split(/[。！？!?\n]/, 1)[0]
-    ?.replace(/\s+/g, "") || "";
-  const titleLayout = planViralTitleLayout(first.slice(0, 16) || "口播重点");
+  const titleLayout = planViralTitleLayout(localFallbackTitle(captions, script));
   return { title: titleLayout.serializedTitle, titleLines: titleLayout.lines, captions: markViralKeywordSfx(planned) };
 }
 
@@ -174,7 +199,7 @@ export async function POST(request: Request) {
 1. 不改变id、start、end和条目数量，不重新断句，不删减信息，不添加原文没有的内容；只校正确定的同音错字、品牌名和明显错字。
 2. keyword必须是corrected_text中原样连续出现的2到8个字；普通承接句可以为空，不要每句都强行提亮。数字可单独提亮。
 2.1 问候、自我介绍、工具来源和普通名词不提亮；“大家好、我是、codex、AI、视频、工具、剪辑”单独出现时都不是关键词。像“我用codex做了一款”应返回空字符串，“AI剪辑口播视频的工具”可选择“AI剪辑”或“口播视频工具”。
-2.2 先理解整条口播的核心承诺，再选完整的利益点、反差、结论、数字、动作结果或行动号召。整条视频通常仅15%到35%的字幕需要关键词，允许整条短视频只有1到3个关键词。
+2.2 先理解整条口播的核心承诺，再选完整的利益点、反差、结论、数字、动作结果或行动号召。字幕超过4条时必须规划1到3个关键词；整条视频通常仅15%到35%的字幕需要关键词，严禁每句都提亮。
 3. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting。
 4. translation输出自然简短英文字幕；原文为英文时输出简短中文。
 5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头，必须符合自然中文语序。例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
@@ -200,40 +225,39 @@ export async function POST(request: Request) {
     });
     const parsed = parseJson(extractText(response));
     const items = Array.isArray(parsed.items) ? parsed.items : [];
-    if (items.length !== source.length) throw new Error("AI 字幕规划数量不一致。");
+    const itemsById = new Map<number, Record<string, unknown>>();
+    items.forEach((item, responseIndex) => {
+      if (!item || typeof item !== "object") return;
+      const record = item as Record<string, unknown>;
+      const id = Number(record.id);
+      if (Number.isInteger(id) && id >= 0 && id < source.length) itemsById.set(id, record);
+      else if (responseIndex < source.length && !itemsById.has(responseIndex)) itemsById.set(responseIndex, record);
+    });
+    if (!itemsById.size) throw new Error("AI 没有返回可用的逐句规划。");
     const cameraIntents = new Set(["hold", "push-in", "pull-back", "reframe", "close-up", "wide"]);
     const transitionIntents = new Set(["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"]);
     const sfxRoles = new Set(["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"]);
     if (typeof parsed.title !== "string" || !parsed.title.trim()) throw new Error("AI 没有返回完整标题。");
     const captions = markViralKeywordSfx(source.map((caption, index) => {
-      const raw = items[index] && typeof items[index] === "object" ? items[index] as Record<string, unknown> : {};
-      if (Number(raw.id) !== index) throw new Error("AI 字幕规划顺序不一致。");
-      if (
-        !NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
-        || !cameraIntents.has(String(raw.camera_intent))
-        || !transitionIntents.has(String(raw.transition_intent))
-        || !sfxRoles.has(String(raw.sfx_role))
-        || !Number.isFinite(Number(raw.weight))
-        || typeof raw.keyword !== "string"
-      ) throw new Error("AI 字幕导演方案字段不完整。");
+      const raw = itemsById.get(index) || {};
       const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
       const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
         ? raw.content_node as ViralCaptionPlanItem["contentNode"]
         : localNode(text, index, source.length);
       const lineLayout = planViralCaptionLayout(text, raw.caption_lines, 10);
-      const contentWeight = Math.max(0, Math.min(1, Number(raw.weight) || 0.5));
+      const contentWeight = Math.max(0, Math.min(1, Number.isFinite(Number(raw.weight)) ? Number(raw.weight) : 0.5));
       const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
       const keyword = candidate && plain(text).includes(plain(candidate))
         ? sanitizeViralKeyword(text, candidate, node, contentWeight)
         : "";
       const local = localIntents(node, contentWeight);
-      const cameraIntent = ["hold", "push-in", "pull-back", "reframe", "close-up", "wide"].includes(String(raw.camera_intent))
+      const cameraIntent = cameraIntents.has(String(raw.camera_intent))
         ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"]
         : local.cameraIntent;
-      const transitionIntent = ["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"].includes(String(raw.transition_intent))
+      const transitionIntent = transitionIntents.has(String(raw.transition_intent))
         ? raw.transition_intent as ViralCaptionPlanItem["transitionIntent"]
         : local.transitionIntent;
-      const sfxRole = ["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"].includes(String(raw.sfx_role))
+      const sfxRole = sfxRoles.has(String(raw.sfx_role))
         ? raw.sfx_role as ViralCaptionPlanItem["sfxRole"]
         : local.sfxRole;
       return {
@@ -251,6 +275,9 @@ export async function POST(request: Request) {
         sfxRole,
       };
     }), duration);
+    if (source.length > 4 && !captions.some((caption) => caption.keywordOrigin === "ai" && caption.keyword)) {
+      throw new Error("AI 没有完成语义关键词规划。");
+    }
     const rawTitle = typeof parsed.title === "string" && parsed.title.trim()
       ? normalizeViralTitleSyntax(parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
       : fallback.title;
@@ -299,6 +326,9 @@ export async function POST(request: Request) {
       degraded: true,
       model: "local-fast-plan",
       directorPlan,
+      warning: error instanceof Error
+        ? `AI 规划未完成：${error.message} 请重试 AI 规划，或手动填写标题与关键词。`
+        : "AI 规划未完成，请重试 AI 规划，或手动填写标题与关键词。",
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",
     };
