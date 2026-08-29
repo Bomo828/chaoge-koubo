@@ -337,9 +337,17 @@ export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover
   const row = mapRow(source);
   const objectKey = cover ? row.cover_object_key : row.object_key;
   if (!objectKey) return "";
-  const parameters: Record<string, string> = download
-    ? { "response-content-disposition": `attachment; filename*=UTF-8''${encodeURIComponent(safeDownloadFilename(row))}` }
+  const responseContentType = cover
+    ? row.cover_content_type || "image/jpeg"
+    : row.kind === "video" && (!row.content_type || row.content_type === "application/octet-stream")
+      ? "video/mp4"
+      : row.content_type;
+  const parameters: Record<string, string> = responseContentType
+    ? { "response-content-type": responseContentType }
     : {};
+  if (download) {
+    parameters["response-content-disposition"] = `attachment; filename*=UTF-8''${encodeURIComponent(safeDownloadFilename(row))}`;
+  }
   // 播放需要覆盖一次正常观看；下载链接更短，封面则允许更长的私有缓存。
   const expiresIn = download ? 15 * 60 : cover ? 4 * 60 * 60 : 60 * 60;
   return signedCosObjectUrl(objectKey, expiresIn, parameters);

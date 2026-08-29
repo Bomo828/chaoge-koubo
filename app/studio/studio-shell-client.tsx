@@ -79,7 +79,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
   const isAdminAccount = member.role === "admin" || member.role === "super_admin";
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
-  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null>(null);
+  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; importUrl?: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -208,7 +208,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
           {active === "assets" && <Assets
             initialFilter={assetInitialFilter}
             onUseViral={(asset: MemberAssetItem) => {
-              setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
+              setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, importUrl: asset.importUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
               openStudioSection("video");
             }}
             onUseSuperEditor={(asset: MemberAssetItem) => {
@@ -216,7 +216,7 @@ export function StudioShellClient({ member, initialFeatures }: { member: MemberS
                 id: asset.id,
                 name: asset.name,
                 mediaUrl: asset.mediaUrl,
-                fallbackMediaUrl: asset.mediaUrl,
+                fallbackMediaUrl: asset.importUrl || `${asset.mediaUrl}${asset.mediaUrl.includes("?") ? "&" : "?"}stream=1`,
                 transcript: asset.viralWorkflow?.script || "",
                 title: asset.viralWorkflow?.title || "",
                 duration: asset.viralWorkflow?.duration || 0,

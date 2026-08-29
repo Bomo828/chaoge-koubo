@@ -54,6 +54,7 @@ export type MemberAssetItem = {
   expiresAt: number | null;
   retentionDays: number | null;
   mediaUrl: string;
+  importUrl?: string;
   downloadUrl?: string;
   coverUrl?: string;
   viralWorkflow?: ViralWorkflowManifest | null;
@@ -613,7 +614,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
   const isAdminAccount = member.role === "admin" || member.role === "super_admin";
   const [active, setActive] = useState("overview");
   const [assetInitialFilter, setAssetInitialFilter] = useState<AssetFilter>("all");
-  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null>(null);
+  const [viralImportAsset, setViralImportAsset] = useState<{ id: string; name: string; mediaUrl: string; importUrl?: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null>(null);
   const [busy, setBusy] = useState(false);
   const [memberMenuOpen, setMemberMenuOpen] = useState(false);
   const [assistantOpen, setAssistantOpen] = useState(false);
@@ -763,7 +764,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
           {active === "assets" && <Assets
             initialFilter={assetInitialFilter}
             onUseViral={(asset) => {
-              setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
+              setViralImportAsset({ id: asset.id, name: asset.name, mediaUrl: asset.mediaUrl, importUrl: asset.importUrl, contentType: asset.contentType, viralWorkflow: asset.viralWorkflow });
               openStudioSection("video");
             }}
             onUseSuperEditor={(asset) => {
@@ -771,7 +772,7 @@ export function StudioClient({ member, initialFeatures }: { member: MemberSessio
                 id: asset.id,
                 name: asset.name,
                 mediaUrl: asset.mediaUrl,
-                fallbackMediaUrl: asset.mediaUrl,
+                fallbackMediaUrl: memberAssetImportUrl(asset),
                 transcript: asset.viralWorkflow?.script || "",
                 title: asset.viralWorkflow?.title || "",
                 duration: asset.viralWorkflow?.duration || 0,
@@ -2102,7 +2103,7 @@ const VIRAL_DRAFT_KEY = "viral-edit-v1";
 
 const VIDEO_WORKSPACES = new Set<VideoWorkspace>(["chooser", "material", "lip-sync", "ai-benchmark", "viral-edit", "ai-director"]);
 
-export function Video({ memberId, busy, action, onPointsChange, viralImportAsset }: { memberId: string; busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
+export function Video({ memberId, busy, action, onPointsChange, viralImportAsset }: { memberId: string; busy: boolean; action: () => void; onPointsChange: (points: number) => void; viralImportAsset?: { id: string; name: string; mediaUrl: string; importUrl?: string; contentType?: string; viralWorkflow?: ViralWorkflowManifest | null } | null }) {
   const [workspace, setWorkspace] = useState<VideoWorkspace>("chooser");
   const lipSyncDraftKey = `${LIP_SYNC_DRAFT_KEY}:${memberId}`;
   const viralDraftKey = `${VIRAL_DRAFT_KEY}:${memberId}`;
@@ -2735,6 +2736,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       id: viralImportAsset.id,
       name: viralImportAsset.name,
       mediaUrl: viralImportAsset.mediaUrl,
+      importUrl: viralImportAsset.importUrl,
       viralWorkflow: workflow || null,
     }));
     // Member assets used to remain only as a protected URL until the user
@@ -2743,7 +2745,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     // to the cloud transcription worker.
     void (async () => {
       try {
-        const response = await fetch(viralImportAsset.mediaUrl, {
+        const response = await fetch(viralImportAsset.importUrl || viralImportAsset.mediaUrl, {
           cache: "no-store",
           headers: { Accept: "video/*" },
         });
@@ -5802,6 +5804,10 @@ function formatAssetSize(value: number) {
 
 function memberAssetDownloadUrl(item: MemberAssetItem) {
   return item.downloadUrl || `/api/member/assets/${encodeURIComponent(item.id)}?download=1`;
+}
+
+function memberAssetImportUrl(item: MemberAssetItem) {
+  return item.importUrl || `${item.mediaUrl}${item.mediaUrl.includes("?") ? "&" : "?"}stream=1`;
 }
 
 function AssetVideoThumbnail({ item }: { item: MemberAssetItem }) {

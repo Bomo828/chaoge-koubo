@@ -21,9 +21,11 @@ function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
     createdAt: Number(item.created_at) * 1000,
     expiresAt: item.expires_at === null ? null : Number(item.expires_at) * 1000,
     retentionDays: item.kind === "video" ? 7 : item.kind === "image" ? 30 : null,
-    // 预览和二次创作必须保持同源，避免私有 COS 临时地址在 video/fetch
-    // 两种使用方式下出现跨域、Content-Type 或签名过期问题。
-    mediaUrl: item.kind === "video" ? `${assetPath}?stream=1` : assetPath,
+    // 浏览器播放由资产接口重定向到 COS 的临时签名地址，避免大视频经
+    // Next.js/Nginx 二次代理时首段 Range 响应被缓冲或截断。
+    mediaUrl: assetPath,
+    // 二次创作仍走同源代理，fetch 读取时不会受到 COS 跨域规则影响。
+    importUrl: item.kind === "video" ? `${assetPath}?stream=1` : assetPath,
     downloadUrl: `${assetPath}?download=1`,
     coverUrl: item.cover_object_key ? `${assetPath}?cover=1` : "",
     viralWorkflow: item.viral_workflow,
