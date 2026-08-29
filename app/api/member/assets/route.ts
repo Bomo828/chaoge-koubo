@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { listMemberAssets, saveCosMemberAsset, saveMemberAsset, saveUploadedMemberAsset } from "../../../../lib/member-assets";
 import { videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
+import { createMemberAssetAccessToken, type MemberAssetAccessPurpose } from "../../../../lib/server/member-asset-access";
 import { sanitizeViralWorkflowManifest } from "../../../../lib/viral-workflow";
 
 function clean(value: unknown, fallback: string, max: number) {
@@ -9,6 +10,13 @@ function clean(value: unknown, fallback: string, max: number) {
 
 function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
   const assetPath = `/api/member/assets/${encodeURIComponent(item.id)}`;
+  const accessUrl = (purpose: MemberAssetAccessPurpose, parameters?: Record<string, string>) => {
+    const search = new URLSearchParams(parameters);
+    const token = createMemberAssetAccessToken(item.member_id, item.id, purpose);
+    if (token) search.set("access", token);
+    const query = search.toString();
+    return query ? `${assetPath}?${query}` : assetPath;
+  };
   return {
     id: item.id,
     projectName: item.project_name,
@@ -23,11 +31,11 @@ function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
     retentionDays: item.kind === "video" ? 7 : item.kind === "image" ? 30 : null,
     // 浏览器播放由资产接口重定向到 COS 的临时签名地址，避免大视频经
     // Next.js/Nginx 二次代理时首段 Range 响应被缓冲或截断。
-    mediaUrl: assetPath,
+    mediaUrl: accessUrl("media"),
     // 二次创作仍走同源代理，fetch 读取时不会受到 COS 跨域规则影响。
-    importUrl: item.kind === "video" ? `${assetPath}?stream=1` : assetPath,
-    downloadUrl: `${assetPath}?download=1`,
-    coverUrl: item.cover_object_key ? `${assetPath}?cover=1` : "",
+    importUrl: item.kind === "video" ? accessUrl("import", { stream: "1" }) : accessUrl("media"),
+    downloadUrl: accessUrl("download", { download: "1" }),
+    coverUrl: item.cover_object_key ? accessUrl("cover", { cover: "1" }) : "",
     viralWorkflow: item.viral_workflow,
   };
 }

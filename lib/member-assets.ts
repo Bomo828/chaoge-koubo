@@ -5,6 +5,7 @@ import { pipeline } from "node:stream/promises";
 import type { MemberSession } from "../app/member-session";
 import { getDatabase, parseJson, unixNow } from "./server/db";
 import { deleteCosObject, getCosObject, signedCosObjectUrl } from "./server/tencent-mps";
+import { videoWorkerUpstreamUrl } from "./server/video-worker";
 import type { ViralWorkflowManifest } from "./viral-workflow";
 import { sanitizeViralWorkflowManifest } from "./viral-workflow";
 
@@ -331,12 +332,53 @@ function safeDownloadFilename(row: MemberAssetRow) {
   return /\.[a-z0-9]{2,5}$/i.test(safeName) ? safeName : `${safeName}.${extensionFor(row.content_type, row.kind)}`;
 }
 
-export function getMemberAssetDirectUrl(member: MemberSession, id: string, cover = false, download = false) {
+function validHttpUrl(value: unknown) {
+  if (typeof value !== "string" || !value.trim()) return "";
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+async function workerAssetUrl(row: MemberAssetRow, cover: boolean) {
+  if (!row.source_task_id) return "";
+  try {
+    const response = await fetch(`${videoWorkerUpstreamUrl()}/v1/jobs/${encodeURIComponent(row.source_task_id)}`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(15_000),
+    });
+    const status = await response.json().catch(() => null) as {
+      state?: string;
+      result_object_key?: string;
+      cover_object_key?: string;
+      result_url?: string;
+      cover_url?: string;
+    } | null;
+    if (!response.ok || status?.state !== "success") return "";
+    if (cover) {
+      if (!row.cover_object_key || status.cover_object_key !== row.cover_object_key) return "";
+      return validHttpUrl(status.cover_url);
+    }
+    if (status.result_object_key !== row.object_key) return "";
+    return validHttpUrl(status.result_url);
+  } catch (error) {
+    console.error(`Resolve video worker member asset URL failed: ${row.id}`, error);
+    return "";
+  }
+}
+
+export async function getMemberAssetDirectUrl(member: MemberSession, id: string, cover = false, download = false) {
   const source = getActiveAssetRow(member.id, id);
   if (!source || source.storage_provider !== "cos") return "";
   const row = mapRow(source);
   const objectKey = cover ? row.cover_object_key : row.object_key;
   if (!objectKey) return "";
+  // 渲染服务器返回的地址已经与真实 COS 对象完成校验。优先复用它，
+  // 避免主站与渲染节点的 COS 凭据轮换不同步时导致会员资产全部失效。
+  const workerUrl = await workerAssetUrl(row, cover);
+  if (workerUrl) return workerUrl;
   const responseContentType = cover
     ? row.cover_content_type || "image/jpeg"
     : row.kind === "video" && (!row.content_type || row.content_type === "application/octet-stream")

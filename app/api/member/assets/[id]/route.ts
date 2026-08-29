@@ -1,5 +1,7 @@
 import { getMemberSession } from "../../../../member-session";
 import { deleteMemberAsset, getMemberAsset, getMemberAssetCover, getMemberAssetDirectUrl } from "../../../../../lib/member-assets";
+import { verifyMemberAssetAccessToken, type MemberAssetAccessPurpose } from "../../../../../lib/server/member-asset-access";
+import type { MemberSession } from "../../../../member-session";
 
 function filenameWithExtension(name: string, contentType: string) {
   if (/\.[a-z0-9]{2,5}$/i.test(name)) return name;
@@ -20,14 +22,24 @@ function filenameWithExtension(name: string, contentType: string) {
 }
 
 export async function GET(request: Request, context: { params: Promise<{ id: string }> }) {
-  const member = await getMemberSession();
-  if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
   const { id } = await context.params;
   const searchParams = new URL(request.url).searchParams;
   const cover = searchParams.get("cover") === "1";
   const download = searchParams.get("download") === "1";
   const stream = searchParams.get("stream") === "1";
-  const directUrl = stream ? "" : getMemberAssetDirectUrl(member, id, cover, download);
+  const purpose: MemberAssetAccessPurpose = cover ? "cover" : download ? "download" : stream ? "import" : "media";
+  const signedAccess = verifyMemberAssetAccessToken(searchParams.get("access") || "", id, purpose);
+  const session = await getMemberSession();
+  const member = session || (signedAccess ? {
+    id: signedAccess.memberId,
+    username: "asset-access",
+    displayName: "会员资产",
+    level: "asset",
+    points: 0,
+    role: "member",
+  } satisfies MemberSession : null);
+  if (!member) return Response.json({ error: "资产访问地址已过期，请刷新会员资产后重试。" }, { status: 401 });
+  const directUrl = stream ? "" : await getMemberAssetDirectUrl(member, id, cover, download);
   if (directUrl) {
     return new Response(null, {
       status: 307,
