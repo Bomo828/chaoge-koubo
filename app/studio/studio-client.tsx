@@ -124,6 +124,83 @@ function plainViralTitle(value: string) {
   return value.replace(/[|｜]/g, "").trim();
 }
 
+function lipSyncSubmissionError(status: number, responseText: string) {
+  if (status === 413) return "视频文件过大，请重新选择较短的视频后继续。";
+  if (status === 504) return "视频上传处理超时。进度已经保存，请点击继续；已完成的素材不会重复上传。";
+  if (status === 502 || status === 503) return "视频服务暂时繁忙。进度已经保存，请稍后点击继续。";
+  const trimmed = responseText.trim();
+  if (/^\s*<!doctype html|^\s*<html/i.test(trimmed)) {
+    return `视频服务连接异常（${status || "网络错误"}），制作进度已经保存，请稍后继续。`;
+  }
+  return trimmed || `对口型接口返回异常（${status || "网络错误"}）。`;
+}
+
+async function prepareLipSyncVideoUpload({
+  source,
+  sourceDuration,
+  speechDuration,
+  width,
+  height,
+  onProgress,
+}: {
+  source: File;
+  sourceDuration: number;
+  speechDuration: number;
+  width: number;
+  height: number;
+  onProgress: (progress: number) => void;
+}) {
+  const targetDuration = Math.max(1, Math.min(
+    sourceDuration > 0 ? sourceDuration : speechDuration + 0.4,
+    speechDuration > 0 ? speechDuration + 0.4 : sourceDuration,
+  ));
+  const isMp4 = source.type === "video/mp4" || /\.mp4$/i.test(source.name);
+  const durationExcess = sourceDuration > 0 && speechDuration > 0 && sourceDuration > speechDuration + 2;
+  const dimensionExcess = width > 720 || height > 1280;
+  const shouldOptimize = !isMp4 || source.size > 24 * 1024 * 1024 || durationExcess || dimensionExcess;
+  if (!shouldOptimize) return source;
+
+  const { FFmpeg } = await import("@ffmpeg/ffmpeg");
+  const ffmpeg = new FFmpeg();
+  const token = Math.random().toString(36).slice(2, 9);
+  const sourceExtension = source.name.match(/\.([a-z0-9]+)$/i)?.[1]?.toLowerCase() || "mov";
+  const inputName = `lip-sync-input-${token}.${sourceExtension}`;
+  const outputName = `lip-sync-ready-${token}.mp4`;
+  ffmpeg.on("progress", ({ progress }) => onProgress(Math.max(0, Math.min(1, progress))));
+  try {
+    await ffmpeg.load(browserFfmpegLoadConfig());
+    await ffmpeg.writeFile(inputName, new Uint8Array(await source.arrayBuffer()));
+    const portrait = height >= width;
+    const targetWidth = portrait ? 720 : 1280;
+    const targetHeight = portrait ? 1280 : 720;
+    const videoFilter = `scale=${targetWidth}:${targetHeight}:force_original_aspect_ratio=decrease,pad=${targetWidth}:${targetHeight}:(ow-iw)/2:(oh-ih)/2:black,setsar=1`;
+    const commonArgs = [
+      "-y",
+      "-i", inputName,
+      "-t", targetDuration.toFixed(3),
+      "-map", "0:v:0",
+      "-an",
+      "-vf", videoFilter,
+      "-r", "25",
+      "-pix_fmt", "yuv420p",
+      "-movflags", "+faststart",
+    ];
+    let exitCode = await ffmpeg.exec([...commonArgs, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "27", outputName], 180_000);
+    if (exitCode !== 0) {
+      exitCode = await ffmpeg.exec([...commonArgs, "-c:v", "mpeg4", "-q:v", "6", outputName], 180_000);
+    }
+    if (exitCode !== 0) throw new Error("视频优化失败");
+    const encoded = await ffmpeg.readFile(outputName);
+    if (!(encoded instanceof Uint8Array) || !encoded.byteLength) throw new Error("视频优化结果为空");
+    const bytes = new Uint8Array(encoded.byteLength);
+    bytes.set(encoded);
+    const prepared = new File([bytes.buffer], "lip-sync-ready.mp4", { type: "video/mp4", lastModified: Date.now() });
+    return prepared.size < source.size ? prepared : source;
+  } finally {
+    ffmpeg.terminate();
+  }
+}
+
 type ViralWorkerJob = {
   id: string;
   state: "queued" | "running" | "success" | "failed";
@@ -2106,8 +2183,10 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [lipVideoName, setLipVideoName] = useState("");
   const [lipVideoPreviewUrl, setLipVideoPreviewUrl] = useState("");
   const [lipVideoSize, setLipVideoSize] = useState({ width: 1080, height: 1920 });
+  const [lipVideoDuration, setLipVideoDuration] = useState(0);
   const [lipSyncBusy, setLipSyncBusy] = useState(false);
   const [lipSyncProgress, setLipSyncProgress] = useState(0);
+  const [lipSyncStageLabel, setLipSyncStageLabel] = useState("");
   const [lipSyncError, setLipSyncError] = useState("");
   const [lipSyncResultUrl, setLipSyncResultUrl] = useState("");
   const [lipSyncSubmission, setLipSyncSubmission] = useState<LipSyncSubmissionCheckpoint | null>(null);
@@ -2116,6 +2195,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [lipSyncDraftStatus, setLipSyncDraftStatus] = useState<"loading" | "saving" | "saved" | "error">("loading");
   const [lipSyncDraftMessage, setLipSyncDraftMessage] = useState("正在恢复上次制作进度…");
   const lipVideoPreviewObjectUrl = useRef("");
+  const lipVideoPreparedUpload = useRef<{ source: File; speechDuration: number; file: File } | null>(null);
   const [viralFiles, setViralFiles] = useState<string[]>([]);
   const [viralSourceFile, setViralSourceFile] = useState<File | null>(null);
   const [viralVideoPreviewUrl, setViralVideoPreviewUrl] = useState("");
@@ -3242,6 +3322,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     if ((!resumableTask && ((needsVideoUpload && !lipVideoFile) || (needsAudioUpload && !speechAudioUrl))) || lipSyncBusy) return;
     setLipSyncBusy(true);
     setLipSyncError("");
+    setLipSyncStageLabel(resumableTask ? "正在恢复生成结果" : "正在准备素材");
     if (!resumableTask) {
       setLipSyncProgress(0);
       setLipSyncResultUrl("");
@@ -3261,8 +3342,9 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         audioDuration?: number;
         resumeAvailable?: boolean;
         failedStage?: string;
+        nextOperation?: string;
         checkpoint?: { videoUploaded?: boolean; audioUploaded?: boolean };
-      };
+      } = {};
       if (resumableTask) {
         data = {
           taskId: resumableTask.taskId,
@@ -3279,60 +3361,118 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           videoUploaded: false,
           audioUploaded: false,
         };
-        const form = new FormData();
-        if (needsVideoUpload && lipVideoFile) form.append("video", lipVideoFile, lipVideoFile.name);
-        if (needsAudioUpload) {
+        setLipSyncSubmission(submission);
+        let checkpoint = {
+          videoUploaded: Boolean(submission.videoUploaded),
+          audioUploaded: Boolean(submission.audioUploaded),
+        };
+
+        // A previous request may have completed on the server after the browser
+        // received a gateway timeout. Recover that server-side checkpoint before
+        // sending either media file again.
+        if (uploadCheckpoint?.requestId) {
+          setLipSyncStageLabel("正在恢复上传进度");
+          const checkpointResponse = await fetch(`/api/ai/lip-sync?request_id=${encodeURIComponent(submission.requestId)}`, { cache: "no-store" });
+          if (checkpointResponse.ok) {
+            const recovered = await checkpointResponse.json() as typeof data;
+            checkpoint = {
+              videoUploaded: Boolean(recovered.checkpoint?.videoUploaded),
+              audioUploaded: Boolean(recovered.checkpoint?.audioUploaded),
+            };
+            setLipSyncSubmission({ ...submission, ...checkpoint });
+            if (recovered.taskId) data = recovered;
+          }
+        }
+
+        const submitStage = async (operation: "upload_video" | "upload_audio" | "submit", file?: File) => {
+          const form = new FormData();
+          form.append("operation", operation);
+          if (operation === "upload_video" && file) form.append("video", file, file.name);
+          if (operation === "upload_audio" && file) form.append("audio", file, file.name);
+          form.append("width", String(lipVideoSize.width));
+          form.append("height", String(lipVideoSize.height));
+          form.append("audioDuration", String(speechAudioDuration));
+          form.append("projectName", submission.projectName);
+          form.append("requestId", submission.requestId);
+          const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
+          const responseText = await response.text();
+          let stageData: typeof data = {};
+          try {
+            stageData = responseText ? JSON.parse(responseText) as typeof data : {};
+          } catch {
+            throw new Error(lipSyncSubmissionError(response.status, responseText));
+          }
+          if (!response.ok) throw new Error(stageData.error || lipSyncSubmissionError(response.status, responseText));
+          if (typeof stageData.wallet?.points === "number") onPointsChange(stageData.wallet.points);
+          checkpoint = {
+            videoUploaded: Boolean(stageData.checkpoint?.videoUploaded),
+            audioUploaded: Boolean(stageData.checkpoint?.audioUploaded),
+          };
+          setLipSyncSubmission({
+            requestId: stageData.requestId || submission.requestId,
+            projectName: stageData.projectName || submission.projectName,
+            ...checkpoint,
+          });
+          return stageData;
+        };
+
+        if (!data.taskId && !checkpoint.videoUploaded) {
+          if (!lipVideoFile) throw new Error("请重新选择需要进行口型同步的视频。");
+          setLipSyncStageLabel("正在优化上传视频");
+          setLipSyncProgress(1);
+          let uploadFile = lipVideoPreparedUpload.current?.source === lipVideoFile
+            && lipVideoPreparedUpload.current.speechDuration === speechAudioDuration
+            ? lipVideoPreparedUpload.current.file
+            : null;
+          if (!uploadFile) {
+            try {
+              uploadFile = await prepareLipSyncVideoUpload({
+                source: lipVideoFile,
+                sourceDuration: lipVideoDuration,
+                speechDuration: speechAudioDuration,
+                width: lipVideoSize.width,
+                height: lipVideoSize.height,
+                onProgress: (progress) => setLipSyncProgress(Math.max(1, Math.round(progress * 10))),
+              });
+            } catch {
+              // Uploading the original remains a safe fallback when an older
+              // browser cannot load the local FFmpeg engine.
+              uploadFile = lipVideoFile;
+            }
+            lipVideoPreparedUpload.current = { source: lipVideoFile, speechDuration: speechAudioDuration, file: uploadFile };
+          }
+          setLipSyncStageLabel("正在上传优化后的视频");
+          data = await submitStage("upload_video", uploadFile);
+          setLipSyncProgress(18);
+        }
+
+        if (!data.taskId && !checkpoint.audioUploaded) {
+          setLipSyncStageLabel("正在上传口播音频");
           const audioResponse = await fetch(speechAudioUrl, { cache: "no-store" });
           if (!audioResponse.ok) throw new Error("口播音频读取失败，请重新生成音频。");
           const audioBlob = await audioResponse.blob();
           const isWav = audioBlob.type.includes("wav");
           const audioFileForUpload = new File([audioBlob], isWav ? "speech.wav" : "speech.mp3", { type: audioBlob.type || "audio/mpeg" });
-          form.append("audio", audioFileForUpload, audioFileForUpload.name);
+          data = await submitStage("upload_audio", audioFileForUpload);
+          setLipSyncProgress(28);
         }
-        form.append("width", String(lipVideoSize.width));
-        form.append("height", String(lipVideoSize.height));
-        form.append("audioDuration", String(speechAudioDuration));
-        form.append("projectName", submission.projectName);
-        form.append("requestId", submission.requestId);
-        setLipSyncSubmission(submission);
 
-        const response = await fetch("/api/ai/lip-sync", { method: "POST", body: form });
-        const responseText = await response.text();
-        try {
-          data = responseText ? JSON.parse(responseText) as typeof data : {};
-        } catch {
-          if (response.status === 413) {
-            throw new Error("视频上传失败：文件超过当前服务允许的大小，请压缩到 200MB 以内后重试。");
-          }
-          throw new Error(responseText.trim() || `对口型接口返回异常（${response.status}）。`);
+        if (!data.taskId) {
+          setLipSyncStageLabel("正在提交生成任务");
+          data = await submitStage("submit");
+          setLipSyncProgress(35);
         }
-        const nextCheckpoint = data.requestId && data.resumeAvailable
-          ? {
-              requestId: data.requestId,
-              projectName: data.projectName || submission.projectName,
-              videoUploaded: Boolean(data.checkpoint?.videoUploaded),
-              audioUploaded: Boolean(data.checkpoint?.audioUploaded),
-            }
-          : response.ok && data.requestId
-            ? {
-                requestId: data.requestId,
-                projectName: data.projectName || submission.projectName,
-                videoUploaded: true,
-                audioUploaded: true,
-              }
-            : null;
-        setLipSyncSubmission(nextCheckpoint);
-        if (!response.ok || !data.taskId) throw new Error(data.error || "对口型任务创建失败，请稍后重试。");
-        if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
+        if (!data.taskId) throw new Error(data.error || "对口型任务创建失败，请稍后重试。");
         setLipSyncPendingTask({
           taskId: data.taskId,
-          requestId: data.requestId || "",
-          projectName: data.projectName || "对口型视频",
+          requestId: data.requestId || submission.requestId,
+          projectName: data.projectName || submission.projectName,
         });
       }
 
       let attempts = 0;
       while (!data.isFinal && attempts < 240) {
+        setLipSyncStageLabel("正在生成对口型视频");
         await new Promise((resolve) => window.setTimeout(resolve, 5000));
         const params = new URLSearchParams({
           task_id: data.taskId || "",
@@ -3340,9 +3480,14 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           project_name: data.projectName || "对口型视频",
         });
         const statusResponse = await fetch(`/api/ai/lip-sync?${params}`, { cache: "no-store" });
-        data = await statusResponse.json() as typeof data;
+        const statusText = await statusResponse.text();
+        try {
+          data = statusText ? JSON.parse(statusText) as typeof data : {};
+        } catch {
+          throw new Error(lipSyncSubmissionError(statusResponse.status, statusText));
+        }
         if (!statusResponse.ok) throw new Error(data.error || "对口型任务状态查询失败。");
-        setLipSyncProgress(Math.max(0, Math.min(100, Number(data.progress) || 0)));
+        setLipSyncProgress(Math.max(35, Math.min(100, 35 + Math.round((Number(data.progress) || 0) * 0.65))));
         if (typeof data.wallet?.points === "number") onPointsChange(data.wallet.points);
         attempts += 1;
       }
@@ -3355,6 +3500,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       setLipSyncPendingTask(null);
       setLipSyncSubmission(null);
       setLipSyncProgress(100);
+      setLipSyncStageLabel("生成完成");
       // The provider URL is playable as soon as the task finishes. Do not wait
       // for the whole MP4 to be copied through the application server first.
       setLipSyncResultUrl(data.videoUrl);
@@ -5401,13 +5547,13 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           </section>
           <section className={`video-builder-card lip-sync-step-card ${lipVideoName ? "is-complete" : speechAudioReady ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>03</span><div><b>上传本人视频</b><small>{lipVideoName ? "人物视频已就绪" : "使用正脸、清晰、嘴部无遮挡的视频"}</small></div>{lipVideoName ? <em>已完成</em> : speechAudioReady ? <em>当前步骤</em> : <em>等待口播</em>}</div>
-            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" disabled={lipSyncLocked} onChange={(event) => { const file = event.target.files?.[0] ?? null; if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current); const previewUrl = file ? URL.createObjectURL(file) : ""; lipVideoPreviewObjectUrl.current = previewUrl; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(previewUrl); setLipSyncSubmission(null); setLipSyncPendingTask(null); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
-            {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 })} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
+            <label className={`video-file-drop is-compact ${lipVideoName ? "has-files" : ""}`}><input type="file" accept="video/*" disabled={lipSyncLocked} onChange={(event) => { const file = event.target.files?.[0] ?? null; if (lipVideoPreviewObjectUrl.current) URL.revokeObjectURL(lipVideoPreviewObjectUrl.current); const previewUrl = file ? URL.createObjectURL(file) : ""; lipVideoPreviewObjectUrl.current = previewUrl; lipVideoPreparedUpload.current = null; setLipVideoFile(file); setLipVideoName(file?.name ?? ""); setLipVideoPreviewUrl(previewUrl); setLipVideoDuration(0); setLipSyncSubmission(null); setLipSyncPendingTask(null); setLipSyncResultUrl(""); setLipSyncError(""); setLipSyncProgress(0); setLipSyncStageLabel(""); event.target.value = ""; }} /><i>＋</i><b>{lipVideoName || "上传正脸口播视频"}</b><span>建议人物正脸、光线清晰、嘴部无遮挡</span></label>
+            {lipVideoPreviewUrl ? <div className="lip-video-inline-preview"><video src={lipVideoPreviewUrl} controls muted playsInline preload="metadata" onLoadedMetadata={(event) => { setLipVideoSize({ width: event.currentTarget.videoWidth || 1080, height: event.currentTarget.videoHeight || 1920 }); setLipVideoDuration(Number.isFinite(event.currentTarget.duration) ? event.currentTarget.duration : 0); }} /><span><b>{lipVideoName}</b><small>{lipVideoSize.width} × {lipVideoSize.height} · 视频已就绪</small></span></div> : null}
           </section>
           <section className={`video-builder-card lip-sync-step-card lip-sync-final-card ${lipSyncResultUrl ? "is-complete" : canGenerateLipSync ? "is-active" : "is-pending"}`}>
             <div className="video-card-title lip-sync-card-title"><span>04</span><div><b>生成对口型视频</b><small>{lipSyncResultUrl ? "成片已保存，可继续网感剪辑" : "声音和人物视频将自动同步"}</small></div>{lipSyncResultUrl ? <em>已完成</em> : canGenerateLipSync ? <em>可以生成</em> : <em>等待素材</em>}</div>
             <div className="lip-sync-final-actions">
-              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || (!lipSyncPendingTask && !lipSyncSubmission && !lipSyncEstimatedPoints)} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `正在同步口型${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : lipSyncPendingTask ? "继续查询生成结果" : lipSyncSubmission ? `继续上传并生成${lipSyncEstimatedPoints ? ` · 预计${lipSyncEstimatedPoints}积分` : ""}` : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
+              <button type="button" className="video-generate-button" disabled={lipSyncBusy || !canGenerateLipSync || (!lipSyncPendingTask && !lipSyncSubmission && !lipSyncEstimatedPoints)} onClick={() => void generateLipSyncVideo()}>{lipSyncBusy ? `${lipSyncStageLabel || "正在处理"}${lipSyncProgress ? ` · ${lipSyncProgress}%` : "…"}` : lipSyncPendingTask ? "继续查询生成结果" : lipSyncSubmission ? `继续上传并生成${lipSyncEstimatedPoints ? ` · 预计${lipSyncEstimatedPoints}积分` : ""}` : canGenerateLipSync ? lipSyncEstimatedPoints ? `✦ 生成对口型视频 · ${lipSyncEstimatedPoints}积分` : "正在读取音频时长…" : !speechAudioReady ? "请先生成口播音频" : "请先上传本人视频"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInViralEditor}>{lipSyncResultUrl ? "✦ 一键网感" : "生成后可使用一键网感"}</button>
               <button type="button" className="lip-sync-viral-button" disabled={lipSyncBusy || !lipSyncResultUrl} onClick={openLipSyncResultInSuperEditor}>{lipSyncResultUrl ? "✦ 导入AI超级剪辑" : "生成后可导入AI超级剪辑"}</button>
             </div>

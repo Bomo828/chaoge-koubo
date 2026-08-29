@@ -43,6 +43,10 @@ export async function POST(request: Request) {
     const form = await request.formData();
     const video = form.get("video");
     const audio = form.get("audio");
+    const requestedOperation = typeof form.get("operation") === "string" ? String(form.get("operation")) : "submit_all";
+    const operation = ["upload_video", "upload_audio", "submit", "submit_all"].includes(requestedOperation)
+      ? requestedOperation
+      : "submit_all";
     const requestId = typeof form.get("requestId") === "string" ? String(form.get("requestId")).trim() : "";
     if (!/^[a-zA-Z0-9_-]{8,100}$/.test(requestId)) {
       return Response.json({ error: "缺少有效的对口型制作编号。" }, { status: 400 });
@@ -77,10 +81,12 @@ export async function POST(request: Request) {
       });
     }
 
-    if (!videoFileId && (!(video instanceof File) || !video.type.startsWith("video/"))) {
+    const shouldUploadVideo = operation === "upload_video" || operation === "submit_all";
+    const shouldUploadAudio = operation === "upload_audio" || operation === "submit_all";
+    if (shouldUploadVideo && !videoFileId && (!(video instanceof File) || !video.type.startsWith("video/"))) {
       return Response.json({ error: "请上传需要进行口型同步的视频文件。" }, { status: 400 });
     }
-    if (!audioFileId && (!(audio instanceof File) || !audio.type.startsWith("audio/"))) {
+    if (shouldUploadAudio && !audioFileId && (!(audio instanceof File) || !audio.type.startsWith("audio/"))) {
       return Response.json({ error: "请先生成口播音频。" }, { status: 400 });
     }
     if (video instanceof File && (video.size <= 0 || video.size > MAX_VIDEO_BYTES)) {
@@ -124,7 +130,7 @@ export async function POST(request: Request) {
     // Chanjing's upload gateway is sensitive to simultaneous signed-slot
     // creation. Upload sequentially so each media file is fully ready before
     // requesting the next slot and creating the lip-sync task.
-    if (!videoFileId) {
+    if (shouldUploadVideo && !videoFileId) {
       stage = "上传人物视频";
       const videoUpload = await uploadLipSyncMedia({
         service: "lip_sync_video",
@@ -136,7 +142,30 @@ export async function POST(request: Request) {
       checkpointResult = { ...checkpointResult, stage: "video_uploaded", videoFileId, audioDuration };
       updateAiTask(member, requestId, { state: "running", progress: 16, result: checkpointResult, error: "" });
     }
-    if (!audioFileId) {
+    if (operation === "upload_video") {
+      return Response.json({
+        state: "uploading",
+        isFinal: false,
+        progress: 16,
+        requestId,
+        projectName,
+        estimatedPoints: billablePointsFromCost(estimatedPoints),
+        audioDuration,
+        resumeAvailable: true,
+        nextOperation: "upload_audio",
+        checkpoint: { videoUploaded: Boolean(videoFileId), audioUploaded: Boolean(audioFileId) },
+        wallet: await getWallet(member),
+      });
+    }
+    if (operation === "upload_audio" && !videoFileId) {
+      return Response.json({
+        error: "人物视频尚未上传完成，请从视频上传步骤继续。",
+        requestId,
+        resumeAvailable: true,
+        checkpoint: { videoUploaded: false, audioUploaded: Boolean(audioFileId) },
+      }, { status: 409 });
+    }
+    if (shouldUploadAudio && !audioFileId) {
       stage = "上传口播音频";
       const audioUpload = await uploadLipSyncMedia({
         service: "lip_sync_audio",
@@ -147,6 +176,29 @@ export async function POST(request: Request) {
       audioFileId = audioUpload.fileId;
       checkpointResult = { ...checkpointResult, stage: "audio_uploaded", videoFileId, audioFileId, audioDuration };
       updateAiTask(member, requestId, { state: "running", progress: 30, result: checkpointResult, error: "" });
+    }
+    if (operation === "upload_audio") {
+      return Response.json({
+        state: "uploading",
+        isFinal: false,
+        progress: 30,
+        requestId,
+        projectName,
+        estimatedPoints: billablePointsFromCost(estimatedPoints),
+        audioDuration,
+        resumeAvailable: true,
+        nextOperation: "submit",
+        checkpoint: { videoUploaded: Boolean(videoFileId), audioUploaded: Boolean(audioFileId) },
+        wallet: await getWallet(member),
+      });
+    }
+    if (!videoFileId || !audioFileId) {
+      return Response.json({
+        error: "上传素材尚未准备完整，请继续完成当前上传步骤。",
+        requestId,
+        resumeAvailable: true,
+        checkpoint: { videoUploaded: Boolean(videoFileId), audioUploaded: Boolean(audioFileId) },
+      }, { status: 409 });
     }
     stage = "创建对口型任务";
     const task = await createLipSyncTask({
@@ -218,6 +270,30 @@ export async function GET(request: Request) {
   const url = new URL(request.url);
   const taskId = url.searchParams.get("task_id") || "";
   const requestId = url.searchParams.get("request_id") || "";
+  if (!taskId && requestId) {
+    const stored = getAiTask(member, requestId);
+    if (!stored || stored.kind !== "lip_sync_generate" || stored.provider !== "chanjing") {
+      return Response.json({ error: "尚未找到可恢复的对口型任务。" }, { status: 404 });
+    }
+    const storedResult = stored.result || {};
+    const storedProviderTaskId = stored.providerTaskIds[0] || "";
+    return Response.json({
+      taskId: storedProviderTaskId || null,
+      requestId,
+      projectName: typeof stored.input.projectName === "string" ? stored.input.projectName : "对口型视频",
+      state: stored.state,
+      isFinal: stored.state === "success" || stored.state === "failed",
+      progress: stored.progress,
+      error: stored.error || null,
+      resumeAvailable: stored.state !== "success",
+      audioDuration: Number(storedResult.audioDuration) || 0,
+      checkpoint: {
+        videoUploaded: Boolean(storedResult.videoFileId),
+        audioUploaded: Boolean(storedResult.audioFileId),
+      },
+      wallet: await getWallet(member),
+    });
+  }
   if (!taskId) return Response.json({ error: "缺少对口型任务编号。" }, { status: 400 });
 
   try {
