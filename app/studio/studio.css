@@ -843,6 +843,10 @@
 .asset-item { min-width: 0; overflow: hidden; border: 1px solid #e2e7e4; border-radius: 4px 14px 14px 14px; background: #fbfcfb; }
 .asset-media { position: relative; width: 100%; aspect-ratio: 4/3; padding: 0; overflow: hidden; display: grid; place-items: center; border: 0; background: #e8eeea; }
 .asset-media img,.asset-media video { width: 100%; height: 100%; display: block; object-fit: cover; }
+.asset-media video { position: relative; z-index: 1; opacity: 0; transition: opacity .2s ease; }
+.asset-media video.is-ready { opacity: 1; }
+.asset-media .asset-video-placeholder { position: absolute; z-index: 0; inset: 0; width: auto; height: auto; display: grid; place-items: center; border-radius: 0; background: linear-gradient(145deg,#e8eeea,#dfe8e2); color: #6f7d75; font: 800 9px/1.3 system-ui,sans-serif; }
+.asset-media .asset-video-placeholder.is-error { color: #9c5652; background: #f8eae7; }
 .asset-media > span { width: 60px; height: 60px; display: grid; place-items: center; border-radius: 50%; background: #173d2f; color: #d4ae66; font: 800 24px/1 "Songti SC",serif; }
 .asset-media > i { position: absolute; right: 8px; bottom: 8px; padding: 5px 8px; border-radius: 999px; background: rgba(8,27,19,.78); color: #fff; font-size: 8px; font-style: normal; opacity: 0; transition: opacity .2s; }
 .asset-media:hover > i { opacity: 1; }
@@ -865,6 +869,7 @@
 .asset-viewer header h2 { margin: 7px 0 4px; font: 800 22px/1.2 "Songti SC",serif; }
 .asset-viewer > img,.asset-viewer > video { width: 100%; max-height: 62svh; display: block; object-fit: contain; border-radius: 3px 14px 14px 14px; background: #edf1ee; }
 .asset-viewer > audio { width: 100%; margin: 40px 0; }
+.asset-viewer-error { margin-top: 10px; padding: 11px 13px; border-radius: 3px 10px 10px 10px; background: #fff0ed; color: #9c4842; font-size: 10px; font-weight: 800; }
 .asset-viewer footer { position: static; z-index: auto; min-height: 0; margin-top: 14px; padding: 0; display: flex; align-items: center; justify-content: flex-end; gap: 9px; border: 0; background: transparent; color: inherit; font-size: inherit; }
 .asset-viewer footer a,.asset-viewer footer button { padding: 10px 16px; border: 0; border-radius: 3px 10px 10px 10px; background: #edf1ee; color: #173d2f; font-size: 10px; text-decoration: none; }
 .asset-viewer footer a { background: #173d2f; color: #fff; }

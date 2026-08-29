@@ -8,6 +8,7 @@ function clean(value: unknown, fallback: string, max: number) {
 }
 
 function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
+  const assetPath = `/api/member/assets/${encodeURIComponent(item.id)}`;
   return {
     id: item.id,
     projectName: item.project_name,
@@ -20,8 +21,11 @@ function assetJson(item: Awaited<ReturnType<typeof listMemberAssets>>[number]) {
     createdAt: Number(item.created_at) * 1000,
     expiresAt: item.expires_at === null ? null : Number(item.expires_at) * 1000,
     retentionDays: item.kind === "video" ? 7 : item.kind === "image" ? 30 : null,
-    mediaUrl: `/api/member/assets/${encodeURIComponent(item.id)}`,
-    coverUrl: item.cover_object_key ? `/api/member/assets/${encodeURIComponent(item.id)}?cover=1` : "",
+    // 预览和二次创作必须保持同源，避免私有 COS 临时地址在 video/fetch
+    // 两种使用方式下出现跨域、Content-Type 或签名过期问题。
+    mediaUrl: item.kind === "video" ? `${assetPath}?stream=1` : assetPath,
+    downloadUrl: `${assetPath}?download=1`,
+    coverUrl: item.cover_object_key ? `${assetPath}?cover=1` : "",
     viralWorkflow: item.viral_workflow,
   };
 }

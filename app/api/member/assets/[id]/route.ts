@@ -23,9 +23,11 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const member = await getMemberSession();
   if (!member) return Response.json({ error: "请先登录会员账号。" }, { status: 401 });
   const { id } = await context.params;
-  const cover = new URL(request.url).searchParams.get("cover") === "1";
-  const download = new URL(request.url).searchParams.get("download") === "1";
-  const directUrl = getMemberAssetDirectUrl(member, id, cover, download);
+  const searchParams = new URL(request.url).searchParams;
+  const cover = searchParams.get("cover") === "1";
+  const download = searchParams.get("download") === "1";
+  const stream = searchParams.get("stream") === "1";
+  const directUrl = stream ? "" : getMemberAssetDirectUrl(member, id, cover, download);
   if (directUrl) {
     return new Response(null, {
       status: 307,
@@ -51,8 +53,12 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
   const asset = await getMemberAsset(member, id, request.headers.get("range") || "");
   if (!asset) return Response.json({ error: "没有找到这个会员资产。" }, { status: 404 });
   const filename = filenameWithExtension(asset.row.name, asset.row.content_type);
+  const responseContentType = asset.object.httpMetadata.contentType || asset.row.content_type;
+  const contentType = responseContentType === "application/octet-stream" && asset.row.kind === "video"
+    ? asset.row.object_key.toLowerCase().endsWith(".webm") ? "video/webm" : "video/mp4"
+    : responseContentType;
   const headers = new Headers({
-    "Content-Type": asset.row.content_type,
+    "Content-Type": contentType,
     "Content-Disposition": `${download ? "attachment" : "inline"}; filename*=UTF-8''${encodeURIComponent(filename)}`,
     "Cache-Control": download ? "private, no-store" : "private, max-age=86400",
     "X-Content-Type-Options": "nosniff",
