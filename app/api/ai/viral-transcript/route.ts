@@ -10,6 +10,7 @@ import {
 import {
   buildViralDirectorPlan,
   markViralKeywordSfx,
+  sanitizeViralKeyword,
   type ViralCaptionPlanItem,
 } from "../../../../lib/viral-workflow";
 
@@ -215,14 +216,6 @@ function localNode(text: string, index: number, total: number): ViralCaptionPlan
   return "supporting";
 }
 
-function localKeyword(text: string) {
-  const value = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
-  const match = value.match(/\d+(?:\.\d+)?[%折元万+]?|[一二三四五六七八九十百千万]+(?:个|类|项|种)|效率|提升|关键|核心|方法|步骤|技能|专业|免费|优惠|结果|问题|价值|马上|现在/);
-  if (match?.[0]) return match[0].slice(0, 8);
-  if (value.length <= 4) return value;
-  return value.slice(Math.max(0, Math.floor(value.length * 0.5) - 2), Math.max(0, Math.floor(value.length * 0.5) - 2) + 4);
-}
-
 function localIntents(node: ViralCaptionPlanItem["contentNode"], weight: number) {
   return {
     cameraIntent: (node === "hook" ? "push-in" : node === "number_benefit" ? "close-up" : node === "example_step" ? "reframe" : node === "cta" ? "pull-back" : weight >= 0.72 ? "push-in" : "hold") as ViralCaptionPlanItem["cameraIntent"],
@@ -248,7 +241,9 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
       : localNode(caption.text, index, captions.length);
     const weight = Math.max(0, Math.min(1, Number(raw.weight) || (index === 0 || index === captions.length - 1 ? 0.9 : 0.55)));
     const candidate = typeof raw.keyword === "string" ? raw.keyword.replace(/\s+/g, "").slice(0, 8) : "";
-    const keyword = candidate && plainText(caption.text).includes(plainText(candidate)) ? candidate : localKeyword(caption.text);
+    const keyword = candidate && plainText(caption.text).includes(plainText(candidate))
+      ? sanitizeViralKeyword(caption.text, candidate, node, weight)
+      : "";
     const local = localIntents(node, weight);
     return {
       ...caption,
@@ -256,13 +251,28 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
       translation: typeof raw.translation === "string" ? raw.translation.trim().slice(0, 240) : "",
       contentNode: node,
       contentWeight: weight,
-      keywordOrigin: candidate ? "ai" as const : "local" as const,
+      keywordOrigin: keyword ? "ai" as const : "none" as const,
       cameraIntent: ["hold", "push-in", "pull-back", "reframe", "close-up", "wide"].includes(String(raw.camera_intent)) ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"] : local.cameraIntent,
       transitionIntent: ["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"].includes(String(raw.transition_intent)) ? raw.transition_intent as ViralCaptionPlanItem["transitionIntent"] : local.transitionIntent,
       sfxRole: ["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"].includes(String(raw.sfx_role)) ? raw.sfx_role as ViralCaptionPlanItem["sfxRole"] : local.sfxRole,
     };
   });
   return markViralKeywordSfx(enriched, duration);
+}
+
+function semanticPlanIsComplete(items: Record<string, unknown>[], expectedLength: number) {
+  const nodes = new Set(["hook", "pain_reversal", "core_viewpoint", "number_benefit", "example_step", "brand_entity", "cta", "supporting"]);
+  const cameras = new Set(["hold", "push-in", "pull-back", "reframe", "close-up", "wide"]);
+  const transitions = new Set(["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"]);
+  const sfxRoles = new Set(["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"]);
+  return items.length === expectedLength && items.every((item) => (
+    nodes.has(String(item.content_node))
+    && cameras.has(String(item.camera_intent))
+    && transitions.has(String(item.transition_intent))
+    && sfxRoles.has(String(item.sfx_role))
+    && Number.isFinite(Number(item.weight))
+    && typeof item.keyword === "string"
+  ));
 }
 
 export async function POST(request: Request) {
@@ -289,7 +299,7 @@ export async function POST(request: Request) {
     const sourceText = lockedCaptions.map((item) => item.text).join(sourceLanguage === "en" ? " " : "");
     const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
     const cacheKey = transcriptCacheKey({
-      version: "viral-transcript-semantic-lock-v2",
+      version: "viral-transcript-semantic-lock-v3-ai-source-of-truth",
       model: TRANSCRIPT_MODEL,
       templateId,
       duration,
@@ -311,7 +321,8 @@ export async function POST(request: Request) {
 9. title_lines必须把title按完整语义分为1到2行；禁止拆开品牌名、主体、动作、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。标题要符合自然中文语序，例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
 10. 在同一次请求中为每条字幕补充keyword、content_node、weight、camera_intent、transition_intent、sfx_role和translation。镜头与转场只表达语义意图，不输出具体时间和像素。
 11. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting；camera_intent只能是hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。普通承接句不要强加音效。
-12. bgm_mood只能是calm/warm/professional/uplifting/neutral。
+12. keyword必须是当前corrected_text中连续出现的完整语义短语，通常2至8字；数字可单独提亮。问候、自我介绍、工具来源和普通承接句一律为空；“大家好、我是、我、codex、AI、视频、工具、剪辑”不能单独作为关键词。像“我用codex做了一款”必须为空，“AI剪辑口播视频的工具”可选“AI剪辑”或“口播视频工具”。整条视频通常仅15%至35%的字幕需要关键词，允许只有1至3个，严禁为了数量强行提亮。
+13. bgm_mood只能是calm/warm/professional/uplifting/neutral。
 只返回JSON：{"titleCandidates":["候选1","候选2","候选3"],"title":"最终标题","title_lines":["第一行","第二行"],"summary":"一句识别说明","bgm_mood":"professional","captions":[{"id":1,"corrected_text":"想提升办公和职场技能","caption_lines":["想提升办公","和职场技能"],"keyword":"提升","translation":"Improve your skills","content_node":"hook","weight":0.9,"camera_intent":"push-in","transition_intent":"cut","sfx_role":"hook"}]}。`;
     const content = [
       {
@@ -379,6 +390,12 @@ export async function POST(request: Request) {
       model: selectedModel,
       degraded: !response || !aiPlan.accepted,
     });
+    const planReady = Boolean(
+      response
+      && aiPlan.accepted
+      && aiTitle
+      && semanticPlanIsComplete(rawPlan, lockedCaptions.length),
+    );
     const result = {
       title,
       titleLines: titleLayout.lines,
@@ -386,16 +403,16 @@ export async function POST(request: Request) {
         ? parsed.summary.trim().slice(0, 180)
         : response
           ? "AI 已在锁定时间轴上完成文案校正、标题与字幕排版。"
-          : "AI 模型繁忙，已保留确认时间轴并使用本地语义排版，可继续编辑。",
+          : "AI 规划未完成，当前仅保留真实时间轴，不会机械补充关键词；请重试 AI 识别并排版。",
       captions: directorPlan.captions,
       directorPlan,
-      planReady: true,
+      planReady,
       model: selectedModel,
       endpoint,
-      degraded: !response || !aiPlan.accepted,
+      degraded: !planReady,
       cache: "miss",
     };
-    writeTranscriptCache(cacheKey, result);
+    if (planReady) writeTranscriptCache(cacheKey, result);
     return Response.json(result);
   } catch (error) {
     return aiErrorResponse(error);

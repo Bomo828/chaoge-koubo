@@ -46,14 +46,15 @@ class SharedDirectorTests(unittest.TestCase):
             self.assertEqual(source, "shared-local-director")
             self.assertEqual(len(planned), len(self.captions))
             self.assertTrue(all(item.get("keywordLocked") for item in planned))
-            self.assertGreaterEqual(
+            # When the AI plan is unavailable the renderer must preserve the
+            # transcript without inventing emphasis.  A missing highlight is
+            # safer than an incorrect one.
+            self.assertEqual(
                 sum(bool(str(item.get("keyword") or "").strip()) for item in planned),
-                2,
+                0,
             )
             key_sfx_items = [item for item in planned if item.get("keywordSfx") is True]
-            self.assertGreaterEqual(len(key_sfx_items), 1)
-            self.assertLessEqual(len(key_sfx_items), 2)
-            self.assertTrue(all(str(item.get("keyword") or "").strip() for item in key_sfx_items))
+            self.assertEqual(len(key_sfx_items), 0)
             self.assertNotIn("你是酒", {str(item.get("keyword") or "") for item in planned})
             self.assertNotIn("年华为", {str(item.get("keyword") or "") for item in planned})
             self.assertEqual(planned[1].get("contentNode"), "pain_reversal")
@@ -68,8 +69,39 @@ class SharedDirectorTests(unittest.TestCase):
                 [],
                 "效率提升方法",
             )
-            self.assertTrue(any(cue.get("role") not in {"opening", "ending"} for cue in cues))
+            self.assertFalse(any(cue.get("role") not in {"opening", "ending"} for cue in cues))
             self.assertTrue(all(str(cue.get("file") or "").startswith(f"sfx/{template_id}/") for cue in cues))
+
+    def test_generic_self_intro_words_are_never_highlighted(self) -> None:
+        captions = [
+            {"start": 0.0, "end": 1.6, "text": "大家好我是潮哥"},
+            {"start": 1.6, "end": 3.2, "text": "我用codex做了一款"},
+            {"start": 3.2, "end": 5.2, "text": "AI剪辑口播视频的工具"},
+        ]
+        directed_items = [
+            {"content_node": "supporting", "keyword": "我是", "confidence": 0.99, "importance": 0.9},
+            {"content_node": "supporting", "keyword": "codex", "confidence": 0.99, "importance": 0.9},
+            {"content_node": "core_viewpoint", "keyword": "视频", "confidence": 0.99, "importance": 0.9},
+        ]
+        planned = worker.apply_shared_director_items(captions, directed_items, "AI超级剪辑")
+        self.assertEqual([str(item.get("keyword") or "") for item in planned], ["", "", ""])
+        self.assertFalse(any(item.get("keywordSfx") is True for item in planned))
+
+    def test_ai_may_select_a_complete_meaningful_phrase(self) -> None:
+        self.assertEqual(
+            worker.validated_ai_keyword("AI剪辑口播视频的工具", "AI剪辑", "core_viewpoint", 0.88),
+            "AI剪辑",
+        )
+        captions = [
+            {"start": 0.0, "end": 2.0, "text": "AI剪辑口播视频的工具"},
+            {"start": 2.0, "end": 4.0, "text": "可以让制作效率提升一倍"},
+        ]
+        directed_items = [
+            {"content_node": "core_viewpoint", "keyword": "AI剪辑", "confidence": 0.94, "importance": 0.88},
+            {"content_node": "number_benefit", "keyword": "效率提升", "confidence": 0.93, "importance": 0.9},
+        ]
+        planned = worker.apply_shared_director_items(captions, directed_items, "AI超级剪辑")
+        self.assertEqual([str(item.get("keyword") or "") for item in planned], ["", "效率提升"])
 
     def test_all_four_templates_cut_to_visible_camera_sections(self) -> None:
         transition_points = [4.0, 8.0, 12.0]

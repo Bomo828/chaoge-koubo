@@ -4455,7 +4455,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           degraded: !viralCaptionPlanReady,
         });
         form.append("director_plan_json", JSON.stringify(directorPlan));
-        form.append("caption_plan_ready", viralCaptionsConfirmed && directorPlan.captions.length ? "true" : "false");
+        form.append("caption_plan_ready", viralCaptionsConfirmed && viralCaptionPlanReady && directorPlan.captions.length ? "true" : "false");
         form.append("include_sfx", viralIncludeSfx ? "true" : "false");
         form.append("include_bgm", viralIncludeBgm ? "true" : "false");
         const createResponse = await fetch(`${videoWorkerBaseUrl()}/v1/jobs`, {

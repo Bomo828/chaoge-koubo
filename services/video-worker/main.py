@@ -610,8 +610,16 @@ def semantic_caption_plan(
         caption["effectLevel"] = effect_level
         caption["materialRoute"] = route
         caption["role"] = "focus" if node not in {"supporting", "brand_entity"} else "anchor"
-        if not caption.get("keywordLocked"):
-            caption["keyword"] = str(caption.get("keyword") or kinetic_keyword(text))
+        semantic_keyword_decided = bool(caption.get("keywordLocked")) or str(caption.get("keywordOrigin") or "") in {
+            "ai", "local", "none",
+        }
+        if not semantic_keyword_decided:
+            # Semantic emphasis is owned by the one-shot AI plan.  The worker
+            # validates and renders that decision, but never invents a second
+            # keyword when the plan is missing or rejected.
+            caption["keyword"] = ""
+            caption["keywordOrigin"] = "none"
+            caption["keywordLocked"] = True
     step_number = 0
     for caption in planned:
         if caption.get("contentNode") == "example_step" and caption.get("animation") == "step-card":
@@ -709,11 +717,13 @@ def finalize_template10_director_plan(captions: list[dict[str, Any]]) -> list[di
     for index, caption in enumerate(prepared):
         text = re.sub(r"\s+", "", str(caption.get("text") or ""))
         node = str(caption.get("contentNode") or "supporting")
-        keyword_locked = bool(caption.get("keywordLocked"))
+        keyword_locked = bool(caption.get("keywordLocked")) or str(caption.get("keywordOrigin") or "") in {
+            "ai", "local", "none",
+        }
         keyword = (
             str(caption.get("keyword") or "")
             if keyword_locked
-            else safe_director_keyword(text, str(caption.get("keyword") or kinetic_keyword(text)))
+            else ""
         )
         start = float(caption.get("start") or 0.0)
         strong = node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"}
@@ -779,15 +789,19 @@ LOCAL_KEYWORD_CANDIDATES = (
     "效率", "提升", "增长", "收益", "优惠", "免费", "方法", "步骤", "重点",
     "结论", "价值", "专业", "真实", "服务", "品牌", "产品", "客户", "课程",
     "培训", "技能", "岗位", "基础", "实用", "咨询", "预约", "联系", "关注",
-    "模板生成", "从哪开始", "下一步", "中智联", "钟智联", "开始", "生成", "改写",
-    "检查", "资料", "文案",
-    "图片", "视频", "工具", "AI",
+    "模板生成", "从哪开始", "下一步", "中智联", "钟智联", "一键网感", "AI超级剪辑",
+    "AI剪辑", "口播视频工具", "口播视频",
 )
 
 KEYWORD_STOPWORDS = {
     "这个", "那个", "这些", "那些", "然后", "就是", "我们", "大家", "自己",
     "一个", "一些", "可以", "可能", "其实", "所以", "但是", "因为", "如果",
     "以及", "还是", "已经", "现在", "进行", "通过", "需要", "觉得", "感觉",
+    "大家好", "你好", "我是", "我叫", "来自",
+}
+
+WEAK_STANDALONE_KEYWORDS = {
+    "ai", "视频", "工具", "剪辑", "内容", "功能", "素材", "文案", "字幕", "codex",
 }
 
 
@@ -795,6 +809,8 @@ def grounded_local_keyword(text: str, content_node: str = "supporting") -> str:
     """Return only a complete, grounded phrase; never slice the sentence midpoint."""
     compact = re.sub(r"[\s，。！？；：、,.!?;:]", "", text)
     if not compact:
+        return ""
+    if re.match(r"^(?:大家好|你好|我是|我叫|来自)", compact):
         return ""
     number = re.search(
         r"(?:(?:提升|增长|节省|降低|超过|达到)?\d+(?:\.\d+)?(?:%|％|折|元|万|倍|个|类|步|天|小时|分钟|项|种)|第[一二三四五六七八九十]+|[一二三四五六七八九十百千万]+(?:个|类|步|项|种))",
@@ -816,7 +832,12 @@ def grounded_local_keyword(text: str, content_node: str = "supporting") -> str:
     return ""
 
 
-def validated_ai_keyword(text: str, keyword: str, content_node: str = "supporting") -> str:
+def validated_ai_keyword(
+    text: str,
+    keyword: str,
+    content_node: str = "supporting",
+    importance: float = 0.5,
+) -> str:
     """Accept only an exact, informative span from the confirmed caption."""
     compact = re.sub(r"[\s，。！？；：、,.!?;:]", "", text)
     selected = re.sub(r"[\s，。！？；：、,.!?;:]", "", keyword)
@@ -828,16 +849,22 @@ def validated_ai_keyword(text: str, keyword: str, content_node: str = "supportin
         return ""
     if selected in KEYWORD_STOPWORDS:
         return ""
+    if selected.lower() in WEAK_STANDALONE_KEYWORDS:
+        return ""
     if selected[0] in "的了呢吗吧啊把被和与或就都也很在从" or selected[-1] in "的了呢吗吧啊着过和与或":
         return ""
     if len(selected) > 6 and content_node != "brand_entity":
         return ""
     if selected == compact and len(compact) > 5 and content_node != "brand_entity":
         return ""
+    if re.search(r"大家好|你好|我是|我叫|来自", compact) and content_node == "brand_entity":
+        return ""
+    if content_node == "supporting" and max(0.0, min(1.0, importance)) < 0.72:
+        return ""
     return selected
 
 
-def safe_director_keyword(text: str, keyword: str) -> str:
+def safe_director_keyword(text: str, keyword: str, content_node: str = "supporting") -> str:
     """Keep AI emphasis visually selective instead of painting a whole line.
 
     The director may correctly identify a complete phrase semantically, but the
@@ -848,11 +875,13 @@ def safe_director_keyword(text: str, keyword: str) -> str:
     compact = re.sub(r"[\s，。！？；：、,.!?;:]", "", text)
     selected = re.sub(r"[\s，。！？；：、,.!?;:]", "", keyword)
     if not selected or len(selected) > 8 or selected not in compact:
-        return kinetic_keyword(compact)
+        return ""
+    selected = validated_ai_keyword(compact, selected, content_node, 1.0)
+    if not selected:
+        return ""
     covers_whole_line = selected == compact and len(compact) > 5
     if covers_whole_line:
-        reduced = grounded_local_keyword(compact)
-        return reduced if reduced and reduced != compact else ""
+        return ""
     return selected
 
 
@@ -894,11 +923,12 @@ def ai_select_caption_highlights(
 3. 通常选择2到5个字，品牌/产品名最多8个字；超过5字的普通句子禁止整句提亮，必须收缩到核心词组。
 4. 禁止截取没有完整含义的半截词，例如“板生成”“升办公”；也不要把“不知道从哪开始”“模板生成检查”这种完整长句整句变色，应分别提取“从哪开始”“模板生成”一类核心短语。
 5. 不要选择“这个、那个、然后、就是、我们、大家”等无信息量词语。
-6. 普通过渡句、语气句、信息量不足的句子应返回空字符串，不要为了有颜色而强行提亮；整条视频建议只有约40%至65%的字幕出现提亮词。
-7. 相邻字幕不要重复提亮同一个泛化词；品牌名、产品名确需连续强调时除外。
-8. confidence 为0到1；只有你确信这是完整语义词组时才应高于0.62。
-9. id、数量和顺序必须与输入完全一致。
-10. 只返回JSON：{{"items":[{{"id":0,"keyword":"原文中的词组或空字符串","confidence":0.86,"category":"benefit/action/number/contrast/entity/cta/none"}}]}}。
+6. 普通过渡句、语气句、问候、自我介绍、工具来源和信息量不足的句子应返回空字符串，不要为了有颜色而强行提亮；整条视频通常只有约15%至35%的字幕出现提亮词。
+7. “大家好、我是、codex、AI、视频、工具、剪辑”单独出现都不是关键词。像“我用codex做了一款”应返回空字符串，“AI剪辑口播视频的工具”可选择“AI剪辑”或“口播视频工具”。
+8. 相邻字幕不要重复提亮同一个泛化词；品牌名、产品名确需连续强调时除外。
+9. confidence 为0到1；只有你确信这是完整语义词组时才应高于0.62。
+10. id、数量和顺序必须与输入完全一致。
+11. 只返回JSON：{{"items":[{{"id":0,"keyword":"原文中的词组或空字符串","confidence":0.86,"category":"benefit/action/number/contrast/entity/cta/none"}}]}}。
 
 已确认口播字幕：
 {json.dumps(source, ensure_ascii=False)}"""
@@ -953,7 +983,7 @@ def ai_select_caption_highlights(
             if isinstance(value, dict) and str(value.get("id", "")).lstrip("-").isdigit()
         }
         selected_count = 0
-        maximum_highlights = max(1, math.ceil(len(prepared) * 0.65))
+        maximum_highlights = max(1, math.ceil(len(prepared) * 0.35))
         previous_keyword = ""
         for index, item in enumerate(prepared):
             value = values_by_id.get(index, {})
@@ -965,14 +995,11 @@ def ai_select_caption_highlights(
                 0.0,
                 min(1.0, float(raw_confidence if raw_confidence is not None else (0.75 if raw_keyword else 0.0))),
             )
-            keyword = validated_ai_keyword(text, raw_keyword, node)
+            keyword = validated_ai_keyword(text, raw_keyword, node, confidence)
             keyword_origin = "ai"
-            if raw_keyword and not keyword:
-                keyword = grounded_local_keyword(text, node)
-                keyword_origin = "grounded-local-repair"
             if confidence < 0.62:
                 keyword = ""
-            if keyword and selected_count >= maximum_highlights and node == "supporting":
+            if keyword and selected_count >= maximum_highlights:
                 keyword = ""
             if keyword and keyword == previous_keyword and node not in {"brand_entity", "number_benefit"}:
                 keyword = ""
@@ -1028,9 +1055,7 @@ def apply_shared_director_items(
         if isinstance(directed_items, list) and len(directed_items) == len(baseline)
         else []
     )
-    maximum_highlights = max(1, math.ceil(len(baseline) * 0.65))
-    selected_count = 0
-    previous_keyword = ""
+    maximum_highlights = max(1, math.ceil(len(baseline) * 0.35))
     enriched: list[dict[str, Any]] = []
     for index, source_caption in enumerate(baseline):
         caption = dict(source_caption)
@@ -1050,28 +1075,18 @@ def apply_shared_director_items(
             confidence = max(0.0, min(1.0, float(value.get("confidence", 0.0))))
         except (TypeError, ValueError):
             confidence = 0.0
-        keyword = validated_ai_keyword(text, raw_keyword, node) if raw_keyword else ""
-        keyword_origin = "ai"
-        if not values:
-            keyword = grounded_local_keyword(text, node)
-            confidence = 0.7 if keyword else 0.0
-            keyword_origin = "local"
-        elif raw_keyword and not keyword:
-            keyword = grounded_local_keyword(text, node)
-            keyword_origin = "grounded-local-repair"
-        if confidence < 0.62:
-            keyword = ""
-        if keyword and selected_count >= maximum_highlights and node == "supporting":
-            keyword = ""
-        if keyword and keyword == previous_keyword and node not in {"brand_entity", "number_benefit"}:
-            keyword = ""
-        if keyword:
-            selected_count += 1
-            previous_keyword = keyword
         try:
             importance = max(0.0, min(1.0, float(value.get("importance", 0.0))))
         except (TypeError, ValueError):
             importance = 0.0
+        keyword = validated_ai_keyword(text, raw_keyword, node, importance) if raw_keyword else ""
+        keyword_origin = "ai"
+        if not values:
+            keyword = ""
+            confidence = 0.0
+            keyword_origin = "none"
+        if confidence < 0.62:
+            keyword = ""
         if not values:
             importance = 0.82 if node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"} else 0.45
         requested_category = str(value.get("category") or "").strip().lower()
@@ -1102,39 +1117,27 @@ def apply_shared_director_items(
         if str(value.get("layout") or "") in {"center", "stack-left", "stack-right", "impact"}:
             caption["directorLayout"] = str(value["layout"])
         enriched.append(caption)
-    # Some providers occasionally return a valid whole-video plan with almost
-    # every keyword empty.  Keep the AI's semantic classification, but backfill
-    # a restrained 40% floor using exact phrases from the confirmed transcript.
-    # This avoids both "no highlight" output and the old midpoint slicing that
-    # produced fragments such as “你是酒” or “年华为”.
-    minimum_highlights = min(len(enriched), max(1, math.ceil(len(enriched) * 0.4)))
-    selected_count = sum(bool(str(item.get("keyword") or "").strip()) for item in enriched)
-    if selected_count < minimum_highlights:
-        priority = sorted(
-            range(len(enriched)),
-            key=lambda item_index: (
-                str(enriched[item_index].get("contentNode") or "supporting") == "supporting",
-                -float(enriched[item_index].get("contentWeight") or 0.0),
-                item_index,
-            ),
-        )
-        for item_index in priority:
-            item = enriched[item_index]
-            if str(item.get("keyword") or "").strip():
-                continue
-            candidate = grounded_local_keyword(
-                str(item.get("text") or ""),
-                str(item.get("contentNode") or "supporting"),
-            )
-            if not candidate:
-                continue
-            item["keyword"] = candidate
-            item["keywordLocked"] = True
-            item["keywordConfidence"] = max(0.7, float(item.get("keywordConfidence") or 0.0))
-            item["keywordOrigin"] = "grounded-local-backfill"
-            selected_count += 1
-            if selected_count >= minimum_highlights:
-                break
+    node_priority = {
+        "number_benefit": 8, "pain_reversal": 7, "core_viewpoint": 6,
+        "cta": 5, "hook": 4, "example_step": 3, "brand_entity": 2, "supporting": 1,
+    }
+    highlighted = [index for index, item in enumerate(enriched) if str(item.get("keyword") or "").strip()]
+    keep = set(sorted(
+        highlighted,
+        key=lambda index: (
+            -float(enriched[index].get("contentWeight") or 0.0),
+            -node_priority.get(str(enriched[index].get("contentNode") or "supporting"), 0),
+            index,
+        ),
+    )[:maximum_highlights])
+    previous_keyword = ""
+    for index, item in enumerate(enriched):
+        keyword = str(item.get("keyword") or "").strip()
+        if index not in keep or (keyword and keyword == previous_keyword and str(item.get("contentNode") or "") not in {"brand_entity", "number_benefit"}):
+            item["keyword"] = ""
+            item["keywordOrigin"] = "none"
+        elif keyword:
+            previous_keyword = keyword
     return mark_keyword_sfx_emphasis(semantic_caption_plan(enriched, title, content_director))
 
 
@@ -1162,7 +1165,7 @@ def ai_direct_shared_captions(
         for index, item in enumerate(fallback)
     ]
     cache_key = hashlib.sha256(json.dumps({
-        "version": "shared-content-director-v2-highlight-floor",
+        "version": "shared-content-director-v3-semantic-sparse",
         "model": AI_TITLE_MODEL,
         "title": title,
         "captions": source,
@@ -1187,7 +1190,8 @@ def ai_direct_shared_captions(
 - importance：0到1，只有钩子、反差、结论、数字利益和行动号召适合高于0.72；
 - layout：center/stack-left/stack-right/impact，仅是构图建议。
 
-不要为了热闹而强行强调，整条视频约40%至65%的字幕有关键词即可。只返回JSON：
+问候、自我介绍、工具来源和普通承接句不要提亮；“大家好、我是、codex、AI、视频、工具、剪辑”单独出现都不是关键词。
+不要为了热闹而强行强调，整条视频通常仅15%至35%的字幕有关键词，允许只有1到3个。只返回JSON：
 {{"items":[{{"id":0,"content_node":"hook","keyword":"原文词组","confidence":0.86,"category":"contrast","importance":0.9,"layout":"impact"}}]}}。"""
     request = urllib.request.Request(
         f"{AI_API_BASE_URL}/v1/chat/completions",
@@ -1289,10 +1293,13 @@ def finalize_template9_director_plan(
         if layout not in allowed_layouts:
             layout = "center" if node in {"hook", "core_viewpoint", "number_benefit", "cta"} else ("stack-left" if current_block % 2 == 0 else "stack-right")
         requested_keyword = str(value.get("keyword") or caption.get("keyword") or "")
+        semantic_keyword_decided = bool(caption.get("keywordLocked")) or str(caption.get("keywordOrigin") or "") in {
+            "ai", "local", "none",
+        }
         keyword = (
-            safe_director_keyword(text, requested_keyword)
+            safe_director_keyword(text, requested_keyword, node)
             if requested_keyword
-            else grounded_local_keyword(text, node)
+            else "" if semantic_keyword_decided else grounded_local_keyword(text, node)
         )
         strong = str(value.get("emphasis") or "") == "strong" or node in {"hook", "pain_reversal", "core_viewpoint", "number_benefit", "cta"}
         caption.update({

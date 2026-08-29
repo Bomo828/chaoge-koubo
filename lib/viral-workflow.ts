@@ -17,7 +17,7 @@ export type ViralCaptionPlanItem = {
 };
 
 export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
-export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-semantic-lock-v2";
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-semantic-lock-v3";
 
 export type ViralBgmMood = "calm" | "warm" | "professional" | "uplifting" | "neutral";
 
@@ -83,6 +83,45 @@ const KEYWORD_SFX_NODE_SCORE: Record<NonNullable<ViralCaptionPlanItem["contentNo
   supporting: 1.2,
 };
 
+const VIRAL_KEYWORD_STOPWORDS = new Set([
+  "这个", "那个", "这些", "那些", "然后", "就是", "我们", "大家", "自己",
+  "一个", "一些", "可以", "可能", "其实", "所以", "但是", "因为", "如果",
+  "以及", "还是", "已经", "现在", "进行", "通过", "需要", "觉得", "感觉",
+  "大家好", "你好", "我是", "我叫", "来自",
+]);
+
+const VIRAL_WEAK_STANDALONE_KEYWORDS = new Set([
+  "ai", "视频", "工具", "剪辑", "内容", "功能", "素材", "文案", "字幕", "codex",
+]);
+
+function compactViralText(value: string) {
+  return value.toLocaleLowerCase().replace(/[\s，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
+}
+
+/**
+ * Accept only a grounded, informative phrase. An empty keyword is a valid
+ * semantic decision and is safer than mechanically colouring a filler word.
+ */
+export function sanitizeViralKeyword(
+  text: string,
+  value: unknown,
+  node: ViralCaptionPlanItem["contentNode"] = "supporting",
+  weight = 0.5,
+) {
+  const original = typeof value === "string" ? value.trim().replace(/\s+/g, "") : "";
+  const selected = compactViralText(original);
+  const compactText = compactViralText(text);
+  if (!selected || !compactText.includes(selected)) return "";
+  if (selected.length > 8 || (selected.length < 2 && !/^\d$/.test(selected))) return "";
+  if (VIRAL_KEYWORD_STOPWORDS.has(selected) || VIRAL_WEAK_STANDALONE_KEYWORDS.has(selected)) return "";
+  if (/^[的了呢吗吧啊把被和与或就都也很在从]/.test(selected)) return "";
+  if (/[的了呢吗吧啊着过和与或]$/.test(selected)) return "";
+  if (selected === compactText && compactText.length > 5 && node !== "brand_entity") return "";
+  if (/大家好|你好|我是|我叫|来自/.test(compactText) && node === "brand_entity") return "";
+  if (node === "supporting" && Math.max(0, Math.min(1, Number(weight) || 0)) < 0.72) return "";
+  return original;
+}
+
 /**
  * Keep visual highlights richer than the sound track. Every confirmed keyword
  * can remain highlighted, but only a sparse, well-spaced subset becomes a
@@ -138,7 +177,6 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
     const start = Math.max(0, Math.min(maximumDuration, Number(record.start) || 0));
     const end = Math.min(maximumDuration, Math.max(start + 0.04, Number(record.end) || start + 0.5));
     if (!text || start >= maximumDuration || end <= start) return [];
-    const keyword = shortText(record.keyword, 16);
     const translation = shortText(record.translation, 240);
     const node = CONTENT_NODES.has(record.contentNode as ViralCaptionPlanItem["contentNode"])
       ? record.contentNode as ViralCaptionPlanItem["contentNode"]
@@ -146,6 +184,10 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
     const origin = ["ai", "local", "none"].includes(String(record.keywordOrigin))
       ? record.keywordOrigin as ViralCaptionPlanItem["keywordOrigin"]
       : undefined;
+    const contentWeight = Number.isFinite(Number(record.contentWeight))
+      ? Math.max(0, Math.min(1, Number(record.contentWeight)))
+      : 0.5;
+    const keyword = sanitizeViralKeyword(text, shortText(record.keyword, 16), node, contentWeight);
     const compactText = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:]/g, "");
     const captionLines = Array.isArray(record.captionLines)
       ? record.captionLines
@@ -161,10 +203,10 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
       start: Number(start.toFixed(3)),
       end: Number(end.toFixed(3)),
       text,
-      ...(keyword && text.replace(/\s+/g, "").includes(keyword.replace(/\s+/g, "")) ? { keyword } : {}),
+      ...(keyword ? { keyword } : {}),
       ...(translation ? { translation } : {}),
       ...(node ? { contentNode: node } : {}),
-      ...(Number.isFinite(Number(record.contentWeight)) ? { contentWeight: Math.max(0, Math.min(1, Number(record.contentWeight))) } : {}),
+      ...(Number.isFinite(Number(record.contentWeight)) ? { contentWeight } : {}),
       ...(origin ? { keywordOrigin: origin } : {}),
       ...(typeof record.keywordSfx === "boolean" ? { keywordSfx: record.keywordSfx } : {}),
       ...(record.keywordImportance === "primary" || record.keywordImportance === "regular"

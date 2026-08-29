@@ -4,6 +4,7 @@ import { lk888Fetch } from "../../../../lib/lk888";
 import {
   buildViralDirectorPlan,
   markViralKeywordSfx,
+  sanitizeViralKeyword,
   sanitizeViralCaptionPlan,
   VIRAL_DIRECTOR_PROMPT_VERSION,
   type ViralCaptionPlanItem,
@@ -53,17 +54,9 @@ function plain(value: string) {
   return value.toLocaleLowerCase().replace(/[\s，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
 }
 
-function localKeyword(text: string) {
-  const normalized = text.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
-  const marked = normalized.match(/(?:\d+(?:\.\d+)?[%折元万+]?|[一二三四五六七八九十百千万]+(?:个|类|项|种)|效率|提升|关键|核心|方法|步骤|技能|专业|免费|优惠|结果|问题|价值|马上|现在)/)?.[0];
-  if (marked && marked.length >= 2) return marked.slice(0, 8);
-  if (normalized.length <= 4) return normalized;
-  const start = Math.max(0, Math.floor(normalized.length * 0.45) - 2);
-  return normalized.slice(start, start + Math.min(4, normalized.length - start));
-}
-
 function localNode(text: string, index: number, total: number): ViralCaptionPlanItem["contentNode"] {
   const value = text.replace(/\s+/g, "");
+  if (/^(?:大家好|你好|我是|我叫|来自)/.test(value)) return "supporting";
   if (index === 0 || /为什么|千万|别再|很多人|你知道|想不想/.test(value)) return "hook";
   if (index === total - 1 && /欢迎|咨询|预约|点击|联系|关注|留言/.test(value)) return "cta";
   if (/但是|不过|其实|相反|而是|不是|问题|难|担心/.test(value)) return "pain_reversal";
@@ -112,14 +105,19 @@ function localPlan(captions: ViralCaptionPlanItem[], script: string) {
   const planned = captions.map((caption, index) => {
     const lineLayout = planViralCaptionLayout(caption.text, caption.captionLines, 10);
     const contentNode = localNode(caption.text, index, captions.length);
-    const contentWeight = index === 0 || index === captions.length - 1 ? 0.9 : 0.55;
+    const contentWeight = contentNode === "supporting"
+      ? 0.35
+      : contentNode === "brand_entity"
+        ? 0.58
+        : index === 0 || index === captions.length - 1
+          ? 0.9
+          : 0.72;
     return {
       ...caption,
-      keyword: localKeyword(caption.text),
       translation: caption.translation || "",
       contentNode,
       contentWeight,
-      keywordOrigin: "local" as const,
+      keywordOrigin: "none" as const,
       captionLineMode: lineLayout.mode,
       captionLines: lineLayout.lines,
       ...localIntents(contentNode, contentWeight),
@@ -174,7 +172,9 @@ export async function POST(request: Request) {
   const system = `你是专业竖屏口播短视频的字幕总监。用户已经确认了口播文字和逐句时间轴，你只做一次性轻量校正与导演标注。
 规则：
 1. 不改变id、start、end和条目数量，不重新断句，不删减信息，不添加原文没有的内容；只校正确定的同音错字、品牌名和明显错字。
-2. keyword必须是corrected_text中原样连续出现的1到8个字；普通承接句可以为空，不要每句都强行提亮。
+2. keyword必须是corrected_text中原样连续出现的2到8个字；普通承接句可以为空，不要每句都强行提亮。数字可单独提亮。
+2.1 问候、自我介绍、工具来源和普通名词不提亮；“大家好、我是、codex、AI、视频、工具、剪辑”单独出现时都不是关键词。像“我用codex做了一款”应返回空字符串，“AI剪辑口播视频的工具”可选择“AI剪辑”或“口播视频工具”。
+2.2 先理解整条口播的核心承诺，再选完整的利益点、反差、结论、数字、动作结果或行动号召。整条视频通常仅15%到35%的字幕需要关键词，允许整条短视频只有1到3个关键词。
 3. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting。
 4. translation输出自然简短英文字幕；原文为英文时输出简短中文。
 5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头，必须符合自然中文语序。例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
@@ -201,17 +201,31 @@ export async function POST(request: Request) {
     const parsed = parseJson(extractText(response));
     const items = Array.isArray(parsed.items) ? parsed.items : [];
     if (items.length !== source.length) throw new Error("AI 字幕规划数量不一致。");
+    const cameraIntents = new Set(["hold", "push-in", "pull-back", "reframe", "close-up", "wide"]);
+    const transitionIntents = new Set(["none", "cut", "matched-reframe", "focus-bridge", "foreground-occlusion"]);
+    const sfxRoles = new Set(["none", "hook", "reversal", "viewpoint", "number", "step", "brand", "cta"]);
+    if (typeof parsed.title !== "string" || !parsed.title.trim()) throw new Error("AI 没有返回完整标题。");
     const captions = markViralKeywordSfx(source.map((caption, index) => {
       const raw = items[index] && typeof items[index] === "object" ? items[index] as Record<string, unknown> : {};
       if (Number(raw.id) !== index) throw new Error("AI 字幕规划顺序不一致。");
+      if (
+        !NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
+        || !cameraIntents.has(String(raw.camera_intent))
+        || !transitionIntents.has(String(raw.transition_intent))
+        || !sfxRoles.has(String(raw.sfx_role))
+        || !Number.isFinite(Number(raw.weight))
+        || typeof raw.keyword !== "string"
+      ) throw new Error("AI 字幕导演方案字段不完整。");
       const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
-      const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
-      const keyword = candidate && plain(text).includes(plain(candidate)) ? candidate : "";
       const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
         ? raw.content_node as ViralCaptionPlanItem["contentNode"]
         : localNode(text, index, source.length);
       const lineLayout = planViralCaptionLayout(text, raw.caption_lines, 10);
       const contentWeight = Math.max(0, Math.min(1, Number(raw.weight) || 0.5));
+      const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
+      const keyword = candidate && plain(text).includes(plain(candidate))
+        ? sanitizeViralKeyword(text, candidate, node, contentWeight)
+        : "";
       const local = localIntents(node, contentWeight);
       const cameraIntent = ["hold", "push-in", "pull-back", "reframe", "close-up", "wide"].includes(String(raw.camera_intent))
         ? raw.camera_intent as ViralCaptionPlanItem["cameraIntent"]
@@ -281,14 +295,13 @@ export async function POST(request: Request) {
     const result = {
       ...fallback,
       captions: directorPlan.captions,
-      planReady: true,
+      planReady: false,
       degraded: true,
       model: "local-fast-plan",
       directorPlan,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",
     };
-    rememberDirectorPlan(key, result);
     return Response.json(result);
   }
 }
