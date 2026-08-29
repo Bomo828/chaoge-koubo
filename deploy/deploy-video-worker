@@ -42,6 +42,21 @@ tar -xzf "${resolved_archive}" -C "${NEW_DIR}"
 [[ -d "${NEW_DIR}/remotion-worker/node_modules" ]] || fail "Remotion production dependencies are missing"
 [[ "$(cat "${NEW_DIR}/RELEASE_SHA")" == "${RELEASE_SHA}" ]] || fail "release SHA does not match"
 
+# Do not accept a node that only has a reduced FFmpeg build. The service may
+# pass its HTTP health check but templates 9-12 will fail at the final render
+# without captions, shot changes or audio mixing.
+command -v ffmpeg >/dev/null 2>&1 || fail "ffmpeg is missing"
+command -v ffprobe >/dev/null 2>&1 || fail "ffprobe is missing"
+require_ffmpeg_filter() {
+  local filter_name="$1"
+  ffmpeg -hide_banner -filters 2>/dev/null \
+    | awk -v required="$filter_name" '$2 == required { found = 1 } END { exit(found ? 0 : 1) }' \
+    || fail "ffmpeg filter is missing: ${filter_name}"
+}
+require_ffmpeg_filter ass
+require_ffmpeg_filter xfade
+require_ffmpeg_filter amix
+
 # Runtime credentials and the Python environment are server-owned. Preserve
 # them across immutable source releases instead of putting secrets in GitHub.
 [[ -f "${APP_DIR}/.env" ]] || fail "existing worker environment is missing"

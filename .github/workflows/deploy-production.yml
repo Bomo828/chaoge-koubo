@@ -134,6 +134,11 @@ jobs:
           package_dir="$RUNNER_TEMP/video-worker-release"
           remote_cache="/home/merchantdeploy/video-worker-release-cache"
           remote_archive="/tmp/merchant-video-worker-${RELEASE_SHA}.tar.gz"
+          # A reduced FFmpeg can answer `-version` and still fail every real
+          # template at the final render. Verify the exact capabilities used
+          # by templates 9-12 before uploading or activating a release.
+          ssh "${ssh_options[@]}" "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null && for filter in ass xfade amix; do ffmpeg -hide_banner -filters 2>/dev/null | awk -v required=\"\$filter\" '\$2 == required { found = 1 } END { exit(found ? 0 : 1) }' || exit 1; done"
           mkdir -p "$package_dir"
           cp -R services/video-worker/. "$package_dir/"
           # The server keeps its virtualenv between releases. Bundle the small,

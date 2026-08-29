@@ -7,7 +7,7 @@
     "node": ">=22.13.0"
   },
   "scripts": {
-    "dev": "next dev",
+    "dev": "./scripts/start-local-dev.command",
     "build": "next build",
     "start": "next start",
     "start:baota": "next start -H 127.0.0.1 -p 3001",

@@ -87,6 +87,29 @@ else
   exit 1
 fi
 
+# A worker can appear healthy while still failing every real template render
+# when the installed FFmpeg is a reduced build. Templates 9-12 require all
+# three filters below: ASS captions, director-led xfade shot changes and audio
+# mixing. Reject the deployment before systemd is restarted if any capability
+# is missing.
+require_ffmpeg_filter() {
+  local filter_name="$1"
+  if ! ffmpeg -hide_banner -filters 2>/dev/null \
+    | awk -v required="$filter_name" '$2 == required { found = 1 } END { exit(found ? 0 : 1) }'; then
+    echo "FFmpeg 缺少必需滤镜：$filter_name。请安装包含 libass 的完整版 FFmpeg。" >&2
+    exit 1
+  fi
+}
+
+if ! command -v ffprobe >/dev/null 2>&1; then
+  echo "服务器缺少 ffprobe，无法读取视频元数据。" >&2
+  exit 1
+fi
+require_ffmpeg_filter ass
+require_ffmpeg_filter xfade
+require_ffmpeg_filter amix
+echo "FFmpeg capability check passed: ass, xfade, amix"
+
 if command -v python3.12 >/dev/null 2>&1; then
   PYTHON_BIN="python3.12"
 fi

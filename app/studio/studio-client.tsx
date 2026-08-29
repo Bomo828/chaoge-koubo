@@ -14,7 +14,7 @@ import { MarketDynamics } from "./market-dynamics";
 import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
-import { buildViralDirectorPlan, markViralKeywordSfx, type ViralBgmMood, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
+import { buildViralDirectorPlan, type ViralBgmMood, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
 import { publicMediaUrl } from "../../lib/public-media";
 import { loadWorkflowDraft, saveWorkflowDraft } from "../../lib/browser-workflow-draft";
@@ -102,6 +102,12 @@ function viralTimestamp(value: number) {
   const minutes = Math.floor(seconds / 60);
   const remainder = seconds - minutes * 60;
   return `${String(minutes).padStart(2, "0")}:${remainder.toFixed(2).padStart(5, "0")}`;
+}
+
+function viralKeywordMatchesCaption(text: string, keyword: string | undefined) {
+  const compactKeyword = String(keyword || "").replace(/\s+/g, "");
+  if (!compactKeyword) return true;
+  return String(text || "").replace(/\s+/g, "").includes(compactKeyword);
 }
 
 function normalizeViralCaptionsForReview(captions: ViralCaption[]) {
@@ -2276,22 +2282,35 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   function confirmViralTranscriptReview() {
     const plainTitle = viralReviewTitle.trim();
     const title = planViralTitleLayout(plainTitle).serializedTitle;
+    if (viralReviewCaptions.some((caption) => !viralKeywordMatchesCaption(caption.text, caption.keyword))) return;
     const reviewedCaptions = viralReviewCaptions.map((caption) => {
       const text = caption.text.trim();
       const layout = planViralCaptionLayout(text, caption.captionLines, 10);
       const keyword = String(caption.keyword || "").trim();
-      const keywordStillGrounded = keyword && text.replace(/\s+/g, "").includes(keyword.replace(/\s+/g, ""));
+      const original = viralCaptions.find((item) => item.start === caption.start && item.end === caption.end);
+      const originalKeyword = String(original?.keyword || "").trim();
       return {
         ...caption,
         text,
-        ...(keywordStillGrounded ? { keyword } : { keyword: undefined, keywordSfx: false, keywordImportance: "regular" as const }),
+        ...(keyword ? {
+          keyword,
+          keywordOrigin: keyword === originalKeyword && caption.keywordOrigin === "ai" ? "ai" as const : "local" as const,
+          keywordSfx: Boolean(caption.keywordSfx),
+          keywordImportance: caption.keywordSfx ? "primary" as const : "regular" as const,
+        } : {
+          keyword: undefined,
+          keywordOrigin: "none" as const,
+          keywordSfx: false,
+          keywordImportance: "regular" as const,
+        }),
         captionLineMode: layout.mode,
         captionLines: layout.lines,
       };
     });
-    const captions = markViralKeywordSfx(reviewedCaptions);
+    const captions = reviewedCaptions;
     if (!plainTitle || !captions.length || captions.some((caption) => !caption.text)) return;
     const captionsChanged = captions.some((caption, index) => caption.text !== viralCaptions[index]?.text)
+      || captions.some((caption, index) => caption.keyword !== viralCaptions[index]?.keyword || caption.keywordSfx !== viralCaptions[index]?.keywordSfx)
       || captions.length !== viralCaptions.length;
     setViralTitle(title);
     setViralCaptions(captions);
@@ -5728,26 +5747,53 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
               <div><input autoFocus type="text" maxLength={viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16} value={viralReviewTitle} onChange={(event) => setViralReviewTitle(event.target.value)} /><em>{viralReviewTitle.trim().length}/{viralSpeechLanguage(viralReviewCaptions.map((caption) => caption.text).join(" ")) === "en" ? 60 : 16}</em></div>
             </label>
             <div className="viral-dialog-caption-list" aria-label="AI 排版字幕">
-              {viralReviewCaptions.map((caption, index) => <div className="viral-dialog-caption-row" key={`${caption.start}-${index}`}>
+              <div className="viral-dialog-caption-head" aria-hidden="true">
+                <span>时间</span><span>字幕文案</span><span>提亮关键词</span><span>重点词</span>
+              </div>
+              {viralReviewCaptions.map((caption, index) => {
+                const keywordValid = viralKeywordMatchesCaption(caption.text, caption.keyword);
+                const hasKeyword = Boolean(String(caption.keyword || "").trim());
+                return <div className="viral-dialog-caption-row" key={`${caption.start}-${index}`}>
                 <span>{viralTimestamp(caption.start)}–{viralTimestamp(caption.end)}</span>
-                <input type="text" value={caption.text} aria-label={`第${index + 1}段字幕`} onChange={(event) => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item))} />
-                {caption.keyword ? <button
+                <input className="viral-dialog-caption-text" type="text" value={caption.text} aria-label={`第${index + 1}段字幕`} onChange={(event) => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? { ...item, text: event.target.value } : item))} />
+                <input
+                  className={`viral-dialog-keyword-input${keywordValid ? "" : " is-invalid"}`}
+                  type="text"
+                  maxLength={16}
+                  value={caption.keyword || ""}
+                  placeholder="不提亮"
+                  aria-label={`第${index + 1}段提亮关键词`}
+                  aria-invalid={!keywordValid}
+                  title={keywordValid ? "可手动修改 AI 规划的提亮关键词" : "提亮关键词必须完整出现在当前字幕中"}
+                  onChange={(event) => {
+                    const keyword = event.target.value;
+                    setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? {
+                      ...item,
+                      keyword: keyword || undefined,
+                      keywordOrigin: keyword.trim() ? "local" : "none",
+                      keywordSfx: keyword.trim() ? Boolean(item.keywordSfx) : false,
+                      keywordImportance: keyword.trim() && item.keywordSfx ? "primary" : "regular",
+                    } : item));
+                  }}
+                />
+                <button
                   type="button"
                   className={caption.keywordSfx ? "is-keyword-sfx" : ""}
                   aria-pressed={Boolean(caption.keywordSfx)}
-                  title={caption.keywordSfx ? `重点词“${caption.keyword}”将触发音效` : `提亮词“${caption.keyword}”只做视觉强调`}
+                  disabled={!hasKeyword || !keywordValid}
+                  title={!hasKeyword ? "请先填写提亮关键词" : !keywordValid ? "关键词必须完整出现在字幕中" : caption.keywordSfx ? `重点词“${caption.keyword}”将触发重点音效` : `点击后让“${caption.keyword}”成为重点词`}
                   onClick={() => setViralReviewCaptions((current) => current.map((item, itemIndex) => itemIndex === index ? {
                     ...item,
                     keywordSfx: !item.keywordSfx,
                     keywordImportance: !item.keywordSfx ? "primary" : "regular",
                   } : item))}
-                >{caption.keywordSfx ? "重点词" : "普通提亮"}</button> : <em>无提亮</em>}
-              </div>)}
+                >重点词</button>
+              </div>})}
             </div>
           </div>
           <footer>
             <button type="button" onClick={() => setViralTranscriptDialogOpen(false)}>稍后确认</button>
-            <button type="button" disabled={!viralReviewTitle.trim() || !viralReviewCaptions.length || viralReviewCaptions.some((caption) => !caption.text.trim())} onClick={confirmViralTranscriptReview}>确认并使用</button>
+            <button type="button" disabled={!viralReviewTitle.trim() || !viralReviewCaptions.length || viralReviewCaptions.some((caption) => !caption.text.trim() || !viralKeywordMatchesCaption(caption.text, caption.keyword))} onClick={confirmViralTranscriptReview}>确认并使用</button>
           </footer>
         </section>
       </div> : null}

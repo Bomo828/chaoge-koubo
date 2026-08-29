@@ -64,6 +64,7 @@ next-env.d.ts
 !/services/remotion-worker/
 !/services/remotion-worker/**
 **/node_modules/
+**/.venv/
 /services/video-worker/data/
 /services/video-worker/**/artifacts/
 /services/video-worker/templates-v2/*/reference/
