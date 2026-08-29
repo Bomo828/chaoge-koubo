@@ -257,6 +257,61 @@ class SharedDirectorTests(unittest.TestCase):
         self.assertEqual(plan["captions"][0]["transitionIntent"], "cut")
         self.assertEqual(plan["captions"][0]["sfxRole"], "hook")
 
+    def test_director_plan_contract_rejects_visual_takeover_and_transcript_drift(self) -> None:
+        """AI may direct semantics, but cannot rewrite a locked template or transcript."""
+        confirmed = [
+            {
+                **caption,
+                "contentNode": node,
+                "keyword": "效率" if index == 0 else "",
+                "cameraIntent": "push-in",
+                "transitionIntent": "cut",
+                "sfxRole": "hook",
+            }
+            for index, (caption, node) in enumerate(zip(
+                self.captions,
+                ("hook", "pain_reversal", "example_step", "cta"),
+            ))
+        ]
+        baseline = {
+            "version": 1,
+            "kind": "viral-director-plan",
+            "templateId": "template-9",
+            "title": "效率提升方法",
+            "captions": confirmed,
+            "source": "ai",
+        }
+        locked = worker.normalized_edited_captions(confirmed, 16.0)
+
+        wrong_template = {**baseline, "templateId": "template-10"}
+        self.assertIsNone(worker.normalized_director_plan(
+            wrong_template, 16.0, "template-9", locked,
+        ))
+
+        rewritten = json.loads(json.dumps(baseline, ensure_ascii=False))
+        rewritten["captions"][0]["text"] = "AI擅自改写了用户口播"
+        self.assertIsNone(worker.normalized_director_plan(
+            rewritten, 16.0, "template-9", locked,
+        ))
+
+        retimed = json.loads(json.dumps(baseline, ensure_ascii=False))
+        retimed["captions"][1]["start"] = 4.3
+        self.assertIsNone(worker.normalized_director_plan(
+            retimed, 16.0, "template-9", locked,
+        ))
+
+        unsupported = json.loads(json.dumps(baseline, ensure_ascii=False))
+        unsupported["captions"][0]["cameraIntent"] = "spin-and-wipe"
+        unsupported["captions"][0]["transitionIntent"] = "random-sweep"
+        unsupported["captions"][0]["sfxRole"] = "every-word-hit"
+        sanitized = worker.normalized_director_plan(
+            unsupported, 16.0, "template-9", locked,
+        )
+        self.assertIsNotNone(sanitized)
+        self.assertNotIn("cameraIntent", sanitized["captions"][0])
+        self.assertNotIn("transitionIntent", sanitized["captions"][0])
+        self.assertNotIn("sfxRole", sanitized["captions"][0])
+
     def test_four_templates_use_mixed_director_shot_language(self) -> None:
         planned = [
             {**self.captions[0], "contentNode": "hook"},

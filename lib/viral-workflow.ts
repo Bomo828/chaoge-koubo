@@ -17,7 +17,9 @@ export type ViralCaptionPlanItem = {
 };
 
 export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
-export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-fast-v1";
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-semantic-lock-v2";
+
+export type ViralBgmMood = "calm" | "warm" | "professional" | "uplifting" | "neutral";
 
 export type ViralDirectorPlan = {
   version: typeof VIRAL_DIRECTOR_PLAN_VERSION;
@@ -28,7 +30,7 @@ export type ViralDirectorPlan = {
   titleLines: string[];
   duration: number;
   captions: ViralCaptionPlanItem[];
-  bgmMood: "calm" | "warm" | "professional" | "uplifting" | "neutral";
+  bgmMood: ViralBgmMood;
   source: "ai" | "cache" | "local-fallback" | "user-confirmed";
   model: string;
   degraded: boolean;
@@ -42,6 +44,7 @@ export type ViralWorkflowManifest = {
   title: string;
   duration: number;
   captions: ViralCaptionPlanItem[];
+  bgmMood?: ViralBgmMood;
   planReady: boolean;
   plannedAt: number;
 };
@@ -198,6 +201,9 @@ export function sanitizeViralWorkflowManifest(value: unknown): ViralWorkflowMani
     title: shortText(record.title, 40),
     duration,
     captions,
+    bgmMood: ["calm", "warm", "professional", "uplifting", "neutral"].includes(String(record.bgmMood))
+      ? record.bgmMood as ViralBgmMood
+      : "professional",
     planReady: Boolean(record.planReady)
       && captions.every((caption) => Boolean(caption.contentNode && caption.keywordOrigin)),
     plannedAt: Math.max(0, Number(record.plannedAt) || Date.now()),

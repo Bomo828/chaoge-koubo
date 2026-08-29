@@ -1,5 +1,5 @@
 {
-  "version": 18,
+  "version": 19,
   "package_contract_version": 3,
   "id": "template-11",
   "name": "青白高亮双语",
@@ -105,8 +105,42 @@
   "audio": {
     "preserve_source": true,
     "music": {
-      "enabled": false,
-      "tracks": []
+      "enabled": true,
+      "mode": "content-aware-pool",
+      "pool_id": "template-11-clean-speech-safe-v1",
+      "file": "music/template-11/light-positive.mp3",
+      "track_id": "template-11-light-positive",
+      "volume": 0.062,
+      "loop": false,
+      "fade_in_seconds": 0.9,
+      "fade_out_seconds": 0.9,
+      "duck_under_speech": true,
+      "tracks": [
+        {
+          "id": "template-11-calm-voiceover",
+          "file": "music/template-11/calm-voiceover.mp3",
+          "weight": 2,
+          "volume": 0.064,
+          "moods": ["克制", "清晰", "讲解"],
+          "match_keywords": ["知识", "讲解", "课程", "方法", "基础", "培训"]
+        },
+        {
+          "id": "template-11-soft-business",
+          "file": "music/template-11/soft-business.mp3",
+          "weight": 2,
+          "volume": 0.06,
+          "moods": ["专业", "商务", "稳定"],
+          "match_keywords": ["企业", "商业", "品牌", "服务", "方案", "效率"]
+        },
+        {
+          "id": "template-11-light-positive",
+          "file": "music/template-11/light-positive.mp3",
+          "weight": 4,
+          "volume": 0.062,
+          "moods": ["积极", "轻松", "可信"],
+          "match_keywords": ["成长", "提升", "机会", "经验", "分享", "未来"]
+        }
+      ]
     },
     "speech_gain": 1.0,
     "mix": {"standard": "speech-first-v2", "speech_target_lufs": -17, "music_reference_lufs": -14, "bgm_speech_volume": 0.085, "gap_lift": 1.18, "true_peak_ceiling_db": -1.5},

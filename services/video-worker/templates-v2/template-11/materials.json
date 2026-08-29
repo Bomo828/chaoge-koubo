@@ -1,11 +1,39 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "template_id": "template-11",
   "ownership": "template-exclusive",
   "fonts": [
     {"id": "template11-sans", "file": "fonts/template-11/NotoSansSC-Variable.ttf", "role": "title-caption-cjk", "source": "Noto Sans SC"}
   ],
-  "music": [],
+  "music": [
+    {
+      "id": "template-11-calm-voiceover",
+      "file": "music/template-11/calm-voiceover.mp3",
+      "role": "clean-voiceover-bed",
+      "source": "用户提供并确认可商用的 BGM 素材包/企业-宣传/随和舒缓(适合画外音背景).mp3",
+      "license": "user-confirmed-commercial-use",
+      "duration_seconds": 191.347,
+      "sha256": "a1259ec124b06b668f4baf94ef4324435ee5b4398b671b21586e1dfdccc243b8"
+    },
+    {
+      "id": "template-11-soft-business",
+      "file": "music/template-11/soft-business.mp3",
+      "role": "soft-business-bed",
+      "source": "用户提供并确认可商用的 BGM 素材包/企业-宣传/柔和商业感觉(可无痕切割多段).mp3",
+      "license": "user-confirmed-commercial-use",
+      "duration_seconds": 152.064,
+      "sha256": "f9a9506163d0fe336832b09b2d3e4fdb3dd119e44e982f6d66f3d7c67351da65"
+    },
+    {
+      "id": "template-11-light-positive",
+      "file": "music/template-11/light-positive.mp3",
+      "role": "light-positive-bed",
+      "source": "用户提供并确认可商用的 BGM 素材包/企业-宣传/轻松带有积极感(商业介绍).mp3",
+      "license": "user-confirmed-commercial-use",
+      "duration_seconds": 124.968,
+      "sha256": "d5c5c1248b11cb21027c5b008dc0d2ab0339a138b6b3df6564572a2649a18552"
+    }
+  ],
   "sfx": [
     {"id": "opening-soft-pop", "file": "sfx/template-11/opening-soft-pop.wav", "role": "opening", "source": "A080 自用IP剪辑高级感常用音效"},
     {"id": "keyword-water-drop", "file": "sfx/template-11/keyword-water-drop.wav", "role": "keyword", "source": "A080 自用IP剪辑高级感常用音效"},
@@ -14,5 +42,5 @@
     {"id": "cyan-swish", "file": "sfx/template-11/cyan-swish.wav", "role": "transition", "source": "A080 自用IP剪辑高级感常用音效"},
     {"id": "ending-soft-blip", "file": "sfx/template-11/ending-soft-blip.wav", "role": "ending", "source": "A080 自用IP剪辑高级感常用音效"}
   ],
-  "rule": "Template 11 may only use its own font and SFX namespace. The reference contains no continuous BGM, so music remains disabled."
+  "rule": "Template 11 may only use its own font, music and SFX namespace. V19 adds a speech-safe, content-aware BGM pool as a controlled enhancement; tracks play once with ducking and never use a short mechanical loop."
 }

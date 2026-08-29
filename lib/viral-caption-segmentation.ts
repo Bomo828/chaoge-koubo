@@ -131,71 +131,6 @@ function mergeEnglishCaptionWords(captions: ViralCaptionSegment[]) {
   return balanced;
 }
 
-function englishChunks(value: string) {
-  const words = normalizeSpeechText(value).split(" ").filter(Boolean);
-  const output: string[] = [];
-  const maxWords = 11;
-  const minTailWords = 4;
-  let cursor = 0;
-  while (cursor < words.length) {
-    const remaining = words.length - cursor;
-    let size = Math.min(maxWords, remaining);
-    if (remaining > maxWords && remaining - size < minTailWords) {
-      size = Math.max(minTailWords, remaining - minTailWords);
-    }
-    const window = words.slice(cursor, cursor + size);
-    const semanticBreak = window.findLastIndex((word, index) => (
-      index >= 4 && /^(?:and|but|or|because|so|while|when|that|which|who|if|then|also)$/i.test(word)
-    ));
-    if (semanticBreak > 4 && remaining - semanticBreak >= minTailWords) size = semanticBreak;
-    output.push(words.slice(cursor, cursor + size).join(" "));
-    cursor += size;
-  }
-  return output;
-}
-
-function chineseChunks(value: string) {
-  const chars = [...normalizeSpeechText(value)];
-  const output: string[] = [];
-  let cursor = 0;
-  while (cursor < chars.length) {
-    const remaining = chars.length - cursor;
-    let size = Math.min(15, remaining);
-    if (remaining > 15 && remaining - size < 5) size = Math.max(5, remaining - 5);
-    output.push(chars.slice(cursor, cursor + size).join(""));
-    cursor += size;
-  }
-  return output;
-}
-
-function captionChunks(value: string) {
-  return normalizeSpeechText(value)
-    .split(/[，,.。！？!?；;：:\n]+/u)
-    .flatMap((part) => viralSpeechLanguage(part) === "en" ? englishChunks(part) : chineseChunks(part))
-    .filter(Boolean);
-}
-
-function splitTimedCaption(caption: ViralCaptionSegment) {
-  const parts = captionChunks(caption.text);
-  if (parts.length <= 1) return parts.length ? [{ ...caption, text: parts[0] }] : [];
-  const weights = parts.map((part) => Math.max(1, unitCount(part)));
-  const total = weights.reduce((sum, weight) => sum + weight, 0);
-  const duration = Math.max(0.1, caption.end - caption.start);
-  let cursor = caption.start;
-  return parts.map((text, index) => {
-    const end = index === parts.length - 1
-      ? caption.end
-      : Math.min(caption.end, cursor + duration * (weights[index] / total));
-    const item = {
-      start: Number(cursor.toFixed(2)),
-      end: Number(Math.max(cursor + 0.05, end).toFixed(2)),
-      text,
-    };
-    cursor = item.end;
-    return item;
-  });
-}
-
 const CHINESE_DANGLING_END = /(?:的|地|得|和|与|及|或|而|但|却|就|都|也|还|再|又|把|被|让|给|向|从|在|到|为|对|比|像|是|有|要|想|能|会|可|可以|如果|因为|所以|无论|不管|不论|不仅|以及|还是)$/u;
 const CHINESE_DANGLING_START = /^(?:的|地|得|了|着|过|就|才|更|和|与|及|或|把|被|让|给|其中|以及|还是|想念的|属于)/u;
 const CHINESE_OPENING_CLAUSE = /^(?:无论|不管|不论|如果|只要|因为|虽然|不仅|不是|当|每当)/u;
@@ -223,7 +158,10 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
   const maxUnits = 20;
   const maxDuration = 3.9;
   for (const raw of captions) {
-    const current = { ...raw, text: normalizeSpeechText(raw.text).replace(/^[，。！？；：、]+|[，。！？；：、]+$/gu, "") };
+    // Keep terminal punctuation until the merge decision has been made.  It is
+    // timing evidence: a full stop is a hard boundary and must not be crossed
+    // merely because the ASR fragments are close together.
+    const current = { ...raw, text: normalizeSpeechText(raw.text).replace(/^[，。！？；：、]+/gu, "") };
     if (!current.text) continue;
     const previous = merged[merged.length - 1];
     if (!previous) {
@@ -235,7 +173,8 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
     const currentUnits = unitCount(current.text);
     const combinedUnits = previousUnits + currentUnits;
     const combinedDuration = current.end - previous.start;
-    const unfinished = CHINESE_DANGLING_END.test(previous.text) || CHINESE_DANGLING_START.test(current.text);
+    const hardBoundary = /[。！？!?；;]$/u.test(previous.text);
+    const unfinished = !hardBoundary && (CHINESE_DANGLING_END.test(previous.text) || CHINESE_DANGLING_START.test(current.text));
     const pairedClause = CHINESE_OPENING_CLAUSE.test(previous.text)
       && (CHINESE_CLAUSE_RESOLUTION.test(current.text) || current.text.includes("还是"));
     const openPredicate = CHINESE_OPEN_PREDICATE.test(previous.text) && previousUnits <= 9 && currentUnits <= 9;
@@ -246,6 +185,7 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
     const shouldJoin = gap <= 0.5
       && combinedUnits <= maxUnits
       && combinedDuration <= maxDuration
+      && !hardBoundary
       && (unfinished || pairedClause || (gap <= 0.22 && (openPredicate || parallelAction)));
     if (shouldJoin) merged[merged.length - 1] = mergeCaptionPair(previous, current);
     else merged.push(current);
@@ -260,6 +200,7 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
     const next = merged[index + 1];
     const previousFits = previous
       && item.start - previous.end <= 0.5
+      && !/[。！？!?；;]$/u.test(previous.text)
       && unitCount(previous.text) + unitCount(item.text) <= maxUnits;
     const nextFits = next
       && next.start - item.end <= 0.5
@@ -274,12 +215,19 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
       index -= 1;
     }
   }
-  return merged;
+  return merged.map((caption) => ({
+    ...caption,
+    text: caption.text.replace(/^[，。！？；：、]+|[，。！？；：、]+$/gu, ""),
+  })).filter((caption) => caption.text);
 }
 
 export function segmentViralCaptions(captions: ViralCaptionSegment[]) {
+  // A confirmed ASR/lip-sync timeline is evidence.  Never manufacture new
+  // timestamps by splitting text proportionally: that caused semantic breaks
+  // such as “华为激励商 / 家入驻机会” and visible subtitle drift.  We may join
+  // adjacent unfinished ASR units, but the resulting start/end always come
+  // from the first and last real source units.
   const segmented = mergeEnglishCaptionWords(repairEnglishWordFragments(captions))
-    .flatMap(splitTimedCaption)
     .filter((caption) => caption.text)
     .sort((left, right) => left.start - right.start);
   return rebalanceChineseViralCaptions(segmented);

@@ -8,7 +8,8 @@ import {
   VIRAL_DIRECTOR_PROMPT_VERSION,
   type ViralCaptionPlanItem,
 } from "../../../../lib/viral-workflow";
-import { planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
+import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
+import { acceptViralCaptionCorrection } from "../../../../lib/viral-text-integrity";
 
 type ProviderResponse = {
   choices?: Array<{ message?: { content?: unknown } }>;
@@ -50,20 +51,6 @@ function parseJson(value: string) {
 
 function plain(value: string) {
   return value.toLocaleLowerCase().replace(/[\s，。！？；：、,.!?;:'"“”‘’（）()【】\[\]《》<>—…·-]/g, "");
-}
-
-function overlapRatio(source: string, result: string) {
-  const counts = new Map<string, number>();
-  for (const char of plain(result)) counts.set(char, (counts.get(char) || 0) + 1);
-  let matched = 0;
-  for (const char of plain(source)) {
-    const count = counts.get(char) || 0;
-    if (count > 0) {
-      matched += 1;
-      counts.set(char, count - 1);
-    }
-  }
-  return matched / Math.max(1, plain(source).length);
 }
 
 function localKeyword(text: string) {
@@ -190,7 +177,7 @@ export async function POST(request: Request) {
 2. keyword必须是corrected_text中原样连续出现的1到8个字；普通承接句可以为空，不要每句都强行提亮。
 3. content_node只能是hook/pain_reversal/core_viewpoint/number_benefit/example_step/brand_entity/cta/supporting。
 4. translation输出自然简短英文字幕；原文为英文时输出简短中文。
-5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头。
+5. title理解完整口播后提炼，中文8到16字，不能只是机械复制开头，必须符合自然中文语序。例如“华为商家入驻新机会”，不能写成“华为激励商家入驻机会”。
 6. title_lines必须把title按完整语义分为1到2行；caption_lines只负责同一条字幕内部的视觉换行，最多2行。各行拼接必须与原文字完全一致，禁止拆开品牌名、专有名词及“商家入驻、首批类目、激励翻倍”等固定短语。
 7. camera_intent只表达镜头意图：hold/push-in/pull-back/reframe/close-up/wide；transition_intent只能是none/cut/matched-reframe/focus-bridge/foreground-occlusion；sfx_role只能是none/hook/reversal/viewpoint/number/step/brand/cta。不要输出具体像素、时间或素材文件名。
 8. bgm_mood只能是calm/warm/professional/uplifting/neutral。
@@ -217,11 +204,7 @@ export async function POST(request: Request) {
     const captions = markViralKeywordSfx(source.map((caption, index) => {
       const raw = items[index] && typeof items[index] === "object" ? items[index] as Record<string, unknown> : {};
       if (Number(raw.id) !== index) throw new Error("AI 字幕规划顺序不一致。");
-      const corrected = typeof raw.corrected_text === "string" ? raw.corrected_text.trim().slice(0, 180) : caption.text;
-      const lengthRatio = plain(corrected).length / Math.max(1, plain(caption.text).length);
-      const text = corrected && lengthRatio >= 0.72 && lengthRatio <= 1.35 && overlapRatio(caption.text, corrected) >= 0.62
-        ? corrected
-        : caption.text;
+      const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
       const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
       const keyword = candidate && plain(text).includes(plain(candidate)) ? candidate : "";
       const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
@@ -255,7 +238,7 @@ export async function POST(request: Request) {
       };
     }), duration);
     const rawTitle = typeof parsed.title === "string" && parsed.title.trim()
-      ? parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40)
+      ? normalizeViralTitleSyntax(parsed.title.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
       : fallback.title;
     const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines);
     const title = titleLayout.serializedTitle;

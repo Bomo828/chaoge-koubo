@@ -6,8 +6,11 @@ export type ViralLineLayout = {
 };
 
 const TITLE_PROTECTED_PHRASES = [
-  "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
-  "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
+  // Protect lexical atoms, not an entire headline phrase.  Protecting
+  // “商家入驻新机会” as one range made every natural two-row break illegal
+  // and could force the renderer to split the word “入驻”.
+  "商家", "入驻", "新机会", "机会", "开放入驻", "首批类目", "激励翻倍",
+  "华为", "小红书", "朋友圈", "直播间",
   "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
   "市场动态", "会员中心", "短视频", "供应链", "创作平台",
   "酒店景区旅行社", "酒店", "景区", "旅行社", "体育场馆",
@@ -37,6 +40,21 @@ function compactChinese(value: string) {
 
 function compactEnglish(value: string) {
   return value.replace(/[|｜]/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Remove common AI headline inversions before visual line breaking.  The title
+ * still comes from the spoken content; this only restores natural Chinese
+ * modifier order and avoids treating a verb as a dangling noun modifier.
+ */
+export function normalizeViralTitleSyntax(value: string) {
+  let title = value.replace(/\s+/g, "").replace(/[，。！？；：、,.!?;:]+$/g, "").trim();
+  title = title.replace(
+    /^(.{2,8}?)(激励|扶持|补贴)(商家|企业|用户)(入驻|增长|获客)机会$/u,
+    "$1$3$4新机会",
+  );
+  title = title.replace(/(机会)机会$/u, "$1");
+  return title;
 }
 
 function isEnglish(value: string) {
@@ -139,11 +157,12 @@ function splitEnglish(text: string, maxWords: number, preferred: unknown, forceT
 export function planViralTitleLayout(value: string, preferredLines?: unknown, forceTwoLines = false): ViralLineLayout & { title: string; serializedTitle: string } {
   const explicit = value.split(/[|｜]/).map((line) => line.trim()).filter(Boolean);
   const english = isEnglish(value);
-  const text = english ? compactEnglish(explicit.join(" ") || value) : compactChinese(explicit.join("") || value);
+  const source = explicit.join("") || value;
+  const text = english ? compactEnglish(explicit.join(" ") || value) : compactChinese(normalizeViralTitleSyntax(source));
   const preferred = explicit.length === 2 ? explicit : preferredLines;
   const layout = english
     ? splitEnglish(text, 6, preferred, explicit.length === 2 || forceTwoLines || text.split(" ").length >= 6)
-    : splitChinese(text, 9, preferred, TITLE_PROTECTED_PHRASES, explicit.length === 2 || forceTwoLines || text.length >= 10);
+    : splitChinese(text, 9, preferred, TITLE_PROTECTED_PHRASES, explicit.length === 2 || forceTwoLines || text.length >= 8);
   return {
     ...layout,
     title: text,

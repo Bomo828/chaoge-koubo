@@ -103,6 +103,13 @@ def build_review(worker, label: str) -> dict[str, object]:
             caption["keyword"] = text[-2:]
 
     duration = float(source_timeline.get("duration") or 1.0)
+    profile = worker.template_profile("template-11")
+    selected_bgm = worker.select_content_music(
+        profile.get("bgm_tracks") or [],
+        str(source_timeline.get("title") or ""),
+        captions,
+        f"template11-local:{label}:{duration:.3f}",
+    ) or {}
     sfx_cues = build_sfx_cues(duration, captions)
     camera_scales = {
         "hook": 1.0,
@@ -146,9 +153,10 @@ def build_review(worker, label: str) -> dict[str, object]:
         "version": 2,
         "sourceFile": "source.mp4",
         "sourceVolume": 1,
-        "bgmFile": "",
-        "bgmTrackId": "",
-        "bgmVolume": 0,
+        "bgmFile": str(selected_bgm.get("file") or "music/template-11/calm-voiceover.mp3"),
+        "bgmTrackId": str(selected_bgm.get("id") or "template-11-calm-voiceover"),
+        "bgmVolume": float(selected_bgm.get("volume") or 0.064),
+        "bgmGapVolume": min(0.13, float(selected_bgm.get("volume") or 0.064) * 1.18),
         "bgmLoop": False,
         "sfxFile": "",
         "sfxCues": sfx_cues,
@@ -171,7 +179,14 @@ def build_review(worker, label: str) -> dict[str, object]:
         "camera_cues": len(camera_cues),
         "transition_cues": 0,
         "sfx_cues": len(sfx_cues),
-        "bgm": {"enabled": False, "reason": "reference-has-no-continuous-bgm"},
+        "bgm": {
+            "enabled": True,
+            "id": timeline["bgmTrackId"],
+            "file": timeline["bgmFile"],
+            "volume": timeline["bgmVolume"],
+            "loop": False,
+            "candidate_ids": selected_bgm.get("candidate_ids") or [],
+        },
     }
     (output_dir / "routing-report.json").write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", "utf-8")
     speech_seconds = round(sum(max(0.0, float(item.get("end") or 0.0) - float(item.get("start") or 0.0)) for item in captions), 3)

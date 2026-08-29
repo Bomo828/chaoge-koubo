@@ -3057,8 +3057,8 @@ def plan_adaptive_caption_lines(
         keyword_end = keyword_start + len(keyword) if keyword_start >= 0 else -1
 
         protected_phrases = (
-            "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
-            "华为", "商家", "入驻", "机会", "酒店景区旅行社", "体育场馆",
+            "商家", "入驻", "新机会", "机会", "开放入驻", "首批类目", "激励翻倍",
+            "华为", "酒店景区旅行社", "体育场馆",
             "小红书", "朋友圈", "直播间", "微信支付", "人工智能",
             "对口型", "一键网感", "超级剪辑", "市场动态", "会员中心",
             "短视频", "供应链", "用户", "客户", "品牌", "平台", "政策",
@@ -3084,8 +3084,14 @@ def plan_adaptive_caption_lines(
         split_at = min(
             valid_candidates or [max(1, min(len(characters) - 1, round(midpoint)))],
             key=lambda position: (
-                max(0, position - maximum) + max(0, len(characters) - position - maximum),
-                abs(position - midpoint),
+                (
+                    max(0, position - maximum)
+                    + max(0, len(characters) - position - maximum)
+                ) * 12
+                + abs(position - midpoint)
+                + (10 if text[:position].endswith(("的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及")) else 0)
+                + (10 if text[position:].startswith(("的", "和", "与", "就", "都", "也", "才", "了", "着", "过")) else 0)
+                - (7 if position in candidates else 0)
             ),
         )
         item["captionLineMode"] = "two-line"
@@ -3286,14 +3292,38 @@ def local_semantic_caption_segments(
     min_chars: int,
     max_chars: int,
 ) -> list[dict[str, Any]]:
-    beats = [
-        split_semantic_caption_text(str(segment.get("text") or ""), min_chars, max_chars)
+    """Compile captions without inventing proportional timestamps.
+
+    Word timestamps are the preferred evidence.  If a provider only returns
+    segment timestamps, preserve those segments and merely join tiny adjacent
+    fragments; never guess where a newly split phrase was spoken.
+    """
+    words: list[dict[str, Any]] = []
+    for segment in segments:
+        raw_words = segment.get("words")
+        if isinstance(raw_words, list):
+            words.extend(dict(word) for word in raw_words if isinstance(word, dict))
+    visual_capacity = max(12, int(max_chars or 10) * 2)
+    if words:
+        return merge_short_caption_beats(
+            word_timed_caption_segments(words, visual_capacity, 3.9, 0.48),
+            min_chars,
+            visual_capacity,
+        )
+    locked = [
+        {
+            **segment,
+            "start": round(float(segment.get("start") or 0), 3),
+            "end": round(max(float(segment.get("start") or 0) + 0.05, float(segment.get("end") or 0)), 3),
+            "text": normalize_speech_text(str(segment.get("text") or "")).strip("，,。！？!?；;：:、 "),
+        }
         for segment in segments
+        if normalize_speech_text(str(segment.get("text") or "")).strip("，,。！？!?；;：:、 ")
     ]
     return merge_short_caption_beats(
-        timed_caption_beats(segments, beats),
+        sorted(locked, key=lambda item: float(item.get("start") or 0)),
         min_chars,
-        max_chars,
+        visual_capacity,
     )
 
 

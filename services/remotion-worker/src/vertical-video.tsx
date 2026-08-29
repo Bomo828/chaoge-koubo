@@ -207,11 +207,7 @@ const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: numb
   const directed = (caption.captionLines ?? [])
     .map((line) => line.replace(/\s+/g, "").trim())
     .filter(Boolean);
-  if (
-    caption.captionLineMode === "two-line"
-    && directed.length === 2
-    && directed.join("") === value
-  ) return directed;
+  if (directed.length >= 1 && directed.length <= 2 && directed.join("") === value) return directed;
   if (value.length <= maxChars) return [value];
 
   const characters = Array.from(value);
@@ -220,14 +216,51 @@ const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: numb
   const keywordEnd = keywordStart >= 0 ? keywordStart + keyword.length : -1;
   const midpoint = characters.length / 2;
   const minimumSide = Math.max(2, Math.min(4, Math.floor(characters.length / 3)));
+  const protectedPhrases = [
+    "商家", "入驻", "新机会", "机会", "开放入驻", "首批类目", "激励翻倍",
+    "华为", "小红书", "朋友圈", "直播间", "微信支付", "人工智能",
+    "对口型", "一键网感", "超级剪辑", "市场动态", "会员中心",
+    "酒店景区旅行社", "体育场馆", "品牌", "平台",
+  ];
+  const protectedRanges: Array<[number, number]> = [];
+  protectedPhrases.forEach((phrase) => {
+    let cursor = value.indexOf(phrase);
+    while (cursor >= 0) {
+      protectedRanges.push([cursor, cursor + phrase.length]);
+      cursor = value.indexOf(phrase, cursor + 1);
+    }
+  });
+  const markers = ["如果", "但是", "不过", "所以", "然后", "因为", "同时", "以及", "而且", "可以", "需要", "通过", "比如", "首先", "其次", "最后", "商家", "用户", "品牌", "平台", "机会"];
+  const semantic = new Set<number>();
+  markers.forEach((marker) => {
+    let cursor = value.indexOf(marker);
+    while (cursor >= 0) {
+      if (cursor > 0) semantic.add(cursor);
+      if (cursor + marker.length < value.length) semantic.add(cursor + marker.length);
+      cursor = value.indexOf(marker, cursor + 1);
+    }
+  });
+  const invalidLeft = ["的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及"];
+  const invalidRight = ["的", "和", "与", "就", "都", "也", "才", "了", "着", "过"];
   const positions = Array.from(
     {length: Math.max(1, characters.length - minimumSide * 2 + 1)},
     (_, index) => index + minimumSide,
-  ).filter((position) => !(keywordStart >= 0 && keywordStart < position && position < keywordEnd));
+  ).filter((position) => (
+    !(keywordStart >= 0 && keywordStart < position && position < keywordEnd)
+    && !protectedRanges.some(([start, end]) => start < position && position < end)
+  ));
   const splitAt = positions.sort((a, b) => {
-    const overflowA = Math.max(0, a - maxChars) + Math.max(0, characters.length - a - maxChars);
-    const overflowB = Math.max(0, b - maxChars) + Math.max(0, characters.length - b - maxChars);
-    return overflowA - overflowB || Math.abs(a - midpoint) - Math.abs(b - midpoint);
+    const score = (position: number) => {
+      const left = value.slice(0, position);
+      const right = value.slice(position);
+      const overflow = Math.max(0, position - maxChars) + Math.max(0, characters.length - position - maxChars);
+      return overflow * 12
+        + Math.abs(position - midpoint)
+        + (invalidLeft.some((item) => left.endsWith(item)) ? 10 : 0)
+        + (invalidRight.some((item) => right.startsWith(item)) ? 10 : 0)
+        - (semantic.has(position) ? 7 : 0);
+    };
+    return score(a) - score(b);
   })[0] ?? Math.round(midpoint);
   return [characters.slice(0, splitAt).join(""), characters.slice(splitAt).join("")].filter(Boolean);
 };

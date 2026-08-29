@@ -14,7 +14,7 @@ import { MarketDynamics } from "./market-dynamics";
 import { browserFfmpegLoadConfig } from "../../lib/browser-ffmpeg";
 import { AiDirectorStudio } from "./ai-director-studio";
 import { AiAssistant } from "./ai-assistant";
-import { buildViralDirectorPlan, markViralKeywordSfx, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
+import { buildViralDirectorPlan, markViralKeywordSfx, type ViralBgmMood, type ViralCaptionPlanItem, type ViralWorkflowManifest } from "../../lib/viral-workflow";
 import { planViralCaptionLayout, planViralTitleLayout } from "../../lib/viral-semantic-layout";
 import { publicMediaUrl } from "../../lib/public-media";
 import { loadWorkflowDraft, saveWorkflowDraft } from "../../lib/browser-workflow-draft";
@@ -2053,6 +2053,7 @@ type LipSyncWorkflowDraft = {
   speechAudioDuration: number;
   speechCaptions: ViralCaption[];
   speechViralTitle: string;
+  speechViralBgmMood: ViralBgmMood;
   speechViralPlanReady: boolean;
   speechPendingTask: SpeechTaskCheckpoint | null;
   lipVideoFile: File | null;
@@ -2079,6 +2080,7 @@ type ViralWorkflowDraft = {
   template: string;
   title: string;
   captions: ViralCaption[];
+  bgmMood: ViralBgmMood;
   captionPlanReady: boolean;
   captionsConfirmed: boolean;
   includeSfx: boolean;
@@ -2162,6 +2164,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [speechAudioDuration, setSpeechAudioDuration] = useState(0);
   const [speechCaptions, setSpeechCaptions] = useState<ViralCaption[]>([]);
   const [speechViralTitle, setSpeechViralTitle] = useState("");
+  const [speechViralBgmMood, setSpeechViralBgmMood] = useState<ViralBgmMood>("professional");
   const [speechViralPlanReady, setSpeechViralPlanReady] = useState(false);
   const [scriptRewriteBusy, setScriptRewriteBusy] = useState(false);
   const [speechBusy, setSpeechBusy] = useState(false);
@@ -2208,6 +2211,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
   const [viralTitle, setViralTitle] = useState("");
   const [, setViralSubtitle] = useState("");
   const [viralCaptions, setViralCaptions] = useState<ViralCaption[]>([]);
+  const [viralBgmMood, setViralBgmMood] = useState<ViralBgmMood>("professional");
   const [viralCaptionPlanReady, setViralCaptionPlanReady] = useState(false);
   const [viralCaptionsConfirmed, setViralCaptionsConfirmed] = useState(false);
   const [viralTranscriptDialogOpen, setViralTranscriptDialogOpen] = useState(false);
@@ -2341,6 +2345,9 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         setSpeechAudioDuration(Math.max(0, Number(draft.speechAudioDuration) || 0));
         setSpeechCaptions(Array.isArray(draft.speechCaptions) ? draft.speechCaptions : []);
         setSpeechViralTitle(typeof draft.speechViralTitle === "string" ? draft.speechViralTitle : "");
+        setSpeechViralBgmMood(["calm", "warm", "professional", "uplifting", "neutral"].includes(String(draft.speechViralBgmMood))
+          ? draft.speechViralBgmMood
+          : "professional");
         setSpeechViralPlanReady(Boolean(draft.speechViralPlanReady));
         setSpeechPendingTask(draft.speechPendingTask?.taskId ? draft.speechPendingTask : null);
         if (draft.lipVideoFile instanceof File) {
@@ -2395,6 +2402,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         speechAudioDuration,
         speechCaptions,
         speechViralTitle,
+        speechViralBgmMood,
         speechViralPlanReady,
         speechPendingTask,
         lipVideoFile,
@@ -2438,6 +2446,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     speechCaptions,
     speechPendingTask,
     speechSpeed,
+    speechViralBgmMood,
     speechViralPlanReady,
     speechViralTitle,
     uploadedVoiceReady,
@@ -2477,6 +2486,9 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         if (draft.template) setViralTemplate(draft.template);
         setViralTitle(typeof draft.title === "string" ? draft.title : "");
         setViralCaptions(Array.isArray(draft.captions) ? draft.captions : []);
+        setViralBgmMood(["calm", "warm", "professional", "uplifting", "neutral"].includes(String(draft.bgmMood))
+          ? draft.bgmMood
+          : "professional");
         setViralCaptionPlanReady(Boolean(draft.captionPlanReady));
         setViralCaptionsConfirmed(Boolean(draft.captionsConfirmed));
         setViralIncludeSfx(draft.includeSfx !== false);
@@ -2529,6 +2541,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         template: viralTemplate,
         title: viralTitle,
         captions: viralCaptions,
+        bgmMood: viralBgmMood,
         captionPlanReady: viralCaptionPlanReady,
         captionsConfirmed: viralCaptionsConfirmed,
         includeSfx: viralIncludeSfx,
@@ -2561,6 +2574,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     return () => window.clearTimeout(timer);
   }, [
     viralAnalyzed,
+    viralBgmMood,
     viralCaptionPlanReady,
     viralCaptions,
     viralCaptionsConfirmed,
@@ -2707,6 +2721,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       setViralCoverUrl("");
       setViralTitle(workflow?.title || "");
       setViralCaptions(workflow?.captions?.map((caption) => ({ ...caption })) || []);
+      setViralBgmMood(workflow?.bgmMood || "professional");
       setViralCaptionsConfirmed(Boolean(workflow?.captions?.length));
       setViralCaptionPlanReady(Boolean(workflow?.planReady));
       setViralAnalysisSummary("");
@@ -2766,6 +2781,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         if (saved.viralWorkflow?.captions?.length) {
           setViralTitle(saved.viralWorkflow.title);
           setViralCaptions(saved.viralWorkflow.captions.map((caption) => ({ ...caption })));
+          setViralBgmMood(saved.viralWorkflow.bgmMood || "professional");
           setViralCaptionsConfirmed(true);
           setViralCaptionPlanReady(Boolean(saved.viralWorkflow.planReady));
         }
@@ -3303,6 +3319,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       setSpeechAudioDuration(Math.max(0, Number(data.duration) || 0));
       setSpeechCaptions(Array.isArray(data.captions) ? normalizeViralCaptionsForReview(data.captions) : []);
       setSpeechViralTitle("");
+      setSpeechViralBgmMood("professional");
       setSpeechViralPlanReady(false);
       setSpeechAudioReady(true);
       window.dispatchEvent(new CustomEvent("member-assets-updated"));
@@ -3508,6 +3525,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       const sourceCaptions = speechCaptions.map((caption) => ({ ...caption }));
       let plannedTitle = viralTitleFromKnownScript(script);
       let plannedCaptions = sourceCaptions;
+      let plannedBgmMood: ViralBgmMood = "professional";
       let planReady = false;
       if (sourceCaptions.length) {
         try {
@@ -3520,11 +3538,13 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
             title?: string;
             captions?: ViralCaption[];
             planReady?: boolean;
+            directorPlan?: { bgmMood?: ViralBgmMood };
           };
           if (planResponse.ok && Array.isArray(planData.captions) && planData.captions.length === sourceCaptions.length) {
             plannedTitle = planData.title?.trim() || plannedTitle;
             plannedCaptions = planData.captions.map((caption) => ({ ...caption }));
             planReady = Boolean(planData.planReady);
+            plannedBgmMood = planData.directorPlan?.bgmMood || "professional";
           }
         } catch {
           // 对口型成片已经完成。轻量规划失败时保留原时间轴，渲染端会按本地规则兜底。
@@ -3532,6 +3552,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
       }
       setSpeechCaptions(plannedCaptions);
       setSpeechViralTitle(plannedTitle);
+      setSpeechViralBgmMood(plannedBgmMood);
       setSpeechViralPlanReady(planReady);
       const viralWorkflow: ViralWorkflowManifest | null = plannedCaptions.length ? {
         version: 1,
@@ -3540,6 +3561,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         title: plannedTitle,
         duration: Math.max(1, speechAudioDuration || data.audioDuration || plannedCaptions.at(-1)?.end || 1),
         captions: plannedCaptions,
+        bgmMood: plannedBgmMood,
         planReady,
         plannedAt: Date.now(),
       } : null;
@@ -3592,6 +3614,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setViralTitle(speechViralTitle || viralTitleFromKnownScript(script));
     setViralSubtitle(confirmedCaptions.map((caption) => caption.text).join(" / ").slice(0, 120));
     setViralCaptions(confirmedCaptions);
+    setViralBgmMood(speechViralBgmMood);
     setViralCaptionsConfirmed(Boolean(confirmedCaptions.length));
     setViralCaptionPlanReady(speechViralPlanReady);
     setViralAnalysisSummary(confirmedCaptions.length ? "已复用对口型口播的原始字幕时间轴，无需再次识别整条视频。" : "");
@@ -3622,6 +3645,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
         title: speechViralTitle || viralTitleFromKnownScript(script),
         duration: Math.max(1, speechAudioDuration || confirmedCaptions.at(-1)?.end || 1),
         captions: confirmedCaptions,
+        bgmMood: speechViralBgmMood,
         planReady: speechViralPlanReady,
         plannedAt: Date.now(),
       } satisfies ViralWorkflowManifest : null,
@@ -3661,6 +3685,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setViralTitle("");
     setViralSubtitle("");
     setViralCaptions([]);
+    setViralBgmMood("professional");
     setViralCaptionsConfirmed(false);
     setViralCaptionPlanReady(false);
     setViralTranscriptDialogOpen(false);
@@ -3730,6 +3755,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
     setViralTitle("");
     setViralSubtitle("");
     setViralCaptions([]);
+    setViralBgmMood("professional");
     setViralCaptionsConfirmed(false);
     setViralCaptionPlanReady(false);
     setViralAnalysisSummary("");
@@ -3852,6 +3878,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
             captions?: ViralCaption[];
             degraded?: boolean;
             planReady?: boolean;
+            directorPlan?: { bgmMood?: ViralBgmMood };
           };
           if (!aiResponse.ok) throw new Error(aiData.error || "大模型口播整理失败。");
           if (Array.isArray(aiData.captions) && aiData.captions.length) {
@@ -3859,6 +3886,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           }
           aiTitle = aiData.title || "";
           aiSummary = aiData.summary || "大模型已完成口播错字校正与完整句整理。";
+          setViralBgmMood(aiData.directorPlan?.bgmMood || "professional");
           setViralCaptionPlanReady(Boolean(aiData.planReady));
         } catch (error) {
           aiSummary = `${error instanceof Error ? error.message : "大模型校对暂时不可用"} 已保留真实语音识别结果，并按完整句整理。`;
@@ -4418,6 +4446,7 @@ export function Video({ memberId, busy, action, onPointsChange, viralImportAsset
           title: generatedTitle,
           duration: Math.max(1, viralCaptions.at(-1)?.end || 1),
           captions: viralCaptions,
+          bgmMood: viralBgmMood,
           source: viralCaptionPlanReady ? "ai" : "user-confirmed",
           model: viralCaptionPlanReady ? "app-precomputed" : "local-confirmed",
           degraded: !viralCaptionPlanReady,
