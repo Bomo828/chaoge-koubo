@@ -48,74 +48,6 @@ const normalizeWords = (caption: CaptionCue) => {
   }));
 };
 
-type CharacterTiming = {start: number; end: number} | null;
-
-/**
- * Bind every visible character to the final media's real ASR word timing.
- * Captions may contain corrected spellings (for example a brand name), so the
- * exact sequential match is preferred and a word-length projection is used
- * only to map corrected glyphs onto the already-grounded word intervals.
- */
-export const captionCharacterTimings = (caption: CaptionCue, compact: string): CharacterTiming[] => {
-  const characters = Array.from(compact);
-  const words = (caption.words ?? [])
-    .filter((word) => compactCaptionText(word.text) && Number(word.end) > Number(word.start))
-    .map((word) => ({
-      text: compactCaptionText(word.text),
-      start: Number(word.start),
-      end: Number(word.end),
-    }))
-    .sort((left, right) => left.start - right.start || left.end - right.end);
-  if (!characters.length || !words.length) return characters.map(() => null);
-
-  const exact: CharacterTiming[] = characters.map(() => null);
-  let cursor = 0;
-  let matchedCharacters = 0;
-  for (const word of words) {
-    const startIndex = compact.indexOf(word.text, cursor);
-    if (startIndex < 0) continue;
-    const endIndex = Math.min(characters.length, startIndex + Array.from(word.text).length);
-    for (let index = startIndex; index < endIndex; index += 1) {
-      exact[index] = {start: word.start, end: word.end};
-      matchedCharacters += 1;
-    }
-    cursor = endIndex;
-  }
-  if (matchedCharacters / Math.max(1, characters.length) >= .72) {
-    // Fill the occasional corrected or inserted glyph from the nearest real
-    // word without changing any timestamp.
-    return exact.map((timing, index) => timing
-      ?? exact.slice(index + 1).find(Boolean)
-      ?? exact.slice(0, index).reverse().find(Boolean)
-      ?? null);
-  }
-
-  const weights = words.map((word) => Math.max(1, Array.from(word.text).length));
-  const totalWeight = Math.max(1, weights.reduce((sum, value) => sum + value, 0));
-  const boundaries: number[] = [];
-  let consumed = 0;
-  for (const weight of weights) {
-    consumed += weight;
-    boundaries.push(consumed);
-  }
-  return characters.map((_, index) => {
-    const target = totalWeight * (index + .5) / characters.length;
-    const wordIndex = boundaries.findIndex((boundary) => boundary >= target);
-    const word = words[Math.max(0, wordIndex)];
-    return word ? {start: word.start, end: word.end} : null;
-  });
-};
-
-export const timedCharacterReveal = (absoluteTime: number, timing: CharacterTiming) => {
-  if (!timing) return 1;
-  const revealStart = timing.start - .035;
-  const revealEnd = timing.start + Math.min(.11, Math.max(.045, (timing.end - timing.start) * .42));
-  return interpolate(absoluteTime, [revealStart, revealEnd], [0, 1], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
-};
-
 const kineticFontFamily = '"Songti SC", "STSong", "Noto Serif CJK SC", serif';
 const brushFontFamily = '"Merchant Brush", "Weibei SC", "Kaiti SC", "STKaiti", "Songti SC", serif';
 const englishSerifFontFamily = 'Georgia, "Times New Roman", serif';
@@ -668,9 +600,6 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const {fps} = useVideoConfig();
   const durationFrames = Math.max(1, secondsToFrames((caption.displayEnd ?? caption.end) - caption.start, fps));
   const compact = compactCaptionText(caption.text);
-  const absoluteTime = caption.start + frame / fps;
-  const characterTimings = useMemo(() => captionCharacterTimings(caption, compact), [caption, compact]);
-  const characterReveal = (characterIndex: number) => timedCharacterReveal(absoluteTime, characterTimings[characterIndex] ?? null);
   const keyword = resolvedKeyword(caption, compact);
   const keywordStart = keyword ? compact.indexOf(keyword) : -1;
   const lines = adaptiveCaptionLines(caption, compact, Math.max(6, Math.min(9, timeline.theme.captionLineMaxChars ?? 8)));
@@ -714,8 +643,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
           const characterLayer = (outer: boolean) => lineCharacters.map((character, localIndex) => {
             const characterIndex = characterOffset + localIndex;
             const highlighted = phraseHighlighted || (!plain && keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0));
-            const reveal = characterReveal(characterIndex);
-            return <tspan key={`${outer ? "outer" : "main"}-${character}-${characterIndex}`} fill={outer ? "transparent" : highlighted ? style.accent : style.foreground} fillOpacity={outer ? 0 : reveal} stroke={outer ? "rgba(255,255,255,.98)" : "rgba(0,0,0,.99)"} strokeOpacity={reveal} strokeWidth={outer ? 13.5 : 8.2} paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={highlighted && !phraseHighlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight="900" letterSpacing={highlighted ? "-5.2" : "-4.4"}>{character}</tspan>;
+            return <tspan key={`${outer ? "outer" : "main"}-${character}-${characterIndex}`} fill={outer ? "transparent" : highlighted ? style.accent : style.foreground} stroke={outer ? "rgba(255,255,255,.98)" : "rgba(0,0,0,.99)"} strokeWidth={outer ? 13.5 : 8.2} paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={highlighted && !phraseHighlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight="900" letterSpacing={highlighted ? "-5.2" : "-4.4"}>{character}</tspan>;
           });
           return <React.Fragment key={`${line}-${lineIndex}`}>
             <text x="494" y={132 + lineIndex * 154} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill="transparent" stroke="rgba(255,255,255,.98)" strokeWidth="13.5" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={fitted.baseFontSize} fontWeight="900" letterSpacing="-4.4">{characterLayer(true)}</text>
@@ -744,7 +672,8 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
             {lineCharacters.map((character, localIndex) => {
               const characterIndex = characterOffset + localIndex;
               const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
-              const reveal = characterReveal(characterIndex);
+              const delay = Math.min(24, characterIndex * 2.4);
+              const reveal = interpolate(frame, [delay, delay + 4], [0, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
               return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} fillOpacity={reveal} stroke="rgba(0,0,0,.92)" strokeOpacity={reveal} strokeWidth={highlighted ? 4 : 2.6} paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={highlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight={highlighted ? 900 : 480} letterSpacing={highlighted ? "-4.8" : "-3.6"}>{character}</tspan>;
             })}
           </text>;
@@ -782,8 +711,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
               {Array.from(line).map((character, localIndex) => {
                 const characterIndex = characterOffset + localIndex;
                 const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
-                const reveal = characterReveal(characterIndex);
-                return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} fillOpacity={reveal} stroke="rgba(18,14,10,.94)" strokeOpacity={reveal} strokeWidth={highlighted ? 5 : 4.4} paintOrder="stroke fill" fontFamily={highlighted ? kineticFontFamily : brushFontFamily} fontSize={highlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight={highlighted ? 950 : 600} letterSpacing={highlighted ? "-1.7" : ".3"}>{character}</tspan>;
+                return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth={highlighted ? 5 : 4.4} paintOrder="stroke fill" fontFamily={highlighted ? kineticFontFamily : brushFontFamily} fontSize={highlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight={highlighted ? 950 : 600} letterSpacing={highlighted ? "-1.7" : ".3"}>{character}</tspan>;
               })}
             </text>;
           })}
@@ -844,13 +772,10 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
             {Array.from(line).map((character, localIndex) => {
               const characterIndex = characterOffset + localIndex;
               const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
-              const reveal = characterReveal(characterIndex);
               return <tspan
                 key={`${character}-${characterIndex}`}
                 fill={highlighted ? style.accent : style.foreground}
-                fillOpacity={reveal}
                 stroke={highlighted ? "rgba(255,255,255,.99)" : "rgba(13,9,10,.96)"}
-                strokeOpacity={reveal}
                 strokeWidth={highlighted ? 4.2 : 3.2}
                 strokeLinejoin="round"
                 strokeLinecap="round"

@@ -133,6 +133,11 @@ class SharedDirectorTests(unittest.TestCase):
                 for left, right in zip(compiled, compiled[1:])
             ), template_id)
             self.assertTrue(all(
+                worker.caption_plain_text("".join(str(word.get("text") or "") for word in item.get("words") or []))
+                == worker.caption_plain_text(str(item.get("text") or ""))
+                for item in compiled
+            ), template_id)
+            self.assertTrue(all(
                 worker.caption_unit_count(item["text"]) <= int(profile["caption_max_chars"])
                 for item in compiled
             ), template_id)
@@ -174,6 +179,50 @@ class SharedDirectorTests(unittest.TestCase):
             self.assertEqual(
                 compiled[0].get("captionCompileSource"),
                 "template-capacity:timing-locked",
+                template_id,
+            )
+
+    def test_phrase_timing_overrides_bad_ai_rows_and_caption_duration(self) -> None:
+        source = [{
+            "start": 4.97,
+            "end": 8.04,
+            "text": "最大的特点就是让口播脱离了死板的叙事",
+            # These rows are visually balanced but grammatically wrong as
+            # temporal cues: “脱离了” cannot lead the next object by itself.
+            "captionLines": ["最大的特点就是让口播脱离了", "死板的叙事"],
+            "translation": "The biggest feature is freeing talking-head videos from rigid narration",
+            "words": [
+                {"start": 4.97, "end": 5.35, "text": "最大的"},
+                {"start": 5.37, "end": 5.78, "text": "特点"},
+                {"start": 5.80, "end": 6.18, "text": "就是"},
+                {"start": 6.20, "end": 6.38, "text": "让"},
+                {"start": 6.40, "end": 6.76, "text": "口播"},
+                {"start": 6.78, "end": 7.13, "text": "脱离了"},
+                {"start": 7.15, "end": 7.52, "text": "死板的"},
+                {"start": 7.54, "end": 8.04, "text": "叙事"},
+            ],
+        }]
+        expected = ["最大的特点就是", "让口播脱离了死板的叙事"]
+        for template_id in ("template-9", "template-10", "template-11", "template-12"):
+            profile = worker.template_profile(template_id)
+            compiled = worker.compile_caption_cues_for_template(source, profile)
+            self.assertEqual([item["text"] for item in compiled], expected, template_id)
+            self.assertEqual(compiled[0]["start"], 4.97, template_id)
+            self.assertEqual(compiled[0]["end"], 6.18, template_id)
+            self.assertEqual(compiled[1]["start"], 6.20, template_id)
+            self.assertEqual(compiled[1]["end"], 8.04, template_id)
+            self.assertTrue(all(
+                worker.caption_plain_text("".join(str(word.get("text") or "") for word in item.get("words") or []))
+                == worker.caption_plain_text(str(item.get("text") or ""))
+                for item in compiled
+            ), template_id)
+            self.assertTrue(all(
+                float(item["end"]) - float(item["start"]) <= float(profile["caption_max_seconds"]) + 0.001
+                for item in compiled
+            ), template_id)
+            self.assertEqual(
+                " ".join(str(item.get("translation") or "") for item in compiled).split(),
+                source[0]["translation"].split(),
                 template_id,
             )
 

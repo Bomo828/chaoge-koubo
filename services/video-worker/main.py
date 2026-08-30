@@ -3291,8 +3291,18 @@ def timed_caption_beats(
                 **({"words": words} if words else {}),
             })
             continue
-        weights = [max(1, caption_unit_count(item)) for item in beats]
-        word_weights = [max(1, caption_unit_count(str(word["text"]))) for word in words]
+        # Use one counting system for the complete Chinese/mixed caption and
+        # for every ASR token inside it.  Counting a standalone `codeX` token
+        # as one English word while counting it as five glyphs in the Chinese
+        # caption shifted the real word boundary into the previous cue.
+        alignment_language = speech_language(join_speech_parts(beats))
+        alignment_count = (
+            (lambda value: len(caption_plain_text(value)))
+            if alignment_language == "zh"
+            else caption_unit_count
+        )
+        weights = [max(1, alignment_count(item)) for item in beats]
+        word_weights = [max(1, alignment_count(str(word["text"]))) for word in words]
         total_word_weight = max(1, sum(word_weights))
         total_beat_weight = max(1, sum(weights))
         word_cursor = 0
@@ -3446,6 +3456,172 @@ def split_caption_translation(value: str, beat_weights: list[int]) -> list[str]:
     ]
 
 
+def balanced_caption_timing_beats(
+    caption: dict[str, Any],
+    beat_count: int,
+    cue_limit: int,
+    min_chars: int,
+) -> list[str]:
+    """Choose complete short phrases before assigning real word timestamps.
+
+    AI-proposed caption rows are visual layout hints, not temporal evidence.
+    Promoting those rows directly into timed cues made the second row appear
+    before it was spoken.  This partitioner keeps product/ASR words intact,
+    prefers grammatical boundaries, and uses the AI rows only as a weak hint.
+    The caller still grounds every resulting beat to actual word timestamps.
+    """
+    text = normalize_speech_text(str(caption.get("text") or "")).strip("，,。！？!?；;：:、 ")
+    requested = max(1, int(beat_count or 1))
+    if not text or requested <= 1:
+        return [text] if text else []
+
+    lower_text = text.casefold()
+    word_boundaries: set[int] = set()
+    protected_ranges: list[tuple[int, int]] = []
+    cursor = 0
+    raw_words = caption.get("words") if isinstance(caption.get("words"), list) else []
+    for raw_word in raw_words:
+        if not isinstance(raw_word, dict):
+            continue
+        word_text = normalize_speech_text(str(raw_word.get("text") or ""))
+        if not word_text:
+            continue
+        start = lower_text.find(word_text.casefold(), cursor)
+        if start < 0:
+            continue
+        end = start + len(word_text)
+        protected_ranges.append((start, end))
+        if start > 0:
+            word_boundaries.add(start)
+        if end < len(text):
+            word_boundaries.add(end)
+        cursor = end
+
+    # Latin product names, model names and numbers must never be cut merely
+    # because their glyph count is wider than Chinese text.
+    for match in re.finditer(
+        r"[A-Za-z]+(?:[A-Za-z0-9+._-]*[A-Za-z0-9])?|\d+(?:\.\d+)?(?:%|万|亿|元|折)?",
+        text,
+    ):
+        protected_ranges.append((match.start(), match.end()))
+
+    directed_boundaries: set[int] = set()
+    directed_lines = [
+        normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
+        for line in (caption.get("captionLines") if isinstance(caption.get("captionLines"), list) else [])
+        if normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
+    ]
+    if directed_lines and "".join(directed_lines).casefold() == lower_text:
+        consumed = 0
+        for line in directed_lines[:-1]:
+            consumed += len(line)
+            directed_boundaries.add(consumed)
+
+    punctuation_boundaries = {
+        index + 1
+        for index, character in enumerate(text[:-1])
+        if character in "，,。！？!?；;：:、"
+    }
+    semantic_boundaries: set[int] = set()
+    semantic_markers = (
+        "但是", "不过", "所以", "然后", "因为", "如果", "同时", "以及",
+        "而且", "而是", "就是", "只需要", "首先", "其次", "最后", "比如",
+        "例如", "通过", "接下来", "第一", "第二", "第三", "一方面", "另一方面",
+    )
+    for marker in semantic_markers:
+        marker_cursor = text.find(marker)
+        while marker_cursor >= 0:
+            if marker_cursor > 0:
+                semantic_boundaries.add(marker_cursor)
+            marker_end = marker_cursor + len(marker)
+            if marker_end < len(text):
+                semantic_boundaries.add(marker_end)
+            marker_cursor = text.find(marker, marker_cursor + 1)
+
+    def inside_protected(position: int) -> bool:
+        return any(start < position < end for start, end in protected_ranges)
+
+    if speech_language(text) == "en":
+        whitespace_boundaries = {
+            index
+            for index, character in enumerate(text)
+            if character.isspace() and 0 < index < len(text)
+        }
+        candidates = sorted(
+            position for position in (word_boundaries | whitespace_boundaries | directed_boundaries | punctuation_boundaries)
+            if 0 < position < len(text) and not inside_protected(position)
+        )
+    else:
+        candidates = [
+            position
+            for position in range(1, len(text))
+            if not inside_protected(position)
+        ]
+    positions = [0, *candidates, len(text)]
+    if len(positions) - 2 < requested - 1:
+        return [text]
+
+    total_units = max(1, caption_unit_count(text))
+    ideal_units = total_units / requested
+    invalid_left = ("的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及", "用")
+    invalid_right = ("的", "和", "与", "就", "都", "也", "才", "了", "着", "过")
+    strong_left = ("就是", "只需要", "首先", "其次", "最后", "第一", "第二", "第三")
+    strong_right = ("但是", "不过", "所以", "然后", "因为", "如果", "同时", "接下来", "让", "把", "通过")
+
+    def segment_score(start: int, end: int, final: bool) -> float:
+        value = text[start:end].strip()
+        units = caption_unit_count(value)
+        if not value or units <= 0:
+            return 10_000.0
+        score = abs(units - ideal_units) * 1.5
+        score += max(0, units - cue_limit) * 28.0
+        score += max(0, min_chars - units) * 9.0
+        if not final:
+            following = text[end:]
+            score += 12.0 if value.endswith(invalid_left) else 0.0
+            score += 12.0 if following.startswith(invalid_right) else 0.0
+            score -= 8.0 if end in punctuation_boundaries else 0.0
+            score -= 6.0 if end in semantic_boundaries else 0.0
+            score -= 4.0 if value.endswith(strong_left) or following.startswith(strong_right) else 0.0
+            score -= 2.0 if end in directed_boundaries else 0.0
+            if word_boundaries and end not in word_boundaries:
+                score += 7.0
+        return score
+
+    # Dynamic programming avoids a locally attractive first cut creating a
+    # dangling one-character tail later in the same sentence.
+    states: dict[tuple[int, int], tuple[float, list[int]]] = {(0, 0): (0.0, [0])}
+    for used in range(requested):
+        for position_index in range(len(positions) - 1):
+            state = states.get((used, position_index))
+            if state is None:
+                continue
+            score, path = state
+            remaining_segments = requested - used - 1
+            maximum_next_index = len(positions) - 1 - remaining_segments
+            for next_index in range(position_index + 1, maximum_next_index + 1):
+                next_position = positions[next_index]
+                final = used == requested - 1
+                if final and next_position != len(text):
+                    continue
+                if not final and next_position == len(text):
+                    continue
+                candidate_score = score + segment_score(positions[position_index], next_position, final)
+                key = (used + 1, next_index)
+                previous = states.get(key)
+                if previous is None or candidate_score < previous[0]:
+                    states[key] = (candidate_score, [*path, next_position])
+    result = states.get((requested, len(positions) - 1))
+    if result is None:
+        return [text]
+    boundaries = result[1]
+    beats = [
+        text[boundaries[index]:boundaries[index + 1]].strip("，,。！？!?；;：:、 ")
+        for index in range(len(boundaries) - 1)
+    ]
+    return beats if len(beats) == requested and all(beats) else [text]
+
+
 def compile_caption_cues_for_template(
     captions: list[dict[str, Any]],
     template: dict[str, Any],
@@ -3467,42 +3643,46 @@ def compile_caption_cues_for_template(
         min(line_limit * max_lines, int(template.get("caption_max_chars") or line_limit * max_lines)),
     )
     min_chars = max(2, min(line_limit, int(template.get("caption_min_chars") or 4)))
+    max_seconds = max(0.8, float(template.get("caption_max_seconds") or 2.8))
     compiled: list[dict[str, Any]] = []
     for raw in captions:
         item = dict(raw)
         text = normalize_speech_text(str(item.get("text") or "")).strip("，,。！？!?；;：:、 ")
         if not text:
             continue
-        if caption_unit_count(text) <= cue_limit:
+        units = caption_unit_count(text)
+        duration = max(0.0, float(item.get("end") or 0.0) - float(item.get("start") or 0.0))
+        required_beats = max(
+            1,
+            math.ceil(units / cue_limit),
+            math.ceil(duration / max_seconds),
+        )
+        raw_words = item.get("words") if isinstance(item.get("words"), list) else []
+        valid_word_count = sum(
+            1 for word in raw_words
+            if isinstance(word, dict)
+            and normalize_speech_text(str(word.get("text") or ""))
+            and float(word.get("end") or 0.0) > float(word.get("start") or 0.0)
+        )
+        if valid_word_count:
+            required_beats = min(required_beats, valid_word_count)
+        if required_beats <= 1:
             item["text"] = text
             compiled.append(item)
             continue
 
-        # Prefer the AI's grounded semantic rows when they are valid. They are
-        # promoted to timed cues only because the selected template cannot fit
-        # the whole sentence at a readable size.
+        # AI rows describe visual line breaks.  Temporal cue boundaries are
+        # compiled independently from grammar plus actual word timing.
         keyword = normalize_speech_text(str(item.get("keyword") or ""))
-        directed = [
-            normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
-            for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:max_lines]
-            if normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
-        ]
-        keyword_start = text.find(keyword) if keyword else -1
-        keyword_split = bool(
-            keyword_start >= 0
-            and directed
-            and keyword_start < len(directed[0]) < keyword_start + len(keyword)
+        beats = balanced_caption_timing_beats(
+            item,
+            required_beats,
+            cue_limit,
+            min_chars,
         )
-        preferred = directed if "".join(directed) == text and not keyword_split else []
-        beats: list[str] = []
-        for phrase in preferred or [text]:
-            if caption_unit_count(phrase) <= cue_limit:
-                beats.append(phrase)
-            else:
-                beats.extend(split_semantic_caption_text(phrase, min_chars, cue_limit))
-        beats = [beat for beat in beats if beat]
         if len(beats) <= 1:
             item["text"] = text
+            item["captionCompileSource"] = "template-capacity:timing-locked"
             compiled.append(item)
             continue
 
