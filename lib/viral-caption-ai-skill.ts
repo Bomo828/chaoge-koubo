@@ -1,10 +1,17 @@
 export const VIRAL_CAPTION_AI_SKILL_ID = "talking-head-caption-director";
-export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v3-strict";
-export const VIRAL_CAPTION_AI_MODEL = process.env.VIRAL_CAPTION_AI_MODEL?.trim() || "tt-5.5";
+export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v4-deepseek";
+export const VIRAL_CAPTION_AI_MODEL = process.env.DEEPSEEK_CAPTION_MODEL?.trim() || "deepseek-v4-flash";
+export const VIRAL_CAPTION_AI_FALLBACK_MODEL = process.env.VIRAL_CAPTION_AI_FALLBACK_MODEL?.trim()
+  || process.env.VIRAL_CAPTION_AI_MODEL?.trim()
+  || "tt-5.5";
 const configuredTimeout = Number(process.env.VIRAL_CAPTION_AI_TIMEOUT_MS?.trim() || Number.NaN);
 export const VIRAL_CAPTION_AI_TIMEOUT_MS = Number.isFinite(configuredTimeout)
-  ? Math.max(30_000, Math.min(90_000, Math.round(configuredTimeout)))
-  : 55_000;
+  ? Math.max(8_000, Math.min(30_000, Math.round(configuredTimeout)))
+  : 22_000;
+const configuredFallbackTimeout = Number(process.env.VIRAL_CAPTION_AI_FALLBACK_TIMEOUT_MS?.trim() || Number.NaN);
+export const VIRAL_CAPTION_AI_FALLBACK_TIMEOUT_MS = Number.isFinite(configuredFallbackTimeout)
+  ? Math.max(6_000, Math.min(18_000, Math.round(configuredFallbackTimeout)))
+  : 12_000;
 
 export type ViralCaptionSkillLanguage = "zh" | "en";
 export type ViralKeywordImportance = "none" | "regular" | "primary";
@@ -83,9 +90,11 @@ export function buildViralCaptionSkillRequest(input: {
   messages: Array<Record<string, unknown>>;
   captionCount: number;
   maxTokens?: number;
+  model?: string;
+  provider?: "deepseek" | "lk888";
 }) {
-  return {
-    model: VIRAL_CAPTION_AI_MODEL,
+  const request: Record<string, unknown> = {
+    model: input.model || VIRAL_CAPTION_AI_MODEL,
     temperature: 0.02,
     max_tokens: Math.max(
       800,
@@ -94,4 +103,9 @@ export function buildViralCaptionSkillRequest(input: {
     response_format: { type: "json_object" },
     messages: input.messages,
   };
+  if (input.provider === "deepseek") {
+    request.thinking = { type: "disabled" };
+    request.reasoning_effort = "low";
+  }
+  return request;
 }

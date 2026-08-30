@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
-import { ensureProviderBalance, providerCostToPoints, quoteGptImage2 } from "../../../../lib/ai-pricing";
+import { ensureProviderBalance, providerCostToPoints, quoteImageModel } from "../../../../lib/ai-pricing";
+import { IMAGE_GENERATE_ENDPOINT, IMAGE_MODEL, imageStatusPath } from "../../../../lib/image-model";
 import { pointsErrorResponse, refundAiPoints, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 
 type ProviderPayload = Record<string, unknown>;
@@ -62,16 +63,16 @@ export async function POST(request: Request) {
     ));
     if (references.length !== sourceReferences.length) return Response.json({ ok: false, error: "参考图格式不正确。" }, { status: 400 });
 
-    const quote = await quoteGptImage2({ size: "960x1280", quality: "high", count: 1, referenceCount: references.length });
+    const quote = await quoteImageModel({ size: "960x1280", quality: "high", count: 1, referenceCount: references.length });
     await ensureProviderBalance(quote.estimatedProviderCost);
     reservation = await reserveAiPoints(member, "image_generate", 1, body.request_id, quote.estimatedPoints);
-    const created = await lk888Fetch<ProviderPayload>("/v1/media/generate", {
+    const created = await lk888Fetch<ProviderPayload>(IMAGE_GENERATE_ENDPOINT, {
       method: "POST",
       signal: AbortSignal.timeout(120_000),
       body: JSON.stringify({
-        model: "gpt-image-2",
+        model: IMAGE_MODEL,
         prompt,
-        params: { size: "960x1280", quality: "high", images: references, n: 1, response_format: "url" },
+        params: { size: "960x1280", quality: "high", images: references, n: 1 },
       }),
     });
 
@@ -82,7 +83,7 @@ export async function POST(request: Request) {
 
     for (let attempt = 0; !urls.length && attempt < 120; attempt += 1) {
       await wait(3000);
-      finalPayload = await lk888Fetch<ProviderPayload>(`/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`, { cache: "no-store" });
+      finalPayload = await lk888Fetch<ProviderPayload>(imageStatusPath(taskId), { cache: "no-store" });
       taskId = String(nestedField(finalPayload, ["task_id", "taskId", "taskid", "id"]) || taskId);
       const state = String(nestedField(finalPayload, ["state", "task_state", "status"]) || "").toLowerCase();
       const isFinal = nestedField(finalPayload, ["is_final", "isFinal"]) === true;
@@ -102,7 +103,7 @@ export async function POST(request: Request) {
       ok: true,
       task_id: taskId,
       image_url: urls[0],
-      model: "gpt-image-2",
+      model: IMAGE_MODEL,
       size: "960x1280",
       wallet,
     });

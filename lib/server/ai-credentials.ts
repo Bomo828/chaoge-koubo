@@ -5,6 +5,7 @@ import { getDatabase, unixNow } from "./db";
 
 const CREDENTIAL_SETTING_KEY = "ai_provider_credentials_v1";
 const DEFAULT_LK888_BASE_URL = "https://api.lk888.ai";
+const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_CHANJING_BASE_URL = "https://open-api.chanjing.cc";
 const DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io";
 
@@ -14,6 +15,8 @@ type StoredLk888Credential = {
   updatedAt: number;
   updatedBy: string;
 };
+
+type StoredDeepSeekCredential = StoredLk888Credential;
 
 type StoredChanjingCredential = {
   appId?: string;
@@ -32,11 +35,12 @@ type StoredTikHubCredential = {
 
 type StoredCredentials = {
   lk888?: StoredLk888Credential;
+  deepseek?: StoredDeepSeekCredential;
   chanjing?: StoredChanjingCredential;
   tikhub?: StoredTikHubCredential;
 };
 
-export type ProviderCredentialId = "lk888" | "chanjing" | "tikhub";
+export type ProviderCredentialId = "lk888" | "deepseek" | "chanjing" | "tikhub";
 export type ProviderCredentialInput = {
   apiKey?: string;
   appId?: string;
@@ -51,6 +55,8 @@ export type Lk888CredentialSummary = {
   source: "admin" | "environment" | "none";
   updatedAt: number | null;
 };
+
+export type DeepSeekCredentialSummary = Lk888CredentialSummary;
 
 export type ChanjingCredentialSummary = {
   configured: boolean;
@@ -178,6 +184,21 @@ export function getLk888Config() {
   };
 }
 
+export function getDeepSeekConfig() {
+  const stored = readStoredCredentials().deepseek;
+  const storedKey = stored?.apiKey?.trim() || "";
+  const environmentKey = process.env.DEEPSEEK_API_KEY?.trim() || "";
+  return {
+    apiKey: storedKey || environmentKey,
+    baseUrl: normalizeBaseUrl(
+      stored?.baseUrl || process.env.DEEPSEEK_API_BASE_URL || DEFAULT_DEEPSEEK_BASE_URL,
+      DEFAULT_DEEPSEEK_BASE_URL,
+    ),
+    source: storedKey ? "admin" as const : environmentKey ? "environment" as const : "none" as const,
+    updatedAt: stored?.updatedAt || null,
+  };
+}
+
 export function getChanjingConfig() {
   const stored = readStoredCredentials().chanjing;
   const storedAppId = stored?.appId?.trim() || "";
@@ -209,6 +230,17 @@ export function getTikHubConfig() {
 
 export function getLk888CredentialSummary(): Lk888CredentialSummary {
   const config = getLk888Config();
+  return {
+    configured: Boolean(config.apiKey),
+    maskedKey: maskKey(config.apiKey),
+    baseUrl: config.baseUrl,
+    source: config.source,
+    updatedAt: config.updatedAt,
+  };
+}
+
+export function getDeepSeekCredentialSummary(): DeepSeekCredentialSummary {
+  const config = getDeepSeekConfig();
   return {
     configured: Boolean(config.apiKey),
     maskedKey: maskKey(config.apiKey),
@@ -278,6 +310,42 @@ export async function testLk888Credentials(input: { apiKey?: string; baseUrl?: s
     unit: payload.unit || "算力",
     baseUrl,
   };
+}
+
+export async function testDeepSeekCredentials(input: { apiKey?: string; baseUrl?: string }) {
+  const current = getDeepSeekConfig();
+  const apiKey = input.apiKey?.trim() || current.apiKey;
+  const baseUrl = normalizeBaseUrl(input.baseUrl || current.baseUrl, DEFAULT_DEEPSEEK_BASE_URL);
+  if (!apiKey) throw new Error("请填写 DeepSeek API Key 后再测试连接。");
+  if (apiKey.length < 12 || /\s/.test(apiKey)) throw new Error("DeepSeek API Key 格式不正确，请检查后重试。");
+
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl}/models`, {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${apiKey}`, Accept: "application/json" },
+      signal: AbortSignal.timeout(12_000),
+    });
+  } catch (error) {
+    throw providerFetchError(error);
+  }
+  const payload = await response.json().catch(() => ({})) as {
+    data?: Array<{ id?: string }>;
+    error?: string | { message?: string };
+  };
+  if (!response.ok) {
+    const message = typeof payload.error === "string"
+      ? payload.error
+      : payload.error?.message || `DeepSeek 接口连接失败（${response.status}）`;
+    throw new Error(message);
+  }
+  const models = Array.isArray(payload.data)
+    ? payload.data.map((item) => item.id || "").filter(Boolean)
+    : [];
+  if (!models.includes("deepseek-v4-flash")) {
+    throw new Error("DeepSeek 连接成功，但当前 Key 暂不可用 deepseek-v4-flash。");
+  }
+  return { connected: true, balance: null, unit: "可用", baseUrl };
 }
 
 function chanjingMessage(payload: Record<string, unknown>, fallback: string) {
@@ -394,6 +462,25 @@ export async function saveLk888Credentials(actorId: string, input: { apiKey?: st
   return getLk888CredentialSummary();
 }
 
+export async function saveDeepSeekCredentials(actorId: string, input: { apiKey?: string; baseUrl?: string }) {
+  const current = getDeepSeekConfig();
+  const stored = readStoredCredentials();
+  const apiKey = input.apiKey?.trim() || current.apiKey;
+  const baseUrl = normalizeBaseUrl(input.baseUrl || current.baseUrl, DEFAULT_DEEPSEEK_BASE_URL);
+  await testDeepSeekCredentials({ apiKey, baseUrl });
+
+  const now = unixNow();
+  const next: StoredCredentials = {
+    ...stored,
+    deepseek: { apiKey, baseUrl, updatedAt: now, updatedBy: actorId },
+  };
+  getDatabase().prepare(`
+    INSERT INTO system_settings (key, value_json, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(CREDENTIAL_SETTING_KEY, encryptCredentials(next), actorId, now);
+  return getDeepSeekCredentialSummary();
+}
+
 export async function saveChanjingCredentials(actorId: string, input: ProviderCredentialInput) {
   const current = getChanjingConfig();
   const stored = readStoredCredentials();
@@ -435,18 +522,21 @@ export async function saveTikHubCredentials(actorId: string, input: { apiKey?: s
 
 export function getProviderCredentialSummary(providerId: ProviderCredentialId) {
   if (providerId === "lk888") return getLk888CredentialSummary();
+  if (providerId === "deepseek") return getDeepSeekCredentialSummary();
   if (providerId === "tikhub") return getTikHubCredentialSummary();
   return getChanjingCredentialSummary();
 }
 
 export function testProviderCredentials(providerId: ProviderCredentialId, input: ProviderCredentialInput) {
   if (providerId === "lk888") return testLk888Credentials(input);
+  if (providerId === "deepseek") return testDeepSeekCredentials(input);
   if (providerId === "tikhub") return testTikHubCredentials(input);
   return testChanjingCredentials(input);
 }
 
 export function saveProviderCredentials(providerId: ProviderCredentialId, actorId: string, input: ProviderCredentialInput) {
   if (providerId === "lk888") return saveLk888Credentials(actorId, input);
+  if (providerId === "deepseek") return saveDeepSeekCredentials(actorId, input);
   if (providerId === "tikhub") return saveTikHubCredentials(actorId, input);
   return saveChanjingCredentials(actorId, input);
 }

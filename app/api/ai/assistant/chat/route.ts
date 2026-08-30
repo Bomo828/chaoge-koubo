@@ -3,6 +3,7 @@ import { providerCostToPoints } from "../../../../../lib/ai-pricing";
 import { AiProviderError, aiErrorResponse, lk888Request } from "../../../../../lib/lk888";
 import { getWallet, pointsErrorResponse, refundAiPoints, reserveAiPoints, settleAiPointsByRequest } from "../../../../../lib/points";
 import { billablePointsFromCost } from "../../../../../lib/billing";
+import { IMAGE_MODEL } from "../../../../../lib/image-model";
 import { ownsAgentConversation, rememberAgentConversation, rememberAgentTask } from "../../../../../lib/server/agent-conversations";
 
 export const runtime = "nodejs";
@@ -29,7 +30,7 @@ function settingsFrom(value: unknown): AgentSettings {
     memory: enabled("memory", true),
     carry_history: true,
     generate_image: generateImage,
-    ...(generateImage ? { image_models: ["gpt-image-2"], image_limit: 2 } : {}),
+    ...(generateImage ? { image_models: [IMAGE_MODEL], image_limit: 2 } : {}),
     generate_video: false,
     generate_audio: false,
     document_generate: true,

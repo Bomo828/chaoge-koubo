@@ -3,7 +3,14 @@ import { isAdmin } from "../../../../lib/server/auth";
 import { lk888Fetch } from "../../../../lib/lk888";
 import { getPlatformSettings } from "../../../../lib/server/platform-settings";
 import { getChanjingBalance } from "../../../../lib/chanjing";
-import { getChanjingCredentialSummary, getLk888CredentialSummary, getTikHubConfig, getTikHubCredentialSummary } from "../../../../lib/server/ai-credentials";
+import {
+  getChanjingCredentialSummary,
+  getDeepSeekConfig,
+  getDeepSeekCredentialSummary,
+  getLk888CredentialSummary,
+  getTikHubConfig,
+  getTikHubCredentialSummary,
+} from "../../../../lib/server/ai-credentials";
 import { videoWorkerPublicUrl, videoWorkerUpstreamUrl } from "../../../../lib/server/video-worker";
 
 export const runtime = "nodejs";
@@ -14,6 +21,27 @@ export async function GET() {
   const member = await getMemberSession();
   if (!isAdmin(member)) return Response.json({ error: "需要管理员权限。" }, { status: 403 });
   const settings = getPlatformSettings();
+  const deepSeekSetting = settings.aiProviders.find((item) => item.id === "deepseek");
+  const deepSeekCredential = getDeepSeekCredentialSummary();
+  const deepSeek = getDeepSeekConfig();
+  let deepSeekConnected = false;
+  let deepSeekError = "";
+  if (deepSeek.apiKey) {
+    try {
+      const response = await fetch(`${deepSeek.baseUrl}/models`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${deepSeek.apiKey}`, Accept: "application/json" },
+        signal: AbortSignal.timeout(8_000),
+      });
+      const payload = await response.json().catch(() => ({})) as { data?: Array<{ id?: string }> };
+      deepSeekConnected = response.ok && Boolean(payload.data?.some((item) => item.id === "deepseek-v4-flash"));
+      if (!deepSeekConnected) deepSeekError = `模型状态读取失败（${response.status}）`;
+    } catch (error) {
+      deepSeekError = error instanceof Error ? error.message : "连接失败";
+    }
+  } else {
+    deepSeekError = "尚未配置 DeepSeek API Key";
+  }
   const lkCredential = getLk888CredentialSummary();
   const lkSetting = settings.aiProviders.find((item) => item.id === "lk888");
   let balance: Balance | null = null;
@@ -64,6 +92,22 @@ export async function GET() {
   return Response.json({
     checkedAt: Date.now(),
     services: [
+      {
+        id: "deepseek",
+        name: "DeepSeek 字幕导演",
+        configured: deepSeekCredential.configured,
+        connected: deepSeekConnected,
+        balance: null,
+        unit: "服务状态",
+        sufficient: deepSeekConnected && Boolean(deepSeekSetting?.enabled),
+        message: deepSeekError || "deepseek-v4-flash 可用",
+        secretHint: deepSeekCredential.configured
+          ? `${deepSeekCredential.maskedKey} · ${deepSeekCredential.source === "admin" ? "后台配置" : "服务器配置"}`
+          : "尚未配置 DeepSeek API Key",
+        baseUrl: deepSeekCredential.baseUrl,
+        credentialSource: deepSeekCredential.source,
+        credentialUpdatedAt: deepSeekCredential.updatedAt,
+      },
       {
         id: "lk888",
         name: "开放 AI 平台",

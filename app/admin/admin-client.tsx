@@ -27,7 +27,7 @@ type AiServiceStatus = {
 };
 
 type AiCredentialEditor = {
-  providerId: "lk888" | "chanjing" | "tikhub";
+  providerId: "lk888" | "deepseek" | "chanjing" | "tikhub";
   apiKey: string;
   appId: string;
   secretKey: string;
@@ -234,7 +234,7 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
     } finally { setCheckingAi(false); }
   }
 
-  function openCredentialEditor(providerId: "lk888" | "chanjing" | "tikhub") {
+  function openCredentialEditor(providerId: "lk888" | "deepseek" | "chanjing" | "tikhub") {
     const status = aiStatuses.find((item) => item.id === providerId);
     setCredentialEditor({
       providerId,
@@ -243,6 +243,8 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
       secretKey: "",
       baseUrl: status?.baseUrl || (providerId === "lk888"
         ? "https://api.lk888.ai"
+        : providerId === "deepseek"
+          ? "https://api.deepseek.com"
         : providerId === "tikhub"
           ? "https://api.tikhub.io"
           : "https://open-api.chanjing.cc"),
@@ -284,6 +286,8 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
       setCredentialMessage("");
       const providerName = credentialEditor.providerId === "lk888"
         ? "开放 AI 平台"
+        : credentialEditor.providerId === "deepseek"
+          ? "DeepSeek 字幕导演"
         : credentialEditor.providerId === "tikhub"
           ? "市场数据服务"
           : "蝉镜数字人";
@@ -656,9 +660,9 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
           <header><h2>AI 接口与余额</h2><button className="admin-add" disabled={checkingAi} onClick={() => void refreshAiStatus()}>{checkingAi ? "正在检测…" : "↻ 刷新实时状态"}</button></header>
           <div className="admin-ai-grid">{settings.aiProviders.map((provider) => {
             const status = aiStatuses.find((item) => item.id === provider.id);
-            const configurableId = provider.id === "lk888" || provider.id === "chanjing" || provider.id === "tikhub" ? provider.id : null;
+            const configurableId = provider.id === "lk888" || provider.id === "deepseek" || provider.id === "chanjing" || provider.id === "tikhub" ? provider.id : null;
             return <article key={provider.id} className={status ? status.sufficient ? "is-ok" : "is-warning" : ""}>
-              <header><i>{provider.id === "lk888" ? "AI" : provider.id === "chanjing" ? "声" : provider.id === "tikhub" ? "数" : "视"}</i><div><b>{provider.name}</b><span>{provider.purpose}</span></div><em>{status ? status.connected ? "已连接" : "异常" : "待检测"}</em></header>
+              <header><i>{provider.id === "lk888" ? "AI" : provider.id === "deepseek" ? "导" : provider.id === "chanjing" ? "声" : provider.id === "tikhub" ? "数" : "视"}</i><div><b>{provider.name}</b><span>{provider.purpose}</span></div><em>{status ? status.connected ? "已连接" : "异常" : "待检测"}</em></header>
               <div className="ai-balance"><small>实时余额 / 状态</small><b>{status?.balance === null || status?.balance === undefined ? status?.unit || "—" : `${status.balance.toFixed(4)} ${status.unit}`}</b><span>{status?.message || "点击刷新读取状态"}</span></div>
               <label><span>余额预警阈值</span><input type="number" min="0" value={provider.lowBalanceThreshold} onChange={(event) => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, lowBalanceThreshold: Number(event.target.value) } : item) }))} /></label>
               <button className={`admin-switch ${provider.enabled ? "is-on" : ""}`} onClick={() => setSettings((current) => ({ ...current, aiProviders: current.aiProviders.map((item) => item.id === provider.id ? { ...item, enabled: !item.enabled } : item) }))}>{provider.enabled ? "服务启用" : "服务停用"}</button>
@@ -669,9 +673,9 @@ export function AdminClient({ member, initialStats, initialTemplates, initialUse
         </section>
         {credentialEditor ? <div className="admin-dialog-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !credentialBusy) setCredentialEditor(null); }}>
           <section className="admin-credential-dialog" role="dialog" aria-modal="true" aria-labelledby="credential-dialog-title">
-            <header><div><h2 id="credential-dialog-title">配置{credentialEditor.providerId === "lk888" ? "开放 AI 平台" : credentialEditor.providerId === "tikhub" ? "市场数据服务" : "蝉镜数字人"}</h2><p>新配置验证成功后才会替换当前配置</p></div><button type="button" aria-label="关闭" disabled={Boolean(credentialBusy)} onClick={() => setCredentialEditor(null)}>×</button></header>
+            <header><div><h2 id="credential-dialog-title">配置{credentialEditor.providerId === "lk888" ? "开放 AI 平台" : credentialEditor.providerId === "deepseek" ? "DeepSeek 字幕导演" : credentialEditor.providerId === "tikhub" ? "市场数据服务" : "蝉镜数字人"}</h2><p>新配置验证成功后才会替换当前配置</p></div><button type="button" aria-label="关闭" disabled={Boolean(credentialBusy)} onClick={() => setCredentialEditor(null)}>×</button></header>
             <label><span>接口地址</span><input type="url" maxLength={500} value={credentialEditor.baseUrl} onChange={(event) => setCredentialEditor({ ...credentialEditor, baseUrl: event.target.value })} placeholder="https://api.example.com" /></label>
-            {credentialEditor.providerId === "lk888" || credentialEditor.providerId === "tikhub" ? <label><span>API Key</span><input ref={credentialKeyRef} type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.apiKey} onChange={(event) => setCredentialEditor({ ...credentialEditor, apiKey: event.target.value })} placeholder="留空表示继续使用当前 Key" /></label> : <>
+            {credentialEditor.providerId === "lk888" || credentialEditor.providerId === "deepseek" || credentialEditor.providerId === "tikhub" ? <label><span>API Key</span><input ref={credentialKeyRef} type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.apiKey} onChange={(event) => setCredentialEditor({ ...credentialEditor, apiKey: event.target.value })} placeholder="留空表示继续使用当前 Key" /></label> : <>
               <label><span>AppID</span><input ref={credentialKeyRef} type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.appId} onChange={(event) => setCredentialEditor({ ...credentialEditor, appId: event.target.value })} placeholder="留空表示继续使用当前 AppID" /></label>
               <label><span>Secret Key</span><input type="password" maxLength={500} autoComplete="new-password" value={credentialEditor.secretKey} onChange={(event) => setCredentialEditor({ ...credentialEditor, secretKey: event.target.value })} placeholder="留空表示继续使用当前密钥" /></label>
             </>}

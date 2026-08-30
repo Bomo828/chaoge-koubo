@@ -1,5 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
+import { IMAGE_MODEL } from "../../../../lib/image-model";
 import { getWallet, pointsErrorResponse, refundAiPoints, reserveAiPoints, settleAiPoints } from "../../../../lib/points";
 
 type ProviderChatResponse = {
@@ -89,7 +90,7 @@ export async function POST(request: Request) {
 
     const system = stage === "analyze"
       ? `你是短视频总导演。请结合本次需求、真实素材内容和目标平台，完成需求与素材分析，再只推荐3个最适合本次任务的短视频方向。方向必须分别体现：快速获客、专业信任、真实体验三类价值，但标题与内容要贴合本次填写的行业和主题。不得虚构素材中不存在的服务、价格、资质、顾客评价或效果。只返回JSON：{"summary":"需求与素材摘要","platformInsight":"平台传播建议","directions":[{"id":"direction-1","title":"方向标题","tag":"价值标签","hook":"前三秒钩子","story":"内容结构","reason":"为什么适合","risk":"需要注意"}],"missing":["仍建议补充的信息"]}。directions必须恰好3项。`
-      : `你是短视频总导演。用户已经从3个方向中选定一个，请根据本次需求、素材、活动信息、目标人群、视频时长和输出分辨率，输出可直接交给 Seedance 2.0 参考生视频模型的15秒以内竖版短视频方案。每个镜头都必须能由上传素材或合理的关键帧实现，不得虚构价格、资质、顾客评价或效果。视频提示词需要明确：使用1至9张参考图保持人物、场景、商品和品牌一致；9:16竖版；采用项目上下文指定的480p或720p输出；自然运镜；主体一致性；移动端安全区；不要生成乱码文字，字幕由后期叠加。只返回JSON：{"title":"项目名称","script":"完整口播或字幕文案","generationPrompt":"可直接交给 Seedance 2.0 的专业提示词","shots":[{"time":"0-3s","title":"镜头标题","visual":"画面与运镜","caption":"字幕","source":"建议使用的素材"}],"modelPlan":[{"step":"策划分析","model":"gpt-5.5","reason":"用途"},{"step":"关键帧补充","model":"gpt-image-2","reason":"用途"},{"step":"参考生视频","model":"kwvideo-v2-ref","reason":"Seedance 2.0 参考生视频"}]}。shots为4至6项，时间总长不得超过指定时长。`;
+      : `你是短视频总导演。用户已经从3个方向中选定一个，请根据本次需求、素材、活动信息、目标人群、视频时长和输出分辨率，输出可直接交给 Seedance 2.0 参考生视频模型的15秒以内竖版短视频方案。每个镜头都必须能由上传素材或合理的关键帧实现，不得虚构价格、资质、顾客评价或效果。视频提示词需要明确：使用1至9张参考图保持人物、场景、商品和品牌一致；9:16竖版；采用项目上下文指定的480p或720p输出；自然运镜；主体一致性；移动端安全区；不要生成乱码文字，字幕由后期叠加。只返回JSON：{"title":"项目名称","script":"完整口播或字幕文案","generationPrompt":"可直接交给 Seedance 2.0 的专业提示词","shots":[{"time":"0-3s","title":"镜头标题","visual":"画面与运镜","caption":"字幕","source":"建议使用的素材"}],"modelPlan":[{"step":"策划分析","model":"gpt-5.5","reason":"用途"},{"step":"关键帧补充","model":"${IMAGE_MODEL}","reason":"用途"},{"step":"参考生视频","model":"kwvideo-v2-ref","reason":"Seedance 2.0 参考生视频"}]}。shots为4至6项，时间总长不得超过指定时长。`;
 
     const userContent = referenceImages.length
       ? [

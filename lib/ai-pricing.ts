@@ -1,4 +1,5 @@
 import { AiProviderError, lk888Fetch } from "./lk888";
+import { IMAGE_MODEL } from "./image-model";
 
 type PriceOption = {
   param_name?: string;
@@ -30,7 +31,7 @@ type ProviderBalance = {
 };
 
 export type ImagePriceQuote = {
-  model: "gpt-image-2";
+  model: string;
   size: string;
   quality: string;
   count: number;
@@ -71,7 +72,7 @@ export async function ensureProviderBalance(requiredProviderCost: number) {
 
 async function currentPricing() {
   if (pricingCache && pricingCache.expiresAt > Date.now()) return pricingCache.data;
-  const data = await lk888Fetch<PricingResponse>("/v1/skills/models/gpt-image-2/pricing?status=active", { cache: "no-store" });
+  const data = await lk888Fetch<PricingResponse>(`/v1/skills/models/${encodeURIComponent(IMAGE_MODEL)}/pricing?status=active`, { cache: "no-store" });
   pricingCache = { expiresAt: Date.now() + CACHE_MS, data };
   return data;
 }
@@ -91,7 +92,7 @@ function chooseChannel(groups: ChannelGroup[], strategy: string, size: string, q
   const candidates = groups
     .filter((group) => group.is_active && group.in_key_whitelist !== false)
     .map((group) => ({ group, price: optionAdjustedPrice(group, size, quality) }));
-  if (!candidates.length) throw new Error("当前 API Key 暂无可用的 GPT Image 2 渠道。");
+  if (!candidates.length) throw new Error(`当前 API Key 暂无可用的 ${IMAGE_MODEL} 渠道。`);
 
   if (strategy.includes("成功率")) {
     return candidates.sort((left, right) => Number(right.group.success_rate_24h ?? 0) - Number(left.group.success_rate_24h ?? 0))[0];
@@ -102,20 +103,20 @@ function chooseChannel(groups: ChannelGroup[], strategy: string, size: string, q
   return candidates.sort((left, right) => left.price - right.price)[0];
 }
 
-export async function quoteGptImage2(input: { size: string; quality?: string; count: number; referenceCount?: number }): Promise<ImagePriceQuote> {
+export async function quoteImageModel(input: { size: string; quality?: string; count: number; referenceCount?: number }): Promise<ImagePriceQuote> {
   const size = input.size || "auto";
   const quality = input.quality || "auto";
   const count = Math.max(1, Math.min(4, Math.floor(input.count || 1)));
   const referenceCount = Math.max(0, Math.min(10, Math.floor(input.referenceCount || 0)));
   const pricing = await currentPricing();
-  if (pricing.available_for_this_key === false) throw new Error("当前 API Key 无权使用 GPT Image 2。");
+  if (pricing.available_for_this_key === false) throw new Error(`当前 API Key 无权使用 ${IMAGE_MODEL}。`);
   const strategy = pricing.key_channel_strategy || "价格优先";
   const selected = chooseChannel(pricing.channel_groups ?? [], strategy, size, quality);
   const estimatedProviderCost = selected.price * count;
   const estimatedPoints = providerCostToPoints(estimatedProviderCost);
 
   return {
-    model: "gpt-image-2",
+    model: IMAGE_MODEL,
     size,
     quality,
     count,

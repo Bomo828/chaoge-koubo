@@ -27,7 +27,7 @@ export type RechargePackage = {
 };
 
 export type AiProviderSetting = {
-  id: "lk888" | "chanjing" | "tikhub" | "video-worker";
+  id: "lk888" | "deepseek" | "chanjing" | "tikhub" | "video-worker";
   name: string;
   purpose: string;
   enabled: boolean;
@@ -70,7 +70,8 @@ export const defaultPlatformSettings: PlatformSettings = {
   ],
   rechargePointsPerYuan: 10,
   aiProviders: [
-    { id: "lk888", name: "开放 AI 平台", purpose: "大模型分析、GPT Image 2、Seedance 2.0", enabled: true, lowBalanceThreshold: 20 },
+    { id: "lk888", name: "开放 AI 平台", purpose: "大模型分析、TT Image 2、Seedance 2.0", enabled: true, lowBalanceThreshold: 20 },
+    { id: "deepseek", name: "DeepSeek 字幕导演", purpose: "口播标题、字幕排版、提亮词与重点词", enabled: true, lowBalanceThreshold: 0 },
     { id: "chanjing", name: "蝉镜数字人", purpose: "声音克隆、口播音频与对口型", enabled: true, lowBalanceThreshold: 20 },
     { id: "tikhub", name: "市场数据服务", purpose: "抖音公开账号资料、作品与互动数据", enabled: true, lowBalanceThreshold: 10 },
     { id: "video-worker", name: "视频处理服务", purpose: "字幕、模板、转场、音效与成片", enabled: true, lowBalanceThreshold: 0 },

@@ -16,7 +16,7 @@ async function requirePlatformAdmin() {
 }
 
 function providerIdFrom(value: unknown): ProviderCredentialId {
-  if (value === "lk888" || value === "chanjing" || value === "tikhub") return value;
+  if (value === "lk888" || value === "deepseek" || value === "chanjing" || value === "tikhub") return value;
   throw new Error("暂不支持这个服务的接口配置。");
 }
 

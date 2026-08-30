@@ -1,6 +1,7 @@
 import { getMemberSession } from "../../../member-session";
 import { aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
-import { ensureProviderBalance, providerCostToPoints, quoteGptImage2 } from "../../../../lib/ai-pricing";
+import { ensureProviderBalance, providerCostToPoints, quoteImageModel } from "../../../../lib/ai-pricing";
+import { IMAGE_GENERATE_ENDPOINT, IMAGE_MODEL, imageStatusPath } from "../../../../lib/image-model";
 import { billablePointsFromCost, costPointsFromBillable } from "../../../../lib/billing";
 import { getWallet, pointsErrorResponse, refundAiPoints, refundAiPointsByRequest, reserveAiPoints, settleAiPointsByRequest } from "../../../../lib/points";
 import { createAiTask, getAiTask, updateAiTask } from "../../../../lib/server/ai-tasks";
@@ -174,7 +175,7 @@ export async function POST(request: Request) {
     const littleGreenInstruction = section === "小绿书制作"
       ? "这是小绿书图文笔记的3:4竖版主图。完整发布文案会在图片下方独立展示，所以图片只负责视觉吸引与主题表达，不要把长段正文画进图片；最多保留一句不超过12个汉字的准确中文封面钩子。主体位于移动端安全区，视觉自然、真实、有生活感，缩略图状态下仍清晰，不得出现虚假价格、效果承诺、无关Logo、水印或乱码。"
       : "";
-    const quote = await quoteGptImage2({ size: outputSize, quality, count: requestedCount, referenceCount: images.length });
+    const quote = await quoteImageModel({ size: outputSize, quality, count: requestedCount, referenceCount: images.length });
     await ensureProviderBalance(quote.estimatedProviderCost);
     reservation = await reserveAiPoints(member, "image_generate", requestedCount, body.requestId, quote.estimatedPoints);
     createAiTask(member, {
@@ -182,7 +183,7 @@ export async function POST(request: Request) {
       kind: "image",
       provider: "lk888",
       payload: {
-        model: "gpt-image-2",
+        model: IMAGE_MODEL,
         section,
         prompt: prompt.slice(0, 1200),
         size: outputSize,
@@ -211,17 +212,16 @@ export async function POST(request: Request) {
           "方案三：视觉更现代简洁，突出品牌色和留白。",
           "方案四：画面更有传播力，但保持真实可信。",
         ];
-    const settled = await Promise.allSettled(directions.slice(0, requestedCount).map((direction, index) => lk888Fetch<ProviderImageResponse>("/v1/media/generate", {
+    const settled = await Promise.allSettled(directions.slice(0, requestedCount).map((direction, index) => lk888Fetch<ProviderImageResponse>(IMAGE_GENERATE_ENDPOINT, {
       method: "POST",
       body: JSON.stringify({
-        model: "gpt-image-2",
+        model: IMAGE_MODEL,
         prompt: `${prompt}\n${referenceInstruction}\n${section === "门店招牌" ? "输出必须为横向16:9门店首页招牌图，固定1536×864，重要主体与品牌信息放在移动端安全区域内。" : ""}\n${navigationInstruction}\n${bannerInstruction}\n${packageInstruction}\n${customerInstruction}\n${littleGreenInstruction}\n${littleGreenCopies[index] ? `本方案对应的小绿书发布文案如下，只提炼其主题和视觉线索，不要把整段文字排进图片：${littleGreenCopies[index]}` : ""}\n${direction}`,
         params: {
           size: outputSize,
           quality,
           images,
           n: 1,
-          response_format: "url",
         },
       }),
     })));
@@ -245,12 +245,12 @@ export async function POST(request: Request) {
       providerTaskIds: aggregate.taskIds,
       state: aggregate.state as "running" | "success" | "failed",
       progress: Number.parseInt(aggregate.progress, 10) || 0,
-      result: { urls: aggregate.urls, model: "gpt-image-2", section, size: outputSize },
+      result: { urls: aggregate.urls, model: IMAGE_MODEL, section, size: outputSize },
       error: aggregate.error,
       pointsCharged: aggregate.isFinal && aggregate.state === "success" ? chargedPoints : 0,
     });
 
-    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: "gpt-image-2", requestId: reservation.requestId, pricing: { ...quote, estimatedPoints: billablePointsFromCost(quote.estimatedPoints) }, wallet });
+    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: IMAGE_MODEL, requestId: reservation.requestId, pricing: { ...quote, estimatedPoints: billablePointsFromCost(quote.estimatedPoints) }, wallet });
   } catch (error) {
     if (reservation && !usableResult) {
       await refundAiPoints(reservation).catch(() => undefined);
@@ -278,7 +278,7 @@ export async function GET(request: Request) {
   const requestId = url.searchParams.get("request_id") || "";
 
   try {
-    const settled = await Promise.allSettled(taskIds.map((taskId) => lk888Fetch<ProviderImageResponse>(`/v1/skills/task-status?task_id=${encodeURIComponent(taskId)}`)));
+    const settled = await Promise.allSettled(taskIds.map((taskId) => lk888Fetch<ProviderImageResponse>(imageStatusPath(taskId))));
     const tasks = settled
       .filter((result): result is PromiseFulfilledResult<ProviderImageResponse> => result.status === "fulfilled")
       .map((result) => normalizedPayload(result.value));
@@ -299,11 +299,11 @@ export async function GET(request: Request) {
       providerTaskIds: aggregate.taskIds,
       state: aggregate.state as "running" | "success" | "failed",
       progress: Number.parseInt(aggregate.progress, 10) || 0,
-      result: { urls: aggregate.urls, model: "gpt-image-2" },
+      result: { urls: aggregate.urls, model: IMAGE_MODEL },
       error: aggregate.error,
       pointsCharged: aggregate.isFinal && aggregate.state === "success" ? chargedPoints : 0,
     });
-    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: "gpt-image-2", requestId: requestId || null, wallet });
+    return Response.json({ ...aggregate, actualPoints: aggregate.isFinal ? chargedPoints : null, model: IMAGE_MODEL, requestId: requestId || null, wallet });
   } catch (error) {
     return aiErrorResponse(error);
   }

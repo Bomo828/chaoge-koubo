@@ -1,6 +1,6 @@
 import { getMemberSession } from "../../../member-session";
 import { aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
-import { quoteGptImage2 } from "../../../../lib/ai-pricing";
+import { quoteImageModel } from "../../../../lib/ai-pricing";
 import { billablePointsFromCost } from "../../../../lib/billing";
 
 type BalanceResponse = {
@@ -15,7 +15,7 @@ export async function GET(request: Request) {
 
   try {
     const url = new URL(request.url);
-    const quote = await quoteGptImage2({
+    const quote = await quoteImageModel({
       size: url.searchParams.get("size") || "auto",
       quality: url.searchParams.get("quality") || "auto",
       count: Number(url.searchParams.get("count") || 1),

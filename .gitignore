@@ -71,7 +71,8 @@ next-env.d.ts
 /services/video-worker/**/*.mp4
 /services/video-worker/**/*.mov
 /services/video-worker/**/*.tar.gz
-/skills/
+/skills/*
+!/skills/plan-viral-captions/
 **/__pycache__/
 *.tar.gz
 tsconfig.tsbuildinfo

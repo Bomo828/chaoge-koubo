@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { getMemberSession } from "../../../member-session";
-import { lk888Fetch } from "../../../../lib/lk888";
 import { parseAiJsonObject } from "../../../../lib/ai-json";
+import { requestViralCaptionAi } from "../../../../lib/viral-caption-ai-provider";
 import {
   buildViralDirectorPlan,
   markViralKeywordSfx,
@@ -13,14 +13,12 @@ import {
 import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 import { acceptViralCaptionCorrection } from "../../../../lib/viral-text-integrity";
 import {
-  buildViralCaptionSkillRequest,
   buildViralCaptionSkillSystemPrompt,
   detectViralCaptionSkillLanguage,
   normalizeViralKeywordImportance,
   viralCaptionKeywordTargets,
   viralCaptionSkillTitleIsValid,
   VIRAL_CAPTION_AI_MODEL,
-  VIRAL_CAPTION_AI_TIMEOUT_MS,
 } from "../../../../lib/viral-caption-ai-skill";
 
 type ProviderResponse = {
@@ -201,21 +199,18 @@ export async function POST(request: Request) {
   const keywordTargets = viralCaptionKeywordTargets(source.length, duration);
   const requestStartedAt = Date.now();
   try {
-    const response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
-      method: "POST",
-      signal: AbortSignal.timeout(VIRAL_CAPTION_AI_TIMEOUT_MS),
-      body: JSON.stringify(buildViralCaptionSkillRequest({
-        captionCount: source.length,
-        maxTokens: 700 + source.length * 70,
-        messages: [
-          { role: "system", content: system },
-          {
-            role: "user",
-            content: `时间轴已在服务器锁定。共${source.length}条字幕，必须恰好为${keywordTargets.keywordTarget}条填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}条p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(input.map((item) => [item.id, item.text]))}`,
-          },
-        ],
-      })),
+    const aiResult = await requestViralCaptionAi<ProviderResponse>({
+      captionCount: source.length,
+      maxTokens: 700 + source.length * 70,
+      messages: [
+        { role: "system", content: system },
+        {
+          role: "user",
+          content: `时间轴已在服务器锁定。共${source.length}条字幕，必须恰好为${keywordTargets.keywordTarget}条填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}条p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(input.map((item) => [item.id, item.text]))}`,
+        },
+      ],
     });
+    const response = aiResult.response;
     const parsed = parseAiJsonObject(extractText(response), "AI 没有返回结构化字幕规划。");
     const items = Array.isArray(parsed.items) ? parsed.items : [];
     const itemsById = new Map<number, Record<string, unknown>>();
@@ -299,7 +294,7 @@ export async function POST(request: Request) {
       captions,
       bgmMood: parsed.bgm_mood as "calm" | "warm" | "professional" | "uplifting" | "neutral",
       source: "ai",
-      model: VIRAL_CAPTION_AI_MODEL,
+      model: aiResult.model,
       degraded: false,
     });
     const result = {
@@ -308,14 +303,15 @@ export async function POST(request: Request) {
       captions: directorPlan.captions,
       planReady: true,
       degraded: false,
-      model: VIRAL_CAPTION_AI_MODEL,
-      planningRole: "tt55-caption-director",
+      model: aiResult.model,
+      provider: aiResult.provider,
+      planningRole: `${aiResult.provider}-caption-director`,
       timelineRole: "upstream-timing-only",
       directorPlan,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",
     };
-    rememberDirectorPlan(key, result);
+    if (aiResult.provider === "deepseek") rememberDirectorPlan(key, result);
     return Response.json(result);
   } catch (error) {
     console.warn("Fast viral caption plan fell back to local rules", error);

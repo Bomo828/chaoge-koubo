@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { getMemberSession } from "../../../member-session";
-import { AiProviderError, aiErrorResponse, lk888Fetch } from "../../../../lib/lk888";
+import { AiProviderError, aiErrorResponse } from "../../../../lib/lk888";
 import { parseAiJsonObject } from "../../../../lib/ai-json";
+import { requestViralCaptionAi, type ViralCaptionAiProvider } from "../../../../lib/viral-caption-ai-provider";
 import { repairEnglishWordFragments, segmentViralCaptions } from "../../../../lib/viral-caption-segmentation";
 import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../../../../lib/viral-semantic-layout";
 import {
@@ -15,12 +16,10 @@ import {
   type ViralCaptionPlanItem,
 } from "../../../../lib/viral-workflow";
 import {
-  buildViralCaptionSkillRequest,
   buildViralCaptionSkillSystemPrompt,
   normalizeViralKeywordImportance,
   viralCaptionKeywordTargets,
   VIRAL_CAPTION_AI_MODEL,
-  VIRAL_CAPTION_AI_TIMEOUT_MS,
 } from "../../../../lib/viral-caption-ai-skill";
 
 type Caption = ViralCaptionPlanItem;
@@ -264,7 +263,7 @@ function directedCaptions(captions: Caption[], rawCaptions: unknown, duration: n
       : localNode(caption.text, index, captions.length);
     const weight = Math.max(0, Math.min(1, Number(raw.weight) || (index === 0 || index === captions.length - 1 ? 0.9 : 0.55)));
     const candidate = typeof raw.keyword === "string" ? raw.keyword.replace(/\s+/g, "").slice(0, 8) : "";
-    // A keyword explicitly selected by TT-5.5 has already passed the semantic
+    // A keyword explicitly selected by the caption director has already passed the semantic
     // director. Do not let the old local "supporting sentence" weight rule
     // erase it merely because the compact AI schema does not return node/weight.
     const keyword = candidate && plainText(caption.text).includes(plainText(candidate))
@@ -303,12 +302,12 @@ function semanticPlanIsComplete(items: Record<string, unknown>[], expectedLength
 function safePlanningFailure(error: unknown) {
   const value = error instanceof Error ? error.message : String(error || "");
   if (/timeout|timed out|aborted|超时/i.test(value)) {
-    return "TT-5.5 规划响应超时，请重试。";
+    return "AI 字幕导演响应超时，请重试。";
   }
   if (/JSON|结构化|可用的口播文案/i.test(value)) {
-    return "TT-5.5 返回的字幕计划格式不完整，请重试。";
+    return "AI 字幕导演返回的计划格式不完整，请重试。";
   }
-  return "TT-5.5 规划服务暂时不可用，请稍后重试。";
+  return "AI 字幕导演暂时不可用，请稍后重试。";
 }
 
 export async function POST(request: Request) {
@@ -330,7 +329,7 @@ export async function POST(request: Request) {
     const sourceLanguage = languageOf(lockedCaptions.map((item) => item.text).join(" "));
     const templateId = typeof body.templateId === "string" ? body.templateId.trim().slice(0, 64) : "template-9";
     const cacheKey = transcriptCacheKey({
-      version: "viral-transcript-semantic-lock-v7-tt55-preserve-ai-keywords",
+      version: "viral-transcript-semantic-lock-v8-deepseek-preserve-ai-keywords",
       model: VIRAL_CAPTION_AI_MODEL,
       templateId,
       duration,
@@ -346,26 +345,25 @@ export async function POST(request: Request) {
     const keywordTargets = viralCaptionKeywordTargets(lockedCaptions.length, duration);
     const content = `口播语言：${sourceLanguage === "en" ? "英文" : "中文"}。时间轴已在服务器锁定。共${lockedCaptions.length}条字幕，必须恰好为${keywordTargets.keywordTarget}条填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}条p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(lockedCaptions.map((item, index) => [index + 1, item.text]))}`;
     const tokenBudget = Math.max(800, Math.min(1900, 700 + lockedCaptions.length * 70));
-    let endpoint: "chat-completions" | "local" = "local";
+    let endpoint: "deepseek-chat" | "lk888-chat" | "local" = "local";
     let selectedModel: string = "local-segmentation";
+    let selectedProvider: ViralCaptionAiProvider | "local" = "local";
     let response: ProviderResponse | null = null;
     let planningFailure = "";
     try {
-      response = await lk888Fetch<ProviderResponse>("/v1/chat/completions", {
-        method: "POST",
-        signal: AbortSignal.timeout(VIRAL_CAPTION_AI_TIMEOUT_MS),
-        body: JSON.stringify(buildViralCaptionSkillRequest({
-          captionCount: lockedCaptions.length,
-          maxTokens: tokenBudget,
-          messages: [
-            { role: "system", content: system },
-            { role: "user", content },
-          ],
-        })),
+      const aiResult = await requestViralCaptionAi<ProviderResponse>({
+        captionCount: lockedCaptions.length,
+        maxTokens: tokenBudget,
+        messages: [
+          { role: "system", content: system },
+          { role: "user", content },
+        ],
       });
+      response = aiResult.response;
       if (!extractText(response)) throw new AiProviderError("识别通道没有返回有效内容。", 502);
-      endpoint = "chat-completions";
-      selectedModel = VIRAL_CAPTION_AI_MODEL;
+      selectedProvider = aiResult.provider;
+      endpoint = aiResult.provider === "deepseek" ? "deepseek-chat" : "lk888-chat";
+      selectedModel = aiResult.model;
     } catch (error) {
       planningFailure = safePlanningFailure(error);
       response = null;
@@ -378,6 +376,7 @@ export async function POST(request: Request) {
         planningFailure = safePlanningFailure(error);
         response = null;
         endpoint = "local";
+        selectedProvider = "local";
         selectedModel = "local-segmentation";
       }
     }
@@ -434,24 +433,25 @@ export async function POST(request: Request) {
       summary: typeof parsed.summary === "string"
         ? parsed.summary.trim().slice(0, 180)
         : response
-          ? "TT-5.5 已在锁定时间轴上完成标题、字幕排版、提亮词与重点词规划。"
+          ? `${selectedProvider === "deepseek" ? "DeepSeek" : "备用 AI"} 已在锁定时间轴上完成标题、字幕排版、提亮词与重点词规划。`
           : "AI 规划未完成，当前仅保留真实时间轴，不会机械补充关键词；请重试 AI 识别并排版。",
       captions: directorPlan.captions,
       directorPlan,
       planReady,
       model: selectedModel,
+      provider: selectedProvider,
       endpoint,
-      planningRole: "tt55-caption-director",
+      planningRole: `${selectedProvider}-caption-director`,
       timelineRole: "asr-timing-only",
       degraded: !planReady,
       warning: planReady
         ? ""
         : response
           ? "AI 已返回部分内容，但标题或关键词规划不完整。请点击重新 AI 规划，不要把当前结果当作最终 AI 方案。"
-          : `${planningFailure || "TT-5.5 规划请求未成功。"} 当前仅保留真实时间轴，请点击重新 AI 规划。`,
+          : `${planningFailure || "AI 字幕导演请求未成功。"} 当前仅保留真实时间轴，请点击重新 AI 规划。`,
       cache: "miss",
     };
-    if (planReady) writeTranscriptCache(cacheKey, result);
+    if (planReady && selectedProvider === "deepseek") writeTranscriptCache(cacheKey, result);
     return Response.json(result);
   } catch (error) {
     return aiErrorResponse(error);
