@@ -3,7 +3,11 @@ import {
   buildViralCaptionTokenTimeline,
   compileViralSemanticCaptionPlan,
 } from "../lib/viral-caption-ai-skill";
-import { viralCaptionTemplateContract, viralCaptionUnitCount } from "../lib/viral-caption-contract";
+import {
+  compileViralCaptionCues,
+  viralCaptionTemplateContract,
+  viralCaptionUnitCount,
+} from "../lib/viral-caption-contract";
 
 function timedWords(values: string[], offset = 0) {
   return values.map((text, index) => ({
@@ -182,5 +186,19 @@ const unsafeSegmentPlan = compileViralSemanticCaptionPlan({
 });
 assert.equal(unsafeSegmentPlan.cues.length, 0);
 assert.match(unsafeSegmentPlan.error, /缺少词级时间/);
+
+const sentenceOnlyCompiled = compileViralCaptionCues([{
+  start: 2,
+  end: 5,
+  text: "这一整条字幕很长但是上游没有提供任何真实的词级时间",
+}], "template-9");
+assert.equal(sentenceOnlyCompiled.length, 1, "sentence-only timing must stay one cue instead of producing overlapping rows");
+assert.equal(sentenceOnlyCompiled[0].start, 2);
+assert.equal(sentenceOnlyCompiled[0].end, 5);
+assert.equal(
+  sentenceOnlyCompiled[0].text,
+  "这一整条字幕很长但是上游没有提供任何真实的词级时间",
+  "visual capacity must never be solved by inventing subtitle time",
+);
 
 console.log("viral semantic caption skill contract: ok");

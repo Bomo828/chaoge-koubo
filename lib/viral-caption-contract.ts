@@ -254,7 +254,13 @@ function timedCaptionRanges(item: ViralCaptionPlanItem, weights: number[]) {
       end: Math.min(end, Math.max(Number(word.start) + 0.01, Number(word.end))),
     }))
     .sort((left, right) => left.start - right.start || left.end - right.end);
-  if (!words.length || weights.length <= 1) return weights.map(() => ({ start, end, words }));
+  if (weights.length <= 1) return [{ start, end, words }];
+  // A sentence timestamp only proves when the whole sentence was spoken.  It
+  // does not prove where an internal visual line break belongs.  Returning the
+  // same full range for every beat used to create several simultaneous cues;
+  // estimating the split from character counts caused visible subtitle drift.
+  // Only real word timestamps may promote visual rows into consecutive cues.
+  if (!words.length) return [];
 
   const wordWeights = words.map((word) => Math.max(1, viralCaptionUnitCount(word.text)));
   const totalWordWeight = Math.max(1, wordWeights.reduce((sum, weight) => sum + weight, 0));
@@ -281,18 +287,7 @@ function timedCaptionRanges(item: ViralCaptionPlanItem, weights: number[]) {
     wordStartIndex = boundaryIndex + 1;
     rangeStart = words[wordStartIndex]?.start ?? rangeEnd;
   }
-  return ranges.length === weights.length
-    ? ranges
-    : weights.map((_, index) => {
-      const duration = end - start;
-      const before = weights.slice(0, index).reduce((sum, weight) => sum + weight, 0);
-      const through = before + weights[index];
-      return {
-        start: start + duration * before / totalBeatWeight,
-        end: start + duration * through / totalBeatWeight,
-        words: [],
-      };
-    });
+  return ranges.length === weights.length ? ranges : [];
 }
 
 /**
@@ -318,10 +313,18 @@ export function compileViralCaptionCues(
         const layout = planViralCaptionLayout(beat, undefined, contract.lineMaxUnits);
         return { text: beat, lines: layout.lines.slice(0, contract.maxLines) };
       });
-    const weights = beats.map((beat) => Math.max(1, viralCaptionUnitCount(beat.text)));
+    const requestedWeights = beats.map((beat) => Math.max(1, viralCaptionUnitCount(beat.text)));
+    const requestedRanges = timedCaptionRanges(item, requestedWeights);
+    const groundedBeats = requestedRanges.length === beats.length
+      ? beats
+      : [{
+        text,
+        lines: planViralCaptionLayout(text, item.captionLines, contract.lineMaxUnits).lines.slice(0, contract.maxLines),
+      }];
+    const weights = groundedBeats.map((beat) => Math.max(1, viralCaptionUnitCount(beat.text)));
     const translations = splitTranslation(String(item.translation || ""), weights);
-    const ranges = timedCaptionRanges(item, weights);
-    return beats.map((beat, beatIndex) => {
+    const ranges = groundedBeats === beats ? requestedRanges : timedCaptionRanges(item, weights);
+    return groundedBeats.map((beat, beatIndex) => {
       const range = ranges[beatIndex] || ranges.at(-1)!;
       const containsKeyword = Boolean(keyword) && comparableCaptionText(beat.text).includes(comparableCaptionText(keyword));
       const cue: ViralCaptionPlanItem = {

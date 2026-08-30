@@ -92,6 +92,16 @@ class SharedDirectorTests(unittest.TestCase):
             "start": 1.72,
             "end": 4.97,
             "text": "我用codex做了一款AI剪辑口播视频的工具",
+            "words": [
+                {"start": 1.72, "end": 2.10, "text": "我用"},
+                {"start": 2.10, "end": 2.48, "text": "codex"},
+                {"start": 2.48, "end": 2.78, "text": "做了"},
+                {"start": 2.78, "end": 3.12, "text": "一款"},
+                {"start": 3.12, "end": 3.55, "text": "AI剪辑"},
+                {"start": 3.55, "end": 4.12, "text": "口播视频"},
+                {"start": 4.12, "end": 4.34, "text": "的"},
+                {"start": 4.34, "end": 4.97, "text": "工具"},
+            ],
             "captionLines": ["我用codex做了一款", "AI剪辑口播视频的工具"],
             "translation": "I made an AI tool for editing talking head videos with codex",
             "keyword": "AI剪辑",
@@ -145,6 +155,56 @@ class SharedDirectorTests(unittest.TestCase):
                 source[0]["translation"].split(),
                 template_id,
             )
+
+    def test_long_caption_without_words_never_invents_internal_timestamps(self) -> None:
+        source = [{
+            "start": 1.72,
+            "end": 4.97,
+            "text": "我用codex做了一款AI剪辑口播视频的工具",
+        }]
+        for template_id in ("template-9", "template-10", "template-11", "template-12"):
+            compiled = worker.compile_caption_cues_for_template(
+                source,
+                worker.template_profile(template_id),
+            )
+            self.assertEqual(len(compiled), 1, template_id)
+            self.assertEqual(compiled[0]["start"], source[0]["start"], template_id)
+            self.assertEqual(compiled[0]["end"], source[0]["end"], template_id)
+            self.assertEqual(compiled[0]["text"], source[0]["text"], template_id)
+            self.assertEqual(
+                compiled[0].get("captionCompileSource"),
+                "template-capacity:timing-locked",
+                template_id,
+            )
+
+    def test_final_media_asr_retimes_confirmed_copy_at_real_word_boundaries(self) -> None:
+        confirmed = [
+            {"start": 0.0, "end": 1.5, "text": "大家好我是潮哥"},
+            {"start": 1.5, "end": 3.2, "text": "今天介绍AI剪辑工具"},
+        ]
+        asr = [{
+            "start": 0.42,
+            "end": 4.35,
+            "text": "大家好我是潮哥今天介绍AI剪辑工具",
+            "words": [
+                {"start": 0.42, "end": 0.75, "text": "大家好"},
+                {"start": 0.82, "end": 1.02, "text": "我是"},
+                {"start": 1.06, "end": 1.42, "text": "潮哥"},
+                {"start": 2.16, "end": 2.48, "text": "今天"},
+                {"start": 2.55, "end": 2.92, "text": "介绍"},
+                {"start": 3.08, "end": 3.34, "text": "AI"},
+                {"start": 3.38, "end": 3.78, "text": "剪辑"},
+                {"start": 3.84, "end": 4.35, "text": "工具"},
+            ],
+        }]
+        retimed = worker.retime_confirmed_captions_from_asr(confirmed, asr)
+        self.assertEqual([item["text"] for item in retimed], [item["text"] for item in confirmed])
+        self.assertEqual(retimed[0]["start"], 0.42)
+        self.assertEqual(retimed[0]["end"], 1.42)
+        self.assertEqual(retimed[1]["start"], 2.16)
+        self.assertEqual(retimed[1]["end"], 4.35)
+        self.assertTrue(worker.captions_have_reliable_word_timing(retimed))
+        self.assertEqual(worker.validate_caption_timing(retimed, 4.5), (True, ""))
 
     def test_ai_may_select_a_complete_meaningful_phrase(self) -> None:
         self.assertEqual(

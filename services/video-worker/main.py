@@ -3252,6 +3252,13 @@ def timed_caption_beats(
     segments: list[dict[str, Any]],
     beats_by_segment: list[list[str]],
 ) -> list[dict[str, Any]]:
+    """Promote visual beats to timed cues only at real word boundaries.
+
+    A sentence range is not evidence for the time of an internal phrase.  The
+    old proportional character-duration split made subtitles visibly lead or
+    lag the voice.  Callers must keep the original cue when this returns an
+    empty list.
+    """
     timed: list[dict[str, Any]] = []
     for index, segment in enumerate(segments):
         beats = beats_by_segment[index] if index < len(beats_by_segment) else []
@@ -3259,27 +3266,63 @@ def timed_caption_beats(
             continue
         start = float(segment.get("start") or 0)
         end = max(start + 0.05, float(segment.get("end") or start + 0.05))
-        weights = [max(1, caption_unit_count(item)) for item in beats]
-        total_weight = max(1, sum(weights))
-        total_duration = end - start
-        minimum_hold = min(0.35, total_duration / max(1, len(beats)))
-        cursor = start
-        elapsed_weight = 0
-        for beat_index, beat in enumerate(beats):
-            elapsed_weight += weights[beat_index]
-            if beat_index == len(beats) - 1:
-                beat_end = end
-            else:
-                proportional_end = start + total_duration * elapsed_weight / total_weight
-                remaining_beats = len(beats) - beat_index - 1
-                latest_end = end - remaining_beats * minimum_hold
-                beat_end = min(latest_end, max(cursor + minimum_hold, proportional_end))
+        raw_words = segment.get("words") if isinstance(segment.get("words"), list) else []
+        words = sorted(
+            (
+                {
+                    "start": max(start, float(word.get("start") or start)),
+                    "end": min(end, max(float(word.get("start") or start) + 0.02, float(word.get("end") or start))),
+                    "text": normalize_speech_text(str(word.get("text") or "")),
+                }
+                for word in raw_words
+                if isinstance(word, dict)
+                and normalize_speech_text(str(word.get("text") or ""))
+                and float(word.get("end") or 0.0) > float(word.get("start") or 0.0)
+            ),
+            key=lambda word: (float(word["start"]), float(word["end"])),
+        )
+        if len(beats) > 1 and len(words) < len(beats):
+            continue
+        if len(beats) <= 1:
             timed.append({
-                "start": round(cursor, 2),
-                "end": round(max(cursor, min(end, beat_end)), 2),
-                "text": beat.strip("，,。！？!?；;：:、 "),
+                "start": round(start, 3),
+                "end": round(end, 3),
+                "text": beats[0].strip("，,。！？!?；;：:、 "),
+                **({"words": words} if words else {}),
             })
-            cursor = beat_end
+            continue
+        weights = [max(1, caption_unit_count(item)) for item in beats]
+        word_weights = [max(1, caption_unit_count(str(word["text"]))) for word in words]
+        total_word_weight = max(1, sum(word_weights))
+        total_beat_weight = max(1, sum(weights))
+        word_cursor = 0
+        consumed_beat_weight = 0
+        for beat_index, beat in enumerate(beats):
+            remaining_beats = len(beats) - beat_index - 1
+            if beat_index == len(beats) - 1:
+                boundary = len(words)
+            else:
+                consumed_beat_weight += weights[beat_index]
+                target = total_word_weight * consumed_beat_weight / total_beat_weight
+                cumulative = sum(word_weights[:word_cursor])
+                boundary = word_cursor + 1
+                while boundary < len(words) - remaining_beats:
+                    next_cumulative = cumulative + sum(word_weights[word_cursor:boundary])
+                    if next_cumulative >= target:
+                        break
+                    boundary += 1
+                boundary = max(word_cursor + 1, min(len(words) - remaining_beats, boundary))
+            cue_words = words[word_cursor:boundary]
+            if not cue_words:
+                timed = []
+                break
+            timed.append({
+                "start": round(float(cue_words[0]["start"]), 3),
+                "end": round(float(cue_words[-1]["end"]), 3),
+                "text": beat.strip("，,。！？!?；;：:、 "),
+                "words": cue_words,
+            })
+            word_cursor = boundary
     return [item for item in timed if item["text"]]
 
 
@@ -3464,6 +3507,14 @@ def compile_caption_cues_for_template(
             continue
 
         timed = timed_caption_beats([item], [beats])
+        if len(timed) != len(beats):
+            # Keep one visually adaptive cue rather than fabricate phrase
+            # timestamps from character counts.  A later ASR verification pass
+            # can safely re-ground this cue when the final media has audio.
+            item["text"] = text
+            item["captionCompileSource"] = "template-capacity:timing-locked"
+            compiled.append(item)
+            continue
         translations = split_caption_translation(
             str(item.get("translation") or ""),
             [max(1, caption_unit_count(beat)) for beat in beats],
@@ -4817,6 +4868,26 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
         if caption_lines and caption_plain_text("".join(caption_lines)) == caption_plain_text(text):
             normalized["captionLineMode"] = "two-line" if len(caption_lines) == 2 else "single"
             normalized["captionLines"] = caption_lines
+        raw_words = item.get("words") if isinstance(item.get("words"), list) else []
+        normalized_words: list[dict[str, Any]] = []
+        for raw_word in raw_words[:400]:
+            if not isinstance(raw_word, dict):
+                continue
+            word_text = normalize_speech_text(str(raw_word.get("text") or ""))
+            try:
+                word_start = max(start, float(raw_word.get("start") or start))
+                word_end = min(end, float(raw_word.get("end") or word_start))
+            except (TypeError, ValueError):
+                continue
+            if word_text and word_end > word_start:
+                normalized_words.append({
+                    "start": round(word_start, 3),
+                    "end": round(word_end, 3),
+                    "text": word_text,
+                })
+        normalized_words.sort(key=lambda word: (float(word["start"]), float(word["end"])))
+        if normalized_words:
+            normalized["words"] = normalized_words
         camera_intent = str(item.get("cameraIntent") or "").strip()
         if camera_intent in {"hold", "push-in", "pull-back", "reframe", "close-up", "wide"}:
             normalized["cameraIntent"] = camera_intent
@@ -4828,6 +4899,146 @@ def normalized_edited_captions(value: Any, duration: float) -> list[dict[str, An
             normalized["sfxRole"] = sfx_role
         captions.append(normalized)
     return sorted(captions, key=lambda item: (float(item["start"]), float(item["end"])))
+
+
+def captions_have_reliable_word_timing(captions: list[dict[str, Any]]) -> bool:
+    """Return true only when every confirmed cue is grounded by real words."""
+    if not captions:
+        return False
+    for caption in captions:
+        start = float(caption.get("start") or 0.0)
+        end = float(caption.get("end") or start)
+        words = caption.get("words") if isinstance(caption.get("words"), list) else []
+        valid_words = [
+            word for word in words
+            if isinstance(word, dict)
+            and normalize_speech_text(str(word.get("text") or ""))
+            and start - 0.08 <= float(word.get("start") or 0.0) < float(word.get("end") or 0.0) <= end + 0.08
+        ]
+        caption_text = caption_plain_text(str(caption.get("text") or ""))
+        word_text = caption_plain_text("".join(str(word.get("text") or "") for word in valid_words))
+        if not valid_words or SequenceMatcher(None, caption_text, word_text).ratio() < 0.62:
+            return False
+    return True
+
+
+def _map_confirmed_offset_to_asr(
+    confirmed_offset: int,
+    opcodes: list[tuple[str, int, int, int, int]],
+    asr_length: int,
+) -> int:
+    for _tag, confirmed_start, confirmed_end, asr_start, asr_end in opcodes:
+        if confirmed_start <= confirmed_offset <= confirmed_end:
+            if confirmed_end <= confirmed_start:
+                return max(0, min(asr_length, asr_start))
+            ratio = (confirmed_offset - confirmed_start) / (confirmed_end - confirmed_start)
+            return max(0, min(asr_length, round(asr_start + (asr_end - asr_start) * ratio)))
+    return asr_length
+
+
+def retime_confirmed_captions_from_asr(
+    captions: list[dict[str, Any]],
+    asr_segments: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Lock confirmed copy to the final media's actual ASR word boundaries.
+
+    This is used for lip-sync outputs and legacy assets whose upstream manifest
+    contains text but no trustworthy word timing. It never rewrites the
+    confirmed text and never estimates time from character duration.
+    """
+    if not captions or not asr_segments:
+        return []
+    words: list[dict[str, Any]] = []
+    for segment in asr_segments:
+        for raw_word in segment.get("words") if isinstance(segment.get("words"), list) else []:
+            if not isinstance(raw_word, dict):
+                continue
+            word_text = normalize_speech_text(str(raw_word.get("text") or ""))
+            try:
+                word_start = max(0.0, float(raw_word.get("start") or 0.0))
+                word_end = float(raw_word.get("end") or word_start)
+            except (TypeError, ValueError):
+                continue
+            if word_text and word_end > word_start:
+                words.append({"start": word_start, "end": word_end, "text": word_text})
+    words.sort(key=lambda word: (float(word["start"]), float(word["end"])))
+    if len(words) < len(captions):
+        return []
+
+    confirmed_parts = [caption_plain_text(str(caption.get("text") or "")) for caption in captions]
+    asr_parts = [caption_plain_text(str(word.get("text") or "")) for word in words]
+    confirmed_text = "".join(confirmed_parts)
+    asr_text = "".join(asr_parts)
+    if not confirmed_text or not asr_text:
+        return []
+    matcher = SequenceMatcher(None, confirmed_text, asr_text)
+    similarity = matcher.ratio()
+    length_ratio = len(confirmed_text) / max(1, len(asr_text))
+    if similarity < 0.68 or not 0.72 <= length_ratio <= 1.32:
+        return []
+
+    asr_word_ends: list[int] = []
+    cumulative = 0
+    for part in asr_parts:
+        cumulative += max(1, len(part))
+        asr_word_ends.append(cumulative)
+    confirmed_boundaries: list[int] = []
+    cumulative = 0
+    for part in confirmed_parts[:-1]:
+        cumulative += len(part)
+        confirmed_boundaries.append(cumulative)
+
+    word_boundaries = [0]
+    cursor = 0
+    opcodes = matcher.get_opcodes()
+    for caption_index, confirmed_boundary in enumerate(confirmed_boundaries):
+        remaining_captions = len(captions) - caption_index - 1
+        target_offset = _map_confirmed_offset_to_asr(confirmed_boundary, opcodes, len(asr_text))
+        boundary = next(
+            (index + 1 for index, word_end in enumerate(asr_word_ends) if index >= cursor and word_end >= target_offset),
+            len(words) - remaining_captions,
+        )
+        boundary = max(cursor + 1, min(len(words) - remaining_captions, boundary))
+        word_boundaries.append(boundary)
+        cursor = boundary
+    word_boundaries.append(len(words))
+
+    retimed: list[dict[str, Any]] = []
+    for index, caption in enumerate(captions):
+        cue_words = words[word_boundaries[index]:word_boundaries[index + 1]]
+        if not cue_words:
+            return []
+        retimed.append({
+            **caption,
+            "start": round(float(cue_words[0]["start"]), 3),
+            "end": round(float(cue_words[-1]["end"]), 3),
+            "words": [
+                {
+                    "start": round(float(word["start"]), 3),
+                    "end": round(float(word["end"]), 3),
+                    "text": str(word["text"]),
+                }
+                for word in cue_words
+            ],
+            "captionTimingSource": "final-media-asr",
+        })
+    return retimed
+
+
+def validate_caption_timing(
+    captions: list[dict[str, Any]],
+    duration: float,
+) -> tuple[bool, str]:
+    previous_end = -1.0
+    for index, caption in enumerate(captions):
+        start = float(caption.get("start") or 0.0)
+        end = float(caption.get("end") or start)
+        if start < -0.001 or end <= start or end > duration + 0.12:
+            return False, f"第{index + 1}条字幕时间超出成片范围"
+        if start < previous_end - 0.04:
+            return False, f"第{index + 1}条字幕与上一条时间重叠"
+        previous_end = max(previous_end, end)
+    return True, ""
 
 
 def normalized_director_plan(
@@ -5005,6 +5216,31 @@ def process_job(job_id: str) -> None:
         )
         if director_plan:
             edited_captions = [{**item} for item in director_plan["captions"]]
+        if edited_captions and metadata["has_audio"] and not captions_have_reliable_word_timing(edited_captions):
+            if not tencent_flash_asr_enabled():
+                raise RuntimeError("当前字幕缺少可靠的词级时间，服务端语音校准尚未配置，已停止生成避免音画错位。")
+            write_job(
+                job_id,
+                stage="transcribe",
+                progress=20,
+                message="正在用最终成片声音校准字幕母时间轴…",
+            )
+            merchant = job.get("merchant") if isinstance(job.get("merchant"), dict) else {}
+            verification_segments, verification_metadata = tencent_flash_asr(audio, merchant)
+            retimed_captions = retime_confirmed_captions_from_asr(
+                edited_captions,
+                verification_segments,
+            )
+            if not retimed_captions:
+                raise RuntimeError("字幕文案与当前成片声音无法可靠对齐，请重试当前生成步骤；已保留前面完成的内容。")
+            edited_captions = retimed_captions
+            if director_plan:
+                director_plan = {
+                    **director_plan,
+                    "captions": [{**item} for item in edited_captions],
+                    "timingSource": "final-media-asr",
+                    "timingRequestId": str(verification_metadata.get("request_id") or ""),
+                }
         caption_plan_ready = bool(edited_captions) and (bool(job.get("caption_plan_ready")) or bool(director_plan))
         info: Any = None
         words: list[dict[str, Any]] = []
@@ -5073,6 +5309,12 @@ def process_job(job_id: str) -> None:
                 current_template,
             )
             caption_source = f"{caption_source}:template-line-capacity"
+        timing_valid, timing_error = validate_caption_timing(
+            caption_segments,
+            float(metadata["duration"]),
+        )
+        if not timing_valid:
+            raise RuntimeError(f"字幕时间轴校验未通过：{timing_error}。已停止生成避免音画错位。")
         # Confirmed caption beats are the user's source of truth. Keeping their
         # boundaries in the title prompt makes the model understand the whole
         # argument instead of copying or truncating the opening sentence.
