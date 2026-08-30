@@ -21,6 +21,21 @@ const fontFamily = '"Merchant Sans", "PingFang SC", "Noto Sans CJK SC", "Microso
 
 const secondsToFrames = (seconds: number, fps: number) => Math.max(0, Math.round(seconds * fps));
 
+/**
+ * Remotion requires a strictly increasing input range. AI-directed captions
+ * can legitimately inherit a one-frame ASR token, so short cues must stay
+ * visible instead of producing a reversed [4, 1] fade range.
+ */
+export const studioSubtitleFadeOut = (frame: number, durationFrames: number) => {
+  const safeDuration = Math.max(1, Math.round(durationFrames));
+  if (safeDuration === 1) return 1;
+  const fadeStart = Math.min(safeDuration - 1, Math.max(4, safeDuration - 7));
+  return interpolate(frame, [fadeStart, safeDuration], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+};
+
 const normalizeWords = (caption: CaptionCue) => {
   if (caption.words?.length) return caption.words;
   const highlightPattern = /(\d+(?:\.\d+)?(?:元|折|次|分钟|小时)?|免费|优惠|限时|专业|自然|真实|重点|一定|必须)/g;
@@ -589,7 +604,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
   const keywordStart = keyword ? compact.indexOf(keyword) : -1;
   const lines = adaptiveCaptionLines(caption, compact, Math.max(6, Math.min(9, timeline.theme.captionLineMaxChars ?? 8)));
   const enter = spring({frame, fps, config: {damping: style.id === 4 ? 11 : 18, stiffness: style.id === 4 ? 280 : 180, mass: .58}});
-  const fadeOut = interpolate(frame, [Math.max(4, durationFrames - 7), durationFrames], [1, 0], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
+  const fadeOut = studioSubtitleFadeOut(frame, durationFrames);
   const leftAligned = style.id === 3 || style.id === 7;
   const direction = index % 2 ? 1 : -1;
   const translateX = style.id === 7 ? (1 - enter) * 80 * direction : style.id === 3 ? (1 - enter) * -48 : 0;

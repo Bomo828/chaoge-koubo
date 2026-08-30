@@ -394,6 +394,23 @@ def run(command: list[str]) -> str:
         raise RuntimeError(detail[-3000:] or "视频处理命令执行失败。") from error
 
 
+def public_video_processing_error(error: Exception) -> str:
+    """Keep renderer diagnostics in logs without exposing a browser stack."""
+    detail = str(error).strip()
+    technical_markers = (
+        "SymbolicatableError",
+        "inputRange must be strictly monotonically increasing",
+        "node_modules/@remotion",
+        "localhost:32123/bundle.js",
+        "stackFrame",
+    )
+    if any(marker in detail for marker in technical_markers):
+        return "字幕动画渲染失败，请直接重试当前生成步骤。"
+    if len(detail) > 360 or "\n" in detail:
+        return "视频渲染失败，请直接重试当前生成步骤。"
+    return detail or "视频处理失败。"
+
+
 def remotion_renderer_available() -> bool:
     mode = os.getenv("VIDEO_WORKER_RENDERER", "auto").strip().lower()
     if mode == "ffmpeg":
@@ -5391,12 +5408,14 @@ def process_job(job_id: str) -> None:
             cover_size=cover.stat().st_size,
         )
     except Exception as error:
+        print(f"video job {job_id} failed: {error}", file=sys.stderr)
+        public_error = public_video_processing_error(error)
         write_job(
             job_id,
             state="failed",
             stage="failed",
-            message=str(error).strip() or "视频处理失败。",
-            error=str(error).strip() or "视频处理失败。",
+            message=public_error,
+            error=public_error,
         )
 
 
