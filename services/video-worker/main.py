@@ -2812,6 +2812,8 @@ def template_profile(template_id: str) -> dict[str, Any]:
         "caption_max_chars": body.get("caption_max_chars", profile["caption_max_chars"]),
         "caption_line_max_chars": body.get("caption_line_max_chars", body.get("caption_max_chars", profile["caption_max_chars"])),
         "caption_long_text_mode": body.get("caption_long_text_mode", "single-line"),
+        "caption_max_lines": max(1, min(3, int(body.get("caption_max_lines") or 2))),
+        "caption_overflow_policy": body.get("caption_overflow_policy", "split-timed-cue"),
         "caption_safe_inset": body.get("caption_safe_inset", 72),
         "caption_max_width": body.get("caption_max_width", 936),
         "caption_min_chars": body.get("caption_min_chars", 4),
@@ -3031,7 +3033,17 @@ def plan_adaptive_caption_lines(
             for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:2]
             if re.sub(r"\s+", "", str(line or "")).strip()
         ]
-        if directed_lines and "".join(directed_lines) == text:
+        directed_widths = [caption_unit_count(line) for line in directed_lines]
+        directed_balanced = (
+            len(directed_widths) <= 1
+            or min(directed_widths) / max(1, max(directed_widths)) >= 0.42
+        )
+        if (
+            directed_lines
+            and "".join(directed_lines) == text
+            and max(directed_widths, default=0) <= maximum
+            and directed_balanced
+        ):
             item["captionLineMode"] = "two-line" if len(directed_lines) == 2 else "single"
             item["captionLines"] = directed_lines
             prepared.append(item)
@@ -3078,6 +3090,14 @@ def plan_adaptive_caption_lines(
             while cursor >= 0:
                 protected_ranges.append((cursor, cursor + len(phrase)))
                 cursor = text.find(phrase, cursor + 1)
+        # Product names and numbers are lexical atoms. Breaking “codex” into
+        # “cod / ex” may satisfy a raw character count but is not a readable
+        # subtitle, so every template keeps these tokens on one row.
+        for match in re.finditer(
+            r"[A-Za-z]+(?:[A-Za-z0-9+._-]*[A-Za-z0-9])?|\d+(?:\.\d+)?(?:%|万|亿|元|折)?",
+            text,
+        ):
+            protected_ranges.append((match.start(), match.end()))
 
         def split_is_safe(position: int) -> bool:
             return (
@@ -3093,8 +3113,8 @@ def plan_adaptive_caption_lines(
             valid_candidates or [max(1, min(len(characters) - 1, round(midpoint)))],
             key=lambda position: (
                 (
-                    max(0, position - maximum)
-                    + max(0, len(characters) - position - maximum)
+                    max(0, caption_unit_count(text[:position]) - maximum)
+                    + max(0, caption_unit_count(text[position:]) - maximum)
                 ) * 12
                 + abs(position - midpoint)
                 + (10 if text[:position].endswith(("的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及")) else 0)
@@ -3221,18 +3241,25 @@ def timed_caption_beats(
         if not beats:
             continue
         start = float(segment.get("start") or 0)
-        end = max(start + 0.4, float(segment.get("end") or start + 0.4))
+        end = max(start + 0.05, float(segment.get("end") or start + 0.05))
         weights = [max(1, caption_unit_count(item)) for item in beats]
         total_weight = max(1, sum(weights))
+        total_duration = end - start
+        minimum_hold = min(0.35, total_duration / max(1, len(beats)))
         cursor = start
+        elapsed_weight = 0
         for beat_index, beat in enumerate(beats):
-            remaining_duration = max(0.35, end - cursor)
-            remaining_weight = max(1, sum(weights[beat_index:]))
-            duration = remaining_duration * weights[beat_index] / remaining_weight
-            beat_end = end if beat_index == len(beats) - 1 else min(end, cursor + max(0.45, duration))
+            elapsed_weight += weights[beat_index]
+            if beat_index == len(beats) - 1:
+                beat_end = end
+            else:
+                proportional_end = start + total_duration * elapsed_weight / total_weight
+                remaining_beats = len(beats) - beat_index - 1
+                latest_end = end - remaining_beats * minimum_hold
+                beat_end = min(latest_end, max(cursor + minimum_hold, proportional_end))
             timed.append({
                 "start": round(cursor, 2),
-                "end": round(max(cursor + 0.35, beat_end), 2),
+                "end": round(max(cursor, min(end, beat_end)), 2),
                 "text": beat.strip("，,。！？!?；;：:、 "),
             })
             cursor = beat_end
@@ -3333,6 +3360,138 @@ def local_semantic_caption_segments(
         min_chars,
         visual_capacity,
     )
+
+
+def split_caption_translation(value: str, beat_weights: list[int]) -> list[str]:
+    """Distribute a bilingual translation without duplicating it on every cue."""
+    translation = re.sub(r"\s+", " ", str(value or "")).strip()
+    if not translation or not beat_weights:
+        return [""] * len(beat_weights)
+    if len(beat_weights) == 1:
+        return [translation]
+    words = translation.split(" ")
+    if len(words) < len(beat_weights):
+        return [translation, *([""] * (len(beat_weights) - 1))]
+    total_weight = max(1, sum(beat_weights))
+    boundaries = [0]
+    cumulative = 0
+    for weight in beat_weights[:-1]:
+        cumulative += weight
+        target = round(len(words) * cumulative / total_weight)
+        boundaries.append(max(boundaries[-1] + 1, min(len(words) - 1, target)))
+    boundaries.append(len(words))
+    return [
+        " ".join(words[boundaries[index]:boundaries[index + 1]]).strip()
+        for index in range(len(beat_weights))
+    ]
+
+
+def compile_caption_cues_for_template(
+    captions: list[dict[str, Any]],
+    template: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Compile semantic captions into the template's immutable screen capacity.
+
+    AI owns wording and semantic emphasis. The template compiler owns how much
+    text may appear at once. An over-capacity cue becomes several consecutive
+    cues while preserving text order and the original time range. This is the
+    shared safety contract for all published templates, with each package
+    declaring its own line and cue limits.
+    """
+    if str(template.get("caption_overflow_policy") or "split-timed-cue") != "split-timed-cue":
+        return [dict(item) for item in captions]
+    line_limit = max(4, int(template.get("caption_line_max_chars") or 8))
+    max_lines = max(1, min(3, int(template.get("caption_max_lines") or 2)))
+    cue_limit = max(
+        line_limit,
+        min(line_limit * max_lines, int(template.get("caption_max_chars") or line_limit * max_lines)),
+    )
+    min_chars = max(2, min(line_limit, int(template.get("caption_min_chars") or 4)))
+    compiled: list[dict[str, Any]] = []
+    for raw in captions:
+        item = dict(raw)
+        text = normalize_speech_text(str(item.get("text") or "")).strip("，,。！？!?；;：:、 ")
+        if not text:
+            continue
+        if caption_unit_count(text) <= cue_limit:
+            item["text"] = text
+            compiled.append(item)
+            continue
+
+        # Prefer the AI's grounded semantic rows when they are valid. They are
+        # promoted to timed cues only because the selected template cannot fit
+        # the whole sentence at a readable size.
+        keyword = normalize_speech_text(str(item.get("keyword") or ""))
+        directed = [
+            normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
+            for line in (item.get("captionLines") if isinstance(item.get("captionLines"), list) else [])[:max_lines]
+            if normalize_speech_text(str(line or "")).strip("，,。！？!?；;：:、 ")
+        ]
+        keyword_start = text.find(keyword) if keyword else -1
+        keyword_split = bool(
+            keyword_start >= 0
+            and directed
+            and keyword_start < len(directed[0]) < keyword_start + len(keyword)
+        )
+        preferred = directed if "".join(directed) == text and not keyword_split else []
+        beats: list[str] = []
+        for phrase in preferred or [text]:
+            if caption_unit_count(phrase) <= cue_limit:
+                beats.append(phrase)
+            else:
+                beats.extend(split_semantic_caption_text(phrase, min_chars, cue_limit))
+        beats = [beat for beat in beats if beat]
+        if len(beats) <= 1:
+            item["text"] = text
+            compiled.append(item)
+            continue
+
+        timed = timed_caption_beats([item], [beats])
+        translations = split_caption_translation(
+            str(item.get("translation") or ""),
+            [max(1, caption_unit_count(beat)) for beat in beats],
+        )
+        for beat_index, timed_beat in enumerate(timed):
+            cue = {**item, **timed_beat}
+            raw_words = item.get("words") if isinstance(item.get("words"), list) else []
+            cue_words = [
+                dict(word)
+                for word in raw_words
+                if isinstance(word, dict)
+                and float(word.get("end") or 0.0) > float(cue["start"])
+                and float(word.get("start") or 0.0) < float(cue["end"])
+            ]
+            if cue_words:
+                cue["words"] = cue_words
+            else:
+                cue.pop("words", None)
+            cue.pop("captionLines", None)
+            cue.pop("captionLineMode", None)
+            cue.pop("displayEnd", None)
+            cue["captionCompileSource"] = "template-line-capacity"
+            cue["captionOriginalRange"] = [
+                round(float(item.get("start") or 0.0), 3),
+                round(float(item.get("end") or 0.0), 3),
+            ]
+            translation = translations[beat_index] if beat_index < len(translations) else ""
+            if translation:
+                cue["translation"] = translation
+            else:
+                cue.pop("translation", None)
+            if keyword and keyword in str(cue["text"]):
+                cue["keyword"] = keyword
+            else:
+                cue["keyword"] = ""
+                cue["keywordOrigin"] = "none"
+                cue["keywordSfx"] = False
+                cue.pop("keywordImportance", None)
+            if beat_index > 0:
+                cue["cameraIntent"] = "hold"
+                cue["transitionIntent"] = "none"
+                if not cue.get("keywordSfx"):
+                    cue["sfxRole"] = "none"
+            compiled.append(cue)
+    return compiled
 
 
 def merged_time_ranges(items: list[dict[str, Any]]) -> list[tuple[float, float]]:
@@ -4891,6 +5050,12 @@ def process_job(job_id: str) -> None:
                 "字幕完整性检查未通过，已停止生成，避免输出漏句成片。"
             )
         caption_segments = attach_word_timing(caption_segments, words)
+        if template_id in {"template-9", "template-10", "template-11", "template-12"}:
+            caption_segments = compile_caption_cues_for_template(
+                caption_segments,
+                current_template,
+            )
+            caption_source = f"{caption_source}:template-line-capacity"
         # Confirmed caption beats are the user's source of truth. Keeping their
         # boundaries in the title prompt makes the model understand the whole
         # argument instead of copying or truncating the opening sentence.

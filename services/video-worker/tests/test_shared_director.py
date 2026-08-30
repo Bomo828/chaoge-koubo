@@ -87,6 +87,65 @@ class SharedDirectorTests(unittest.TestCase):
         self.assertEqual([str(item.get("keyword") or "") for item in planned], ["", "", ""])
         self.assertFalse(any(item.get("keywordSfx") is True for item in planned))
 
+    def test_all_four_templates_compile_long_captions_to_line_capacity(self) -> None:
+        source = [{
+            "start": 1.72,
+            "end": 4.97,
+            "text": "我用codex做了一款AI剪辑口播视频的工具",
+            "captionLines": ["我用codex做了一款", "AI剪辑口播视频的工具"],
+            "translation": "I made an AI tool for editing talking head videos with codex",
+            "keyword": "AI剪辑",
+            "keywordOrigin": "ai",
+            "keywordSfx": True,
+            "contentNode": "core_viewpoint",
+            "cameraIntent": "push-in",
+            "transitionIntent": "focus-bridge",
+            "sfxRole": "viewpoint",
+        }]
+        original_text = worker.caption_plain_text(source[0]["text"])
+        for template_id in ("template-9", "template-10", "template-11", "template-12"):
+            profile = worker.template_profile(template_id)
+            compiled = worker.compile_caption_cues_for_template(source, profile)
+            self.assertGreater(len(compiled), 1, template_id)
+            self.assertEqual(
+                worker.caption_plain_text("".join(item["text"] for item in compiled)),
+                original_text,
+                template_id,
+            )
+            self.assertEqual(compiled[0]["start"], source[0]["start"], template_id)
+            self.assertEqual(compiled[-1]["end"], source[0]["end"], template_id)
+            self.assertTrue(all(
+                source[0]["start"] <= item["start"] < item["end"] <= source[0]["end"]
+                for item in compiled
+            ), template_id)
+            self.assertTrue(all(
+                left["end"] <= right["start"] + 0.001
+                for left, right in zip(compiled, compiled[1:])
+            ), template_id)
+            self.assertTrue(all(
+                worker.caption_unit_count(item["text"]) <= int(profile["caption_max_chars"])
+                for item in compiled
+            ), template_id)
+            laid_out = worker.plan_adaptive_caption_lines(
+                compiled,
+                int(profile["caption_line_max_chars"]),
+            )
+            self.assertTrue(all(
+                len(item.get("captionLines") or []) <= int(profile["caption_max_lines"])
+                and all(
+                    worker.caption_unit_count(line) <= int(profile["caption_line_max_chars"])
+                    for line in item.get("captionLines") or []
+                )
+                for item in laid_out
+            ), template_id)
+            keyword_cues = [item for item in compiled if item.get("keyword") == "AI剪辑"]
+            self.assertEqual(len(keyword_cues), 1, template_id)
+            self.assertEqual(
+                " ".join(str(item.get("translation") or "") for item in compiled).split(),
+                source[0]["translation"].split(),
+                template_id,
+            )
+
     def test_ai_may_select_a_complete_meaningful_phrase(self) -> None:
         self.assertEqual(
             worker.validated_ai_keyword("AI剪辑口播视频的工具", "AI剪辑", "core_viewpoint", 0.88),

@@ -47,7 +47,7 @@ const protectedOpeningTitlePhrases = [
   "商家入驻机会", "商家入驻", "开放入驻", "首批类目", "激励翻倍",
   "华为", "商家", "入驻", "机会", "小红书", "朋友圈", "直播间",
   "微信支付", "人工智能", "对口型", "一键网感", "超级剪辑",
-  "网感", "口播视频", "AI剪辑", "AI超级剪辑",
+  "网感", "网感十足", "真实", "更真实", "口播视频", "AI剪辑", "AI超级剪辑",
   "市场动态", "会员中心", "短视频", "供应链", "创作平台",
 ];
 
@@ -311,6 +311,10 @@ const adaptiveCaptionLines = (caption: CaptionCue, value: string, maxChars: numb
       cursor = value.indexOf(phrase, cursor + 1);
     }
   });
+  for (const match of value.matchAll(/[A-Za-z]+(?:[A-Za-z0-9+._-]*[A-Za-z0-9])?|\d+(?:\.\d+)?(?:%|万|亿|元|折)?/g)) {
+    const start = match.index ?? 0;
+    protectedRanges.push([start, start + match[0].length]);
+  }
   const markers = ["如果", "但是", "不过", "所以", "然后", "因为", "同时", "以及", "而且", "可以", "需要", "通过", "比如", "首先", "其次", "最后", "商家", "用户", "品牌", "平台", "机会"];
   const semantic = new Set<number>();
   markers.forEach((marker) => {
@@ -600,24 +604,35 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
     // plain caption suppresses keyword coloring.
     const plain = caption.captionStyle === "plain";
     const baseFontSize = strong ? 140 : 122;
-    const keywordFontSize = Math.round(baseFontSize * 1.12);
     const svgHeight = captionLines.length * 154 + 16;
     const captionOffset = Math.round((1 - enter) * 13);
     const captionTop = caption.captionStyle === "focus-lower" ? 1370 : 1295;
     return <div style={{position: "absolute", top: captionTop, left: 36, right: 36, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut * enter, transform: captionOffset ? `translateY(${captionOffset}px) scale(${.97 + enter * .03})` : "none"}}>
-      <svg width="988" height={svgHeight} viewBox={`0 0 988 ${svgHeight}`} textRendering="geometricPrecision" shapeRendering="geometricPrecision" style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "visible", filter: "drop-shadow(2px 4px 1px rgba(0,0,0,.78))"}}>
+      <svg width="988" height={svgHeight} viewBox={`0 0 988 ${svgHeight}`} textRendering="geometricPrecision" shapeRendering="geometricPrecision" style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "hidden", filter: "drop-shadow(2px 4px 1px rgba(0,0,0,.78))"}}>
         {captionLines.map((line, lineIndex) => {
           const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
           const phraseHighlighted = strong;
           const lineCharacters = Array.from(line);
+          const fitted = fitCaptionSvgLine({
+            line,
+            characterOffset,
+            keywordStart,
+            keywordLength: keyword?.length ?? 0,
+            baseFontSize,
+            keywordScale: 1.12,
+            normalSpacing: -4.4,
+            keywordSpacing: -5.2,
+            safeWidth: 884,
+            minimumScale: .66,
+          });
           const characterLayer = (outer: boolean) => lineCharacters.map((character, localIndex) => {
             const characterIndex = characterOffset + localIndex;
             const highlighted = phraseHighlighted || (!plain && keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0));
-            return <tspan key={`${outer ? "outer" : "main"}-${character}-${characterIndex}`} fill={outer ? "transparent" : highlighted ? style.accent : style.foreground} stroke={outer ? "rgba(255,255,255,.98)" : "rgba(0,0,0,.99)"} strokeWidth={outer ? 13.5 : 8.2} paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={highlighted && !phraseHighlighted ? keywordFontSize : baseFontSize} fontWeight="900" letterSpacing={highlighted ? "-5.2" : "-4.4"}>{character}</tspan>;
+            return <tspan key={`${outer ? "outer" : "main"}-${character}-${characterIndex}`} fill={outer ? "transparent" : highlighted ? style.accent : style.foreground} stroke={outer ? "rgba(255,255,255,.98)" : "rgba(0,0,0,.99)"} strokeWidth={outer ? 13.5 : 8.2} paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={highlighted && !phraseHighlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight="900" letterSpacing={highlighted ? "-5.2" : "-4.4"}>{character}</tspan>;
           });
           return <React.Fragment key={`${line}-${lineIndex}`}>
-            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" fill="transparent" stroke="rgba(255,255,255,.98)" strokeWidth="13.5" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={baseFontSize} fontWeight="900" letterSpacing="-4.4">{characterLayer(true)}</text>
-            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" fill={phraseHighlighted ? style.accent : style.foreground} stroke="rgba(0,0,0,.99)" strokeWidth="8.2" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={baseFontSize} fontWeight="900" letterSpacing="-4.4">
+            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill="transparent" stroke="rgba(255,255,255,.98)" strokeWidth="13.5" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={fitted.baseFontSize} fontWeight="900" letterSpacing="-4.4">{characterLayer(true)}</text>
+            <text x="494" y={132 + lineIndex * 154} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill={phraseHighlighted ? style.accent : style.foreground} stroke="rgba(0,0,0,.99)" strokeWidth="8.2" strokeLinejoin="round" strokeLinecap="round" paintOrder="stroke fill" fontFamily={template12SansFontFamily} fontSize={fitted.baseFontSize} fontWeight="900" letterSpacing="-4.4">
               {characterLayer(false)}
             </text>
           </React.Fragment>;
@@ -633,17 +648,18 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
     const keywordFontSize = 128;
     const svgHeight = captionLines.length * 132 + 12;
     return <div style={{position: "absolute", top: 1232, left: 38, right: 38, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut}}>
-      <svg width="984" height={svgHeight} viewBox={`0 0 984 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "visible", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.72))"}}>
+      <svg width="984" height={svgHeight} viewBox={`0 0 984 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 930, overflow: "hidden", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.72))"}}>
         {captionLines.map((line, lineIndex) => {
           const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
           const lineCharacters = Array.from(line);
-          return <text key={`${line}-${lineIndex}`} x="492" y={112 + lineIndex * 132} textAnchor="middle" fill={style.foreground} stroke="rgba(0,0,0,.88)" strokeWidth="2.6" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={baseFontSize} fontWeight="480" letterSpacing="-3.6">
+          const fitted = fitCaptionSvgLine({line, characterOffset, keywordStart, keywordLength: keyword?.length ?? 0, baseFontSize, keywordScale: keywordFontSize / baseFontSize, normalSpacing: -3.6, keywordSpacing: -4.8, safeWidth: 884, minimumScale: .72});
+          return <text key={`${line}-${lineIndex}`} x="492" y={112 + lineIndex * 132} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill={style.foreground} stroke="rgba(0,0,0,.88)" strokeWidth="2.6" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={fitted.baseFontSize} fontWeight="480" letterSpacing="-3.6">
             {lineCharacters.map((character, localIndex) => {
               const characterIndex = characterOffset + localIndex;
               const highlighted = keywordStart >= 0 && characterIndex >= keywordStart && characterIndex < keywordStart + (keyword?.length ?? 0);
               const delay = Math.min(24, characterIndex * 2.4);
               const reveal = interpolate(frame, [delay, delay + 4], [0, 1], {extrapolateLeft: "clamp", extrapolateRight: "clamp"});
-              return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} fillOpacity={reveal} stroke="rgba(0,0,0,.92)" strokeOpacity={reveal} strokeWidth={highlighted ? 4 : 2.6} paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={highlighted ? keywordFontSize : baseFontSize} fontWeight={highlighted ? 900 : 480} letterSpacing={highlighted ? "-4.8" : "-3.6"}>{character}</tspan>;
+              return <tspan key={`${character}-${characterIndex}`} fill={highlighted ? style.accent : style.foreground} fillOpacity={reveal} stroke="rgba(0,0,0,.92)" strokeOpacity={reveal} strokeWidth={highlighted ? 4 : 2.6} paintOrder="stroke fill" fontFamily={template11SansFontFamily} fontSize={highlighted ? fitted.keywordFontSize : fitted.baseFontSize} fontWeight={highlighted ? 900 : 480} letterSpacing={highlighted ? "-4.8" : "-3.6"}>{character}</tspan>;
             })}
           </text>;
         })}
@@ -661,7 +677,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
     return <>
       {caption.sectionEmphasis && calloutText ? <div style={{position: "absolute", top: 92, left: 40, right: 40, zIndex: 4, textAlign: "center", opacity: fadeOut * enter * .72, transform: `translateY(${(1 - enter) * 16}px)`, color: "rgba(255,255,255,.88)", fontFamily: brushFontFamily, fontSize: Math.max(94, 146 - Math.max(0, Array.from(calloutText).length - 3) * 13), lineHeight: 1, fontWeight: 600, letterSpacing: 4, WebkitTextStroke: "2.2px rgba(16,12,9,.45)", paintOrder: "stroke fill", textShadow: "0 6px 13px rgba(0,0,0,.30)"}}>{calloutText}</div> : null}
       <div style={{position: "absolute", top: 1198, left: 72, right: 72, zIndex: 6, display: "flex", flexDirection: "column", alignItems: "center", textAlign: "center", opacity: fadeOut * enter, transform: captionOffset ? `translateY(${captionOffset}px)` : "none"}}>
-        <svg width="936" height={svgHeight} viewBox={`0 0 936 ${svgHeight}`} style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 896, overflow: "visible", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.58))"}}>
+        <svg width="936" height={svgHeight} viewBox={`0 0 936 ${svgHeight}`} style={{display: "block", width: "100%", maxWidth: timeline.theme.captionMaxWidth ?? 896, overflow: "hidden", filter: "drop-shadow(2px 5px 2px rgba(0,0,0,.58))"}}>
           {captionLines.map((line, lineIndex) => {
             const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);
             const fitted = fitCaptionSvgLine({
@@ -673,8 +689,8 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
               keywordScale: 1.14,
               normalSpacing: .3,
               keywordSpacing: -1.7,
-              safeWidth: 884,
-              minimumScale: .78,
+              safeWidth: 820,
+              minimumScale: .72,
             });
             return <text key={`${line}-${lineIndex}`} x="468" y={74 + lineIndex * 89} textAnchor="middle" textLength={fitted.textLength} lengthAdjust="spacingAndGlyphs" fill={style.foreground} stroke="rgba(18,14,10,.94)" strokeWidth="4.4" strokeLinejoin="round" paintOrder="stroke fill" fontFamily={brushFontFamily} fontSize={fitted.baseFontSize} fontWeight="600" letterSpacing=".3">
               {Array.from(line).map((character, localIndex) => {
@@ -685,7 +701,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
             </text>;
           })}
         </svg>
-        {compactTranslation ? <div style={{marginTop: 2, color: "rgba(255,255,255,.97)", fontFamily: englishSerifFontFamily, fontSize: 27, lineHeight: 1.06, fontWeight: 700, letterSpacing: .1, textShadow: "-1px -1px 0 rgba(0,0,0,.78), 1px 1px 1px rgba(0,0,0,.75)"}}>{compactTranslation}</div> : null}
+        {compactTranslation ? <div style={{marginTop: 2, maxWidth: timeline.theme.captionMaxWidth ?? 896, overflowWrap: "anywhere", color: "rgba(255,255,255,.97)", fontFamily: englishSerifFontFamily, fontSize: 27, lineHeight: 1.06, fontWeight: 700, letterSpacing: .1, textShadow: "-1px -1px 0 rgba(0,0,0,.78), 1px 1px 1px rgba(0,0,0,.75)"}}>{compactTranslation}</div> : null}
       </div>
     </>;
   }
@@ -717,7 +733,7 @@ const StudioSeriesSubtitle: React.FC<{caption: CaptionCue; timeline: ViralTimeli
         viewBox={`0 0 940 ${svgHeight}`}
         textRendering="geometricPrecision"
         shapeRendering="geometricPrecision"
-        style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 850, overflow: "visible", filter: "drop-shadow(3px 4px 0 rgba(0,0,0,.55))"}}
+        style={{display: "block", maxWidth: timeline.theme.captionMaxWidth ?? 850, overflow: "hidden", filter: "drop-shadow(3px 4px 0 rgba(0,0,0,.55))"}}
       >
         {captionLines.map((line, lineIndex) => {
           const characterOffset = captionLines.slice(0, lineIndex).reduce((sum, item) => sum + Array.from(item).length, 0);

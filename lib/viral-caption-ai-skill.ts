@@ -1,5 +1,5 @@
 export const VIRAL_CAPTION_AI_SKILL_ID = "talking-head-caption-director";
-export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v4-deepseek";
+export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v5-unified-director";
 export const VIRAL_CAPTION_AI_MODEL = process.env.DEEPSEEK_CAPTION_MODEL?.trim() || "deepseek-v4-flash";
 export const VIRAL_CAPTION_AI_FALLBACK_MODEL = process.env.VIRAL_CAPTION_AI_FALLBACK_MODEL?.trim()
   || process.env.VIRAL_CAPTION_AI_MODEL?.trim()
@@ -59,31 +59,40 @@ export function buildViralCaptionSkillSystemPrompt(options?: {
   language?: ViralCaptionSkillLanguage;
   itemKey?: "items" | "captions";
   idBase?: 0 | 1;
+  captionContract?: {
+    templateId: string;
+    lineMaxUnits: number;
+    cueMaxUnits: number;
+    maxLines: number;
+  };
 }) {
   const language = options?.language || "zh";
   const itemKey = options?.itemKey || "items";
   const idBase = options?.idBase ?? 0;
+  const contract = options?.captionContract;
+  const contractRule = contract
+    ? `当前模板${contract.templateId}：每个显示组最多${contract.maxLines}行、每行最多${contract.lineMaxUnits}个中文/字母数字单位、每屏最多${contract.cueMaxUnits}个单位。`
+    : "每个显示组最多2行；具体字数以用户消息中的模板约束为准。";
   const languageRule = language === "en"
-    ? "英文口播：title、corrected_text、caption_lines用英文，translation用简短中文。"
-    : "中文口播：title、corrected_text、caption_lines用中文，translation用简短自然英文。";
+    ? "英文口播：title、corrected_text、g用英文，translation用简短中文。"
+    : "中文口播：title、corrected_text、g用中文，translation用简短自然英文。";
 
-  // Keep this agent deliberately narrow. ASR already supplied the accurate
-  // timeline; camera, transition and SFX intent are derived after this pass.
-  // Asking the model for unrelated fields made short scripts time out.
-  return `你是“口播标题字幕导演”。输入已经含精确时间轴，你只做：文字校正、标题、视觉换行、提亮词、重点词和双语翻译。
+  // This is the only semantic caption agent. ASR owns timing, while the
+  // deterministic compiler owns safe areas and rendering implementation.
+  return `你是唯一的“口播内容导演”。输入已经含精确时间轴，你一次完成：文字校正、标题、语义分段、视觉换行、提亮词、重点词和双语翻译。
 
 硬规则：
-1. id和条目数量必须与输入完全一致；不得改时间、增删、合并或拆分条目。
+1. 返回的原始id和条目数量必须与输入完全一致；不得改时间或跨id合并。允许在单个id内部用g拆成多个连续显示组，服务器会把这些组锁定回该id的原时间段。
 2. corrected_text只能修正确定的错字、品牌名、数字和标点；不得总结、改写、扩写。${languageRule}
 3. 标题先理解全文再提炼，不能用问候或机械拼接前两句。中文8到16字；英文3到12词。title_lines为1到2行，拼接后等于title，不能拆固定短语。
-4. caption_lines为1到2行，拼接后等于corrected_text。按完整语义短语换行，不让“的、了、和、与、在、就、都、把、被”等虚词孤立在行首或行尾，不拆品牌名和数字单位；短句保持单行。
+4. g是当前id的最终字幕排版，格式为[["第一屏第一行","第一屏第二行"],["第二屏第一行"]]。g内所有文字按顺序拼接必须等于corrected_text。${contractRule}按完整语义短语分屏和换行，不让“的、了、和、与、在、就、都、把、被”等虚词孤立在行首或行尾，不拆品牌名、英文产品名、数字和单位；能安全放下的短句保持一屏。
 5. keyword必须是corrected_text中连续出现的2到8字完整信息短语；数字可单独提亮。问候、自我介绍及“我、codex、AI、视频、工具、剪辑”等泛词不能单独提亮。用户消息会给出本次目标数量，必须按目标选择分散且有信息量的keyword，其余为空。
 6. keyword_importance只能是none、regular、primary。无keyword则none；普通提亮为regular；primary只给全片最重要的钩子、利益数字、反差、结论或行动号召，60秒内0到3个且尽量间隔4秒，会触发音效，宁缺毋滥。
 7. 输入条目使用[id,原句]精简数组。按id逐条处理，不要重复输出时间轴。
 8. 只返回一个紧凑JSON对象，不要Markdown、解释、前后缀或第二个JSON。
 
-为减少延迟，必须使用以下短字段：t=标题，tl=标题行，i=id，x=校正原句，l=字幕行，k=提亮词，p=none|regular|primary，z=简短翻译。
-输出：{"t":"完整标题","tl":["第一行","第二行"],"${itemKey}":[{"i":${idBase},"x":"校正原句","l":["第一行","第二行"],"k":"提亮词或空字符串","p":"none|regular|primary","z":"简短翻译"}]}。`;
+为减少延迟，必须使用以下短字段：t=标题，tl=标题行，i=id，x=校正原句，g=字幕显示组，k=提亮词，p=none|regular|primary，z=简短翻译。
+输出：{"t":"完整标题","tl":["第一行","第二行"],"${itemKey}":[{"i":${idBase},"x":"校正原句","g":[["第一屏第一行","第一屏第二行"],["第二屏第一行"]],"k":"提亮词或空字符串","p":"none|regular|primary","z":"简短翻译"}]}。`;
 }
 
 export function buildViralCaptionSkillRequest(input: {
