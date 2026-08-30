@@ -15,11 +15,10 @@ import {
   type ViralCaptionPlanItem,
 } from "../viral-workflow";
 import { normalizeViralTitleSyntax, planViralCaptionLayout, planViralTitleLayout } from "../viral-semantic-layout";
-import { acceptViralCaptionCorrection } from "../viral-text-integrity";
 import {
+  buildViralCaptionTokenTimeline,
   buildViralCaptionSkillSystemPrompt,
-  detectViralCaptionSkillLanguage,
-  normalizeViralKeywordImportance,
+  compileViralSemanticCaptionPlan,
   viralCaptionKeywordTargets,
   viralCaptionSkillTitleIsValid,
   VIRAL_CAPTION_AI_MODEL,
@@ -177,28 +176,6 @@ function rememberDirectorPlan(key: string, value: Record<string, unknown>) {
   }
 }
 
-function normalizedAiItem(value: Record<string, unknown>): Record<string, unknown> {
-  return {
-    ...value,
-    corrected_text: value.corrected_text ?? value.x,
-    caption_groups: value.caption_groups ?? value.g,
-    keyword: value.keyword ?? value.k,
-    keyword_importance: value.keyword_importance ?? value.p,
-    translation: value.translation ?? value.z,
-  };
-}
-
-function semanticPlanIsComplete(items: Record<string, unknown>[], expectedLength: number) {
-  const importance = new Set(["none", "regular", "primary"]);
-  return items.length === expectedLength && items.every((item) => (
-    importance.has(String(item.keyword_importance))
-    && typeof item.keyword === "string"
-    && typeof item.corrected_text === "string"
-    && Array.isArray(item.caption_groups)
-    && typeof item.translation === "string"
-  ));
-}
-
 export async function planViralCaptionDirector(input: {
   captions: unknown;
   duration: number;
@@ -212,24 +189,23 @@ export async function planViralCaptionDirector(input: {
   const templateId = typeof input.templateId === "string" ? input.templateId.trim().slice(0, 64) : "template-9";
   const contract = viralCaptionTemplateContract(templateId);
   const fallback = localPlan(source, script, templateId);
-  const compactInput = source.map((caption, id) => ({ id, text: caption.text }));
-  const sourceText = script || source.map((item) => item.text).join("。");
-  const sourceLanguage = detectViralCaptionSkillLanguage(sourceText);
+  const timeline = buildViralCaptionTokenTimeline(source);
+  const compactInput = timeline.tokens.map((token) => [token.id, token.text]);
+  const sourceLanguage = timeline.language;
   const key = cacheKey({
-    prompt: `${VIRAL_DIRECTOR_PROMPT_VERSION}-unified-director-v1`,
+    prompt: `${VIRAL_DIRECTOR_PROMPT_VERSION}-global-word-director-v3`,
     model: VIRAL_CAPTION_AI_MODEL,
     templateId,
     contract,
     script,
-    compactInput,
+    timeline: timeline.tokens.map((token) => [token.text, token.start, token.end]),
   });
   const cached = cachedDirectorPlan(key);
   if (cached) return { ...cached, cache: "hit" };
   const system = buildViralCaptionSkillSystemPrompt({
     language: sourceLanguage,
-    itemKey: "items",
-    idBase: 0,
     captionContract: contract,
+    timelinePrecision: timeline.precision,
   });
   const keywordTargets = viralCaptionKeywordTargets(source.length, duration);
   const requestStartedAt = Date.now();
@@ -241,65 +217,54 @@ export async function planViralCaptionDirector(input: {
         { role: "system", content: system },
         {
           role: "user",
-          content: `原始时间段已锁定。${viralCaptionConstraintPrompt(contract)}共${source.length}个原始id，必须恰好为${keywordTargets.keywordTarget}个id填写非空k，其余k=""且p="none"；其中恰好${keywordTargets.primaryTarget}个p="primary"，其他非空k均为regular。关键词要分散、不得相邻重复泛词。仅处理以下有序条目：${JSON.stringify(compactInput.map((item) => [item.id, item.text]))}`,
+          content: `这是整段口播的${timeline.precision === "word" ? "逐词" : "分句"}编号时间轴。${viralCaptionConstraintPrompt(contract)}最终c必须连续覆盖0到${Math.max(0, timeline.tokens.length - 1)}。全片应有${keywordTargets.minimumKeywords}到${keywordTargets.maximumKeywords}个非空k，其中1到${keywordTargets.primaryTarget}个p="primary"，其余非空k为regular；关键词要分散且不能重复泛词。只处理以下有序词表：${JSON.stringify(compactInput)}`,
         },
       ],
     });
     const parsed = parseAiJsonObject(extractText(aiResult.response), "AI 没有返回结构化字幕规划。");
-    const items = Array.isArray(parsed.items) ? parsed.items : [];
-    const itemsById = new Map<number, Record<string, unknown>>();
-    items.forEach((item, responseIndex) => {
-      if (!item || typeof item !== "object") return;
-      const record = normalizedAiItem(item as Record<string, unknown>);
-      const id = Number(record.id ?? record.i);
-      if (Number.isInteger(id) && id >= 0 && id < source.length) itemsById.set(id, record);
-      else if (responseIndex < source.length && !itemsById.has(responseIndex)) itemsById.set(responseIndex, record);
+    const compiled = compileViralSemanticCaptionPlan({
+      value: parsed.c ?? parsed.cues ?? parsed.captions,
+      timeline,
+      contract,
     });
-    if (!itemsById.size) throw new Error("AI 没有返回可用的逐句规划。");
-    const rawItems = source.map((_, index) => itemsById.get(index) || {});
+    if (!compiled.cues.length) throw new Error(compiled.error || "AI 没有返回可用的全稿语义规划。");
     const parsedTitle = typeof parsed.title === "string" ? parsed.title : typeof parsed.t === "string" ? parsed.t : "";
-    const plannedSource = source.map((caption, index) => {
-      const raw = rawItems[index];
-      const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
-      const node = NODES.has(raw.content_node as ViralCaptionPlanItem["contentNode"])
-        ? raw.content_node as ViralCaptionPlanItem["contentNode"]
-        : localNode(text, index, source.length);
-      const contentWeight = Math.max(0, Math.min(1, Number.isFinite(Number(raw.weight)) ? Number(raw.weight) : 0.5));
-      const candidate = typeof raw.keyword === "string" ? raw.keyword.trim().replace(/\s+/g, "").slice(0, 8) : "";
+    const plannedSource = compiled.cues.map((cue, index) => {
+      const text = cue.text.slice(0, 180);
+      const node = NODES.has(cue.contentNode)
+        ? cue.contentNode
+        : localNode(text, index, compiled.cues.length);
+      const contentWeight = cue.contentWeight;
+      const candidate = cue.keyword;
       const keyword = candidate && plain(text).includes(plain(candidate))
         ? sanitizeViralKeyword(text, candidate, node, candidate ? Math.max(contentWeight, 0.75) : contentWeight)
         : "";
-      const keywordImportance = normalizeViralKeywordImportance(raw.keyword_importance, Boolean(keyword));
-      const lineLayout = planViralCaptionLayout(text, undefined, contract.lineMaxUnits);
       return {
-        ...caption,
+        start: cue.start,
+        end: cue.end,
+        ...(cue.words?.length ? { words: cue.words } : {}),
         text,
         ...(keyword ? { keyword } : {}),
-        translation: typeof raw.translation === "string" ? raw.translation.trim().slice(0, 240) : "",
+        translation: cue.translation,
         contentNode: node,
         contentWeight,
         keywordOrigin: keyword ? "ai" as const : "none" as const,
         ...(keyword ? {
-          keywordImportance: keywordImportance === "primary" ? "primary" as const : "regular" as const,
-          ...(keywordImportance === "primary" ? { keywordSfx: true } : {}),
+          keywordImportance: cue.keywordImportance === "primary" ? "primary" as const : "regular" as const,
+          ...(cue.keywordImportance === "primary" ? { keywordSfx: true } : {}),
         } : {}),
-        captionLineMode: lineLayout.mode,
-        captionLines: lineLayout.lines,
+        captionLineMode: cue.captionLines.length > 1 ? "two-line" as const : "single" as const,
+        captionLines: cue.captionLines,
         ...localIntents(node, contentWeight),
       };
     });
-    const compiledCaptions = compileViralCaptionCues(
-      plannedSource,
-      templateId,
-      rawItems.map((item) => item.caption_groups),
-    );
+    const compiledCaptions = plannedSource;
     const aiKeywordCount = compiledCaptions.filter((caption) => caption.keywordOrigin === "ai" && caption.keyword).length;
     const aiPrimaryCount = compiledCaptions.filter((caption) => (
       caption.keywordOrigin === "ai" && caption.keyword && caption.keywordImportance === "primary"
     )).length;
     if (
-      !semanticPlanIsComplete(rawItems, source.length)
-      || aiKeywordCount < keywordTargets.minimumKeywords
+      aiKeywordCount < keywordTargets.minimumKeywords
       || aiKeywordCount > keywordTargets.maximumKeywords
       || aiPrimaryCount < Math.min(1, keywordTargets.primaryTarget)
       || aiPrimaryCount > keywordTargets.primaryTarget
@@ -336,8 +301,8 @@ export async function planViralCaptionDirector(input: {
       degraded: false,
       model: aiResult.model,
       provider: aiResult.provider,
-      planningRole: "unified-caption-director",
-      timelineRole: "upstream-timing-only",
+      planningRole: "global-semantic-caption-director",
+      timelineRole: timeline.precision === "word" ? "upstream-word-timing" : "upstream-segment-timing",
       titleSource: aiTitleAccepted ? "ai" : "semantic-guardrail",
       providerFallbackWarning: aiResult.fallbackFailures?.join("；") || null,
       warning: aiTitleAccepted ? null : "AI 标题未通过完整语义校验，已保留其他AI规划并自动换用安全标题。",

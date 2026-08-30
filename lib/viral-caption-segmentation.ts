@@ -2,6 +2,7 @@ export type ViralCaptionSegment = {
   start: number;
   end: number;
   text: string;
+  words?: Array<{ start: number; end: number; text: string }>;
 };
 
 export function viralSpeechLanguage(value: string) {
@@ -41,6 +42,7 @@ export function repairEnglishWordFragments(captions: ViralCaptionSegment[]) {
     ) {
       previous.text = `${lastMatch[1]}${lastMatch[2]}${firstMatch[1]}${firstMatch[2]}`.replace(/\s+/g, " ").trim();
       previous.end = Math.max(previous.end, current.end);
+      if (current.words?.length) previous.words = [...(previous.words || []), ...current.words];
       return;
     }
     if (current.text) repaired.push(current);
@@ -87,6 +89,7 @@ function mergeEnglishCaptionWords(captions: ViralCaptionSegment[]) {
       } else {
         current.text = `${current.text} ${text}`.replace(/\s+/g, " ").trim();
         current.end = Math.max(current.end, caption.end);
+        if (caption.words?.length) current.words = [...(current.words || []), ...caption.words];
       }
     }
     const next = captions[index + 1];
@@ -112,6 +115,7 @@ function mergeEnglishCaptionWords(captions: ViralCaptionSegment[]) {
     ) {
       previous.text = `${previous.text} ${caption.text}`.replace(/\s+/g, " ").trim();
       previous.end = caption.end;
+      if (caption.words?.length) previous.words = [...(previous.words || []), ...caption.words];
       balanced.splice(index, 1);
       index -= 1;
       continue;
@@ -124,6 +128,7 @@ function mergeEnglishCaptionWords(captions: ViralCaptionSegment[]) {
     ) {
       next.text = `${caption.text} ${next.text}`.replace(/\s+/g, " ").trim();
       next.start = caption.start;
+      if (caption.words?.length) next.words = [...caption.words, ...(next.words || [])];
       balanced.splice(index, 1);
       index -= 1;
     }
@@ -143,7 +148,65 @@ function mergeCaptionPair(left: ViralCaptionSegment, right: ViralCaptionSegment)
     start: left.start,
     end: Math.max(left.end, right.end),
     text: `${normalizeSpeechText(left.text)}${normalizeSpeechText(right.text)}`,
+    ...((left.words?.length || right.words?.length) ? { words: [...(left.words || []), ...(right.words || [])] } : {}),
   };
+}
+
+const CHINESE_STEP_VALUES: Record<string, number> = {
+  "一": 1, "二": 2, "三": 3, "四": 4, "五": 5,
+  "六": 6, "七": 7, "八": 8, "九": 9, "十": 10,
+};
+
+function stepValue(value: string) {
+  const compact = value.replace(/[^0-9一二三四五六七八九十]/g, "");
+  if (!compact) return 0;
+  return /^\d+$/.test(compact) ? Number(compact) : CHINESE_STEP_VALUES[compact] || 0;
+}
+
+function leadingStep(value: string) {
+  const match = normalizeSpeechText(value).match(/^(\d{1,2}|[一二三四五六七八九十])[、.．，,：:\s]+/u);
+  return match ? stepValue(match[1]) : 0;
+}
+
+/** Move an ASR-attached step number to the sentence it introduces.
+ *
+ * Tencent may place the spoken “2” at the end of the previous sentence. We
+ * only move it when neighbouring numbered steps prove the enumeration and an
+ * exact word timestamp exists, so ordinary prices/counts are never changed.
+ */
+export function repairChineseStepOwnership(captions: ViralCaptionSegment[]) {
+  const repaired = captions.map((caption) => ({
+    ...caption,
+    ...(caption.words?.length ? { words: caption.words.map((word) => ({ ...word })) } : {}),
+  }));
+  for (let index = 0; index < repaired.length - 1; index += 1) {
+    const current = repaired[index];
+    const next = repaired[index + 1];
+    const match = normalizeSpeechText(current.text).match(/^(.*?)[，,、\s]+(\d{1,2}|[一二三四五六七八九十])[、.．]?$/u);
+    if (!match) continue;
+    const label = match[2];
+    const value = stepValue(label);
+    if (!value) continue;
+    const previousValues = repaired.slice(Math.max(0, index - 3), index + 1).map((caption) => leadingStep(caption.text));
+    const followingValues = repaired.slice(index + 2, index + 5).map((caption) => leadingStep(caption.text));
+    if (!previousValues.includes(value - 1) && !followingValues.includes(value + 1)) continue;
+    const words = current.words || [];
+    const labelWordIndex = words.findLastIndex((word) => stepValue(word.text) === value);
+    if (labelWordIndex < 0) continue;
+    const labelWords = words.slice(labelWordIndex);
+    const labelStart = Math.max(current.start, labelWords[0].start);
+    const retainedWords = words.slice(0, labelWordIndex);
+    const currentText = match[1].replace(/[，,、\s]+$/gu, "").trim();
+    const nextText = normalizeSpeechText(next.text).replace(/^[，,、.．：:\s]+/gu, "");
+    if (!currentText || !nextText) continue;
+    current.text = currentText;
+    current.words = retainedWords;
+    current.end = Math.max(current.start + 0.04, retainedWords.at(-1)?.end || labelStart);
+    next.text = `${label}、${nextText}`;
+    next.start = labelStart;
+    next.words = [...labelWords, ...(next.words || [])];
+  }
+  return repaired;
 }
 
 /**
@@ -157,7 +220,7 @@ export function rebalanceChineseViralCaptions(captions: ViralCaptionSegment[]) {
   const merged: ViralCaptionSegment[] = [];
   const maxUnits = 20;
   const maxDuration = 3.9;
-  for (const raw of captions) {
+  for (const raw of repairChineseStepOwnership(captions)) {
     // Keep terminal punctuation until the merge decision has been made.  It is
     // timing evidence: a full stop is a hard boundary and must not be crossed
     // merely because the ASR fragments are close together.

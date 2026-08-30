@@ -116,6 +116,7 @@ function normalizeViralCaptionsForReview(captions: ViralCaption[]) {
   // that evidence intact before the unified content director plans the copy.
   return segmentViralCaptions(captions
     .map((caption) => ({
+      ...caption,
       start: Math.max(0, caption.start),
       end: Math.max(caption.start + 0.04, caption.end),
       text: caption.text.trim().replace(/[。！？!?…]+$/g, ""),

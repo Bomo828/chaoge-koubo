@@ -52,17 +52,18 @@ const SPLIT_MARKERS = [
   "但是", "不过", "所以", "然后", "因为", "如果", "同时", "以及",
   "而且", "而是", "就是", "可以", "需要", "通过", "这样", "比如",
   "例如", "首先", "其次", "最后", "想要", "怎么", "如何", "为什么",
-  "AI剪辑", "AI超级剪辑", "口播视频", "一键网感", "超级剪辑",
+  "特点就是", "口播视频", "一键网感", "超级剪辑",
 ];
 
 const PROTECTED_CAPTION_PHRASES = [
   "AI剪辑", "AI超级剪辑", "口播视频", "对口型", "一键网感", "超级剪辑",
+  "视频素材", "图片素材", "克隆你的声音", "网感十足",
   "微信支付", "人工智能", "小红书", "朋友圈", "直播间", "短视频",
   "商家", "入驻", "新机会", "开放入驻", "首批类目", "激励翻倍",
   "酒店景区旅行社", "体育场馆", "市场动态", "会员中心", "供应链",
 ];
 
-const INVALID_LEFT_ENDINGS = ["的", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及"];
+const INVALID_LEFT_ENDINGS = ["的", "了", "着", "过", "和", "与", "就", "都", "也", "在", "让", "把", "被", "从", "向", "为", "及"];
 const INVALID_RIGHT_STARTS = ["的", "和", "与", "就", "都", "也", "才", "了", "着", "过"];
 
 function speechLanguage(value: string) {
@@ -101,7 +102,7 @@ export function viralCaptionTemplateContract(templateId: unknown): ViralCaptionT
 }
 
 export function viralCaptionConstraintPrompt(contract: ViralCaptionTemplateContract) {
-  return `当前模板=${contract.templateId}；每条字幕最多${contract.maxLines}行；每行最多${contract.lineMaxUnits}个中文/字母数字单位；每屏字幕最多${contract.cueMaxUnits}个单位。请在每个原始id内部用g规划一个或多个显示组，g的格式为[["第一行","第二行"],["下一屏第一行"]]。所有组按顺序拼接必须等于校正后的原句，不能遗漏、重复、改写或跨id合并。`;
+  return `当前模板=${contract.templateId}；每屏字幕最多${contract.maxLines}行；每行最多${contract.lineMaxUnits}个中文/字母数字单位；每屏最多${contract.cueMaxUnits}个单位。请先按全文语义决定每屏覆盖的连续词编号，再用l规划屏内换行。所有字幕必须按词编号完整覆盖原口播，不能遗漏、重复、改序；可以跨越上游ASR句段重新组合。`;
 }
 
 function protectedRanges(text: string, keyword: string) {
@@ -204,12 +205,23 @@ function normalizeDirectedGroups(value: unknown, text: string, keyword: string, 
   if (comparableCaptionText(groups.flat().join("")) !== comparableCaptionText(text)) return [];
   if (groups.some((lines) => lines.some((line) => viralCaptionUnitCount(line) > contract.lineMaxUnits))) return [];
   if (groups.some((lines) => viralCaptionUnitCount(lines.join("")) > contract.cueMaxUnits)) return [];
-  if (keyword && groups.some((lines, index) => {
-    const before = groups.slice(0, index).flat().join("").length;
-    const boundary = before + lines.join("").length;
-    const keywordStart = text.indexOf(keyword);
-    return keywordStart >= 0 && keywordStart < boundary && boundary < keywordStart + keyword.length;
-  })) return [];
+  const flattenedLines = groups.flat();
+  const boundaries = flattenedLines.slice(0, -1).map((_, index) => flattenedLines.slice(0, index + 1).join("").length);
+  const protectedSpans = protectedRanges(text, keyword);
+  if (boundaries.some((boundary) => !safeBreak(boundary, protectedSpans))) return [];
+  if (typeof Intl.Segmenter === "function" && speechLanguage(text) === "zh") {
+    const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+    const wordBoundaries = new Set<number>([0, text.length]);
+    for (const segment of segmenter.segment(text)) {
+      wordBoundaries.add(segment.index);
+      wordBoundaries.add(segment.index + segment.segment.length);
+    }
+    if (boundaries.some((boundary) => !wordBoundaries.has(boundary))) return [];
+  }
+  if (boundaries.some((boundary) => (
+    INVALID_LEFT_ENDINGS.some((item) => text.slice(0, boundary).endsWith(item))
+    || INVALID_RIGHT_STARTS.some((item) => text.slice(boundary).startsWith(item))
+  ))) return [];
   return groups;
 }
 
@@ -229,6 +241,58 @@ function splitTranslation(value: string, weights: number[]) {
   });
   boundaries.push(words.length);
   return weights.map((_, index) => words.slice(boundaries[index], boundaries[index + 1]).join(" "));
+}
+
+function timedCaptionRanges(item: ViralCaptionPlanItem, weights: number[]) {
+  const start = Math.max(0, Number(item.start) || 0);
+  const end = Math.max(start + 0.04, Number(item.end) || start + 0.5);
+  const words = (item.words || [])
+    .filter((word) => word && word.text && Number(word.end) > Number(word.start))
+    .map((word) => ({
+      ...word,
+      start: Math.max(start, Number(word.start)),
+      end: Math.min(end, Math.max(Number(word.start) + 0.01, Number(word.end))),
+    }))
+    .sort((left, right) => left.start - right.start || left.end - right.end);
+  if (!words.length || weights.length <= 1) return weights.map(() => ({ start, end, words }));
+
+  const wordWeights = words.map((word) => Math.max(1, viralCaptionUnitCount(word.text)));
+  const totalWordWeight = Math.max(1, wordWeights.reduce((sum, weight) => sum + weight, 0));
+  const totalBeatWeight = Math.max(1, weights.reduce((sum, weight) => sum + weight, 0));
+  const ranges: Array<{ start: number; end: number; words: typeof words }> = [];
+  let beatWeight = 0;
+  let wordStartIndex = 0;
+  let rangeStart = start;
+  for (let beatIndex = 0; beatIndex < weights.length; beatIndex += 1) {
+    beatWeight += weights[beatIndex];
+    if (beatIndex === weights.length - 1) {
+      ranges.push({ start: rangeStart, end, words: words.slice(wordStartIndex) });
+      break;
+    }
+    const target = totalWordWeight * beatWeight / totalBeatWeight;
+    let cumulative = wordWeights.slice(0, wordStartIndex).reduce((sum, weight) => sum + weight, 0);
+    let boundaryIndex = wordStartIndex;
+    while (boundaryIndex < words.length - 1 && cumulative + wordWeights[boundaryIndex] < target) {
+      cumulative += wordWeights[boundaryIndex];
+      boundaryIndex += 1;
+    }
+    const rangeEnd = Math.max(rangeStart + 0.04, words[boundaryIndex].end);
+    ranges.push({ start: rangeStart, end: Math.min(end, rangeEnd), words: words.slice(wordStartIndex, boundaryIndex + 1) });
+    wordStartIndex = boundaryIndex + 1;
+    rangeStart = words[wordStartIndex]?.start ?? rangeEnd;
+  }
+  return ranges.length === weights.length
+    ? ranges
+    : weights.map((_, index) => {
+      const duration = end - start;
+      const before = weights.slice(0, index).reduce((sum, weight) => sum + weight, 0);
+      const through = before + weights[index];
+      return {
+        start: start + duration * before / totalBeatWeight,
+        end: start + duration * through / totalBeatWeight,
+        words: [],
+      };
+    });
 }
 
 /**
@@ -256,23 +320,16 @@ export function compileViralCaptionCues(
       });
     const weights = beats.map((beat) => Math.max(1, viralCaptionUnitCount(beat.text)));
     const translations = splitTranslation(String(item.translation || ""), weights);
-    const start = Math.max(0, Number(item.start) || 0);
-    const end = Math.max(start + 0.04, Number(item.end) || start + 0.5);
-    const duration = end - start;
-    const totalWeight = Math.max(1, weights.reduce((sum, weight) => sum + weight, 0));
-    let elapsedWeight = 0;
-    let cursor = start;
+    const ranges = timedCaptionRanges(item, weights);
     return beats.map((beat, beatIndex) => {
-      elapsedWeight += weights[beatIndex];
-      const beatEnd = beatIndex === beats.length - 1
-        ? end
-        : start + duration * elapsedWeight / totalWeight;
+      const range = ranges[beatIndex] || ranges.at(-1)!;
       const containsKeyword = Boolean(keyword) && comparableCaptionText(beat.text).includes(comparableCaptionText(keyword));
       const cue: ViralCaptionPlanItem = {
         ...item,
-        start: Number(cursor.toFixed(3)),
-        end: Number(Math.max(cursor + 0.04, Math.min(end, beatEnd)).toFixed(3)),
+        start: Number(range.start.toFixed(3)),
+        end: Number(Math.max(range.start + 0.04, range.end).toFixed(3)),
         text: beat.text,
+        ...(range.words.length ? { words: range.words } : { words: undefined }),
         captionLineMode: beat.lines.length > 1 ? "two-line" : "single",
         captionLines: beat.lines,
         ...(translations[beatIndex] ? { translation: translations[beatIndex] } : { translation: undefined }),
@@ -288,7 +345,6 @@ export function compileViralCaptionCues(
           ...(containsKeyword ? {} : { sfxRole: "none" }),
         } : {}),
       };
-      cursor = beatEnd;
       return cue;
     });
   });

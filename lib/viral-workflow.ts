@@ -2,6 +2,7 @@ export type ViralCaptionPlanItem = {
   start: number;
   end: number;
   text: string;
+  words?: Array<{ start: number; end: number; text: string }>;
   keyword?: string;
   translation?: string;
   contentNode?: "hook" | "pain_reversal" | "core_viewpoint" | "number_benefit" | "example_step" | "brand_entity" | "cta" | "supporting";
@@ -17,7 +18,7 @@ export type ViralCaptionPlanItem = {
 };
 
 export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
-export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-unified-template-layout-v5";
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-global-word-timeline-v7";
 
 export type ViralBgmMood = "calm" | "warm" | "professional" | "uplifting" | "neutral";
 
@@ -220,10 +221,25 @@ export function sanitizeViralCaptionPlan(value: unknown, duration = 600): ViralC
     const validCaptionLines = captionLines.length > 0 && captionLines.join("") === compactText
       ? captionLines
       : [];
+    const words = Array.isArray(record.words)
+      ? record.words.flatMap((item) => {
+        if (!item || typeof item !== "object") return [];
+        const word = item as Record<string, unknown>;
+        const wordText = shortText(word.text, 80);
+        const wordStart = Math.max(start, Math.min(end, Number(word.start) || start));
+        const wordEnd = Math.max(wordStart + 0.01, Math.min(end, Number(word.end) || wordStart + 0.04));
+        return wordText ? [{
+          start: Number(wordStart.toFixed(3)),
+          end: Number(wordEnd.toFixed(3)),
+          text: wordText,
+        }] : [];
+      }).sort((left, right) => left.start - right.start || left.end - right.end)
+      : [];
     return [{
       start: Number(start.toFixed(3)),
       end: Number(end.toFixed(3)),
       text,
+      ...(words.length ? { words } : {}),
       ...(keyword ? { keyword } : {}),
       ...(translation ? { translation } : {}),
       ...(node ? { contentNode: node } : {}),

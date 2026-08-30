@@ -12,7 +12,8 @@
     "start": "next start",
     "start:baota": "next start -H 127.0.0.1 -p 3001",
     "typecheck": "tsc --noEmit --incremental false --pretty false",
-    "test": "pnpm run typecheck && pnpm run build && node tests/next-smoke.mjs",
+    "test": "pnpm run typecheck && pnpm run test:caption-skill && pnpm run build && node tests/next-smoke.mjs",
+    "test:caption-skill": "node tests/run-viral-caption-skill.mjs",
     "test:smoke": "node tests/next-smoke.mjs",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern public/ffmpeg --ignore-pattern services",
     "publish:production": "bash scripts/publish-production.sh"

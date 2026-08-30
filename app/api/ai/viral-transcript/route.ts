@@ -11,7 +11,17 @@ function normalizeSourceCaptions(value: unknown, duration: number): ViralCaption
       const start = Math.max(0, Math.min(duration, Number(record.start) || 0));
       const end = Math.max(start + 0.05, Math.min(duration, Number(record.end) || start + 0.5));
       const text = typeof record.text === "string" ? record.text.trim().slice(0, 500) : "";
-      return { start, end, text };
+      const words = Array.isArray(record.words)
+        ? record.words.flatMap((item) => {
+          if (!item || typeof item !== "object") return [];
+          const word = item as Record<string, unknown>;
+          const wordText = typeof word.text === "string" ? word.text.trim().slice(0, 80) : "";
+          const wordStart = Math.max(start, Math.min(end, Number(word.start) || start));
+          const wordEnd = Math.max(wordStart + 0.01, Math.min(end, Number(word.end) || wordStart + 0.04));
+          return wordText ? [{ start: wordStart, end: wordEnd, text: wordText }] : [];
+        })
+        : [];
+      return { start, end, text, ...(words.length ? { words } : {}) };
     })
     .filter((item) => item.text && item.end > item.start)
     .sort((left, right) => left.start - right.start)

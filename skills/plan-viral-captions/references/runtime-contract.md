@@ -1,50 +1,65 @@
 # Runtime contract
 
-## Provider
+## Providers
 
-- Base URL: `https://api.lk888.ai`
-- Endpoint: `POST /v1/chat/completions`
-- Model: `tt-5.5`
-- Authentication: `Authorization: Bearer <server-side key>`
-- Response mode: non-streaming JSON object for the short planning pass
-- Request deadline: 55 seconds by default; `VIRAL_CAPTION_AI_TIMEOUT_MS` may override it between 30 and 90 seconds.
+- Primary: DeepSeek OpenAI-compatible chat completions through `lib/deepseek.ts`.
+- Short fallback: lk888 OpenAI-compatible chat completions through `lib/lk888.ts`.
+- Response mode: non-streaming JSON object for one full-transcript planning pass.
+- Provider selection, deadlines, and fallback behavior live in `lib/viral-caption-ai-provider.ts`.
 
-`LK888_API_BASE_URL` and the encrypted admin credential may override connection details. `VIRAL_CAPTION_AI_MODEL` is an emergency deployment override; the normal default remains `tt-5.5`.
+Authentication is server-side only. Encrypted admin credentials and environment variables may override model or connection details without exposing keys to the browser, render worker, source code, logs, screenshots, or skill files.
 
 ## Input invariant
 
-Each item has a fixed `id`, `start`, `end`, and source `text`. The model may return a grounded `corrected_text`, but the caller retains the original timing and item count.
+The server converts the full upstream transcript to a stable ordered token list:
+
+```json
+[[0, "first token"], [1, "second token"]]
+```
+
+Each token retains its real `start` and `end` on the server. Times are omitted from the model prompt because the model selects boundaries by token id and must never manufacture timing.
+
+Word timestamps are preferred. If reliable word coverage is missing, each upstream sentence becomes one indivisible token: AI may join adjacent sentences but cannot split one or invent sub-sentence timing.
 
 ## Required output
 
 ```json
 {
-  "skill": "talking-head-caption-director",
-  "version": "2026-08-30-v1",
-  "title": "完整标题",
-  "title_lines": ["第一行", "第二行"],
-  "summary": "一句规划说明",
-  "items": [
+  "t": "完整标题",
+  "tl": ["第一行", "第二行"],
+  "c": [
     {
-      "id": 0,
-      "corrected_text": "校正后的原句",
-      "caption_lines": ["第一行", "第二行"],
-      "keyword": "提亮词或空字符串",
-      "keyword_importance": "none|regular|primary",
-      "translation": "Short translation",
-      "content_node": "hook",
-      "weight": 0.9
+      "a": 0,
+      "b": 4,
+      "x": "这一屏校正后的完整字幕",
+      "l": ["第一行", "第二行"],
+      "k": "提亮词或空字符串",
+      "p": "none|regular|primary",
+      "z": "Short translation",
+      "n": "hook",
+      "w": 0.9
     }
   ]
 }
 ```
 
-The transcript route uses `captions` instead of `items` and one-based ids. This is only a transport difference; the semantics are identical.
+`a` and `b` are inclusive token ids. Cues must start at zero and cover every token exactly once in increasing contiguous order.
 
 ## Validation
 
-- Accept a correction only if it remains grounded in the source transcript.
-- Accept a keyword only if it is a continuous substring of the accepted correction and passes `sanitizeViralKeyword`.
-- Normalize missing or invalid importance to `regular` when a valid keyword exists, otherwise `none`.
-- Map `primary` to `keywordSfx=true`. When the model returns only regular highlights, let the shared sparse emphasis selector promote the strongest, well-spaced candidates instead of rejecting the whole AI plan.
-- Generate camera, transition, and sound-role intentions locally from the validated content node and weight. Do not ask the caption model to solve them.
+Reject a model plan unless all conditions hold:
+
+1. Token coverage is complete, contiguous, ordered, non-overlapping, and within range.
+2. Corrected cue text remains grounded in the selected source span.
+3. Cue and line capacities comply with the selected template.
+4. Visual lines reconstruct the corrected cue text.
+5. Semantic boundaries do not strand function words, suffixes, step labels, or split a recognized word.
+6. A highlight is a continuous informative phrase inside its cue and passes `sanitizeViralKeyword`.
+7. Primary keywords remain sparse enough for sound effects.
+8. Cue timing is copied from the selected first and last tokens.
+
+On rejection, preserve the recognized transcript and return a deterministic safe layout with `planReady=false`. Do not discard prior user work or claim that AI planning succeeded.
+
+## Forward tests
+
+Use unrelated scripts rather than matching one known sentence. Include long noun and verb-object phrases, causal and contrast clauses, numbered steps attached to the previous ASR sentence, mixed Chinese/Latin brands/numbers/units, malformed token coverage, and both word-level and sentence-level timing. Assert semantic and integrity invariants rather than one exact wording when several good plans exist.

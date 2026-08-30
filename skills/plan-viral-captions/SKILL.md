@@ -1,35 +1,37 @@
 ---
 name: plan-viral-captions
-description: Plan and integrate AI-generated titles, grounded caption corrections and line breaks, semantic highlight phrases, and sparse primary keywords for Merchant Studio talking-head viral templates. Use when changing 一键网感 title/caption semantics or TT-5.5 caption planning; do not use for ASR timing, visual rendering, transitions, or media generation.
+description: Design, maintain, or diagnose Merchant Studio's runtime AI skill for full-transcript talking-head titles, semantic caption grouping, template-safe line breaks, highlight phrases, and sparse primary keywords. Use when changing 一键网感 caption meaning, ASR chunk ownership, or AI caption-planning responsibilities; do not use for typography rendering, transitions, or media generation alone.
 ---
 
 # Plan Viral Captions
 
-Maintain one semantic source of truth for Merchant Studio templates 9–12.
+Maintain one full-transcript semantic source of truth for Merchant Studio templates 9–12. Treat this as one product runtime skill, not separate “AI recognition”, “AI layout”, and “AI planning” agents.
 
 ## Boundaries
 
-- Treat ASR or an imported manifest as the authority for `id`, `start`, `end`, and item count.
-- Use AI only for grounded text correction, title planning, visual line breaks, highlight phrases, and sparse primary-keyword decisions.
-- Send only the complete transcript plus the locked caption timeline to this agent. Do not attach video frames or make it repeat ASR.
-- Keep timestamps on the server and send the model compact `[id, text]` entries. Accept the compact `t/tl/i/x/l/k/p/z` schema and attach the result back to the unchanged timeline by id.
-- Never let the model modify the timeline, merge captions, invent claims, choose media files, or emit rendering coordinates.
+- Treat ASR or an imported manifest as the authority for recognized words and real timestamps, not for final sentence boundaries.
+- Convert the full transcript into ordered stable tokens. Prefer word timestamps; when word coverage is unavailable, use each upstream sentence as an indivisible token.
+- Keep timestamps on the server and send only compact `[tokenId, text]` entries. AI selects contiguous `a..b` token spans and may regroup across upstream ASR sentences.
+- Use AI for grounded text correction, title planning, full-transcript semantic cues, visual line breaks, highlight phrases, sparse primary keywords, translation, and content-role labels.
+- Never let the model change token order, invent timing or claims, choose media files, or emit rendering coordinates.
 - Keep ordinary highlights visually richer than the soundtrack. Only `primary` keywords may request a keyword sound effect.
+- Templates supply capacity only: maximum lines, units per line, and units per cue. Do not add template-specific language rules or grow a phrase dictionary to fix individual examples.
 
 ## Runtime integration
 
 - Use the shared runtime contract in `lib/viral-caption-ai-skill.ts`; do not duplicate the system prompt in API routes or rendering workers.
-- Call the configured Open AI Platform through `lib/lk888.ts`. The default model is `tt-5.5` and the endpoint is `/v1/chat/completions`.
-- Read the API key only through the encrypted admin credential or `LK888_API_KEY`. Never place a key in source, browser code, logs, screenshots, or skill files.
+- Call providers through `lib/viral-caption-ai-provider.ts`. DeepSeek is primary and the OpenAI-compatible lk888 endpoint is the short fallback.
+- Read API keys only through encrypted admin credentials or server environment variables. Never place a key in source, browser code, logs, screenshots, or skill files.
 - Both original-video ASR and imported lip-sync timelines must call the same skill after the timeline is available.
-- Derive camera, transition, content-node, weight, BGM and SFX-role fields after this call. They do not belong in the caption agent response.
-- Validate every model field before saving. Reject ungrounded corrections and keywords that do not occur continuously in the corrected caption.
+- Derive camera, transition and SFX-role implementation after the call. AI may label content role and importance, but it does not prescribe rendering coordinates.
+- The deterministic compiler must prove ordered full token coverage, no overlap, no omission, grounded corrections, real first/last-token timing, keyword containment, and template capacity before accepting a plan.
 - On provider failure, preserve the locked timeline and show a retryable degraded state. Never label a local fallback as an AI result.
 
 ## Output semantics
 
 - `title` is a complete natural-language promise, topic, or conclusion; it is not a greeting or the first two lines joined together.
-- `caption_lines` contains one or two visually balanced lines whose concatenation equals the corrected caption.
+- Each cue uses inclusive token ids `a` and `b`; all cues must cover token zero through the final token exactly once in increasing contiguous order.
+- `l` contains one or two visually balanced lines whose concatenation equals the grounded corrected cue `x`.
 - `keyword` is an optional continuous semantic phrase in that caption.
 - `keyword_importance=regular` means visual highlight only.
 - `keyword_importance=primary` means a rare key moment eligible for emphasis sound. Keep it to roughly one to three moments per minute and avoid adjacent triggers.
