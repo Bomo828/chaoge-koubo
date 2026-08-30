@@ -3905,21 +3905,55 @@ def normalize_tencent_flash_segments(payload: dict[str, Any]) -> list[dict[str, 
             words: list[dict[str, Any]] = []
             raw_words = sentence.get("word_list")
             if isinstance(raw_words, list):
+                parsed_words: list[dict[str, Any]] = []
                 for word in raw_words:
                     if not isinstance(word, dict):
                         continue
                     value = str(word.get("word") or "").strip()
                     try:
-                        word_start = max(start, float(word.get("start_time") or 0) / 1000)
-                        word_end = max(word_start + 0.02, float(word.get("end_time") or 0) / 1000)
+                        raw_word_start = max(0.0, float(word.get("start_time") or 0) / 1000)
+                        raw_word_end = max(raw_word_start + 0.02, float(word.get("end_time") or 0) / 1000)
                     except (TypeError, ValueError):
                         continue
-                    if value:
+                    # Flash ASR exposes punctuation in word_list too. It is
+                    # copy, not a spoken timing atom, and must never consume a
+                    # subtitle boundary by itself.
+                    if value and caption_plain_text(value):
+                        parsed_words.append({
+                            "raw_start": raw_word_start,
+                            "raw_end": raw_word_end,
+                            "text": value,
+                        })
+                if parsed_words:
+                    sentence_duration = max(0.04, end - start)
+                    minimum_raw_start = min(float(word["raw_start"]) for word in parsed_words)
+                    maximum_raw_end = max(float(word["raw_end"]) for word in parsed_words)
+                    # Tencent Flash word_list timestamps are sentence-relative
+                    # on the current API response. Older/global variants also
+                    # exist, so detect the coordinate system from the range
+                    # instead of blindly adding the sentence start. Treating a
+                    # relative value as global collapsed every later sentence
+                    # to its first 20 ms and made captions lead the voice.
+                    sentence_relative = bool(
+                        start > 0.04
+                        and minimum_raw_start < start - 0.04
+                        and maximum_raw_end <= sentence_duration + 0.08
+                        and maximum_raw_end + start <= end + 0.08
+                    )
+                    previous_word_end = start
+                    for parsed_word in parsed_words:
+                        absolute_start = float(parsed_word["raw_start"]) + (start if sentence_relative else 0.0)
+                        absolute_end = float(parsed_word["raw_end"]) + (start if sentence_relative else 0.0)
+                        word_start = max(start, previous_word_end, min(end - 0.01, absolute_start))
+                        word_end = min(end, max(word_start + 0.02, absolute_end))
+                        if word_end <= word_start:
+                            continue
                         words.append({
                             "start": round(word_start, 3),
                             "end": round(word_end, 3),
-                            "text": value,
+                            "text": str(parsed_word["text"]),
                         })
+                        previous_word_end = word_end
             item: dict[str, Any] = {
                 "start": round(start, 3),
                 "end": round(end, 3),
@@ -5085,6 +5119,7 @@ def captions_have_reliable_word_timing(captions: list[dict[str, Any]]) -> bool:
     """Return true only when every confirmed cue is grounded by real words."""
     if not captions:
         return False
+    previous_caption_end = -1.0
     for caption in captions:
         start = float(caption.get("start") or 0.0)
         end = float(caption.get("end") or start)
@@ -5099,6 +5134,21 @@ def captions_have_reliable_word_timing(captions: list[dict[str, Any]]) -> bool:
         word_text = caption_plain_text("".join(str(word.get("text") or "") for word in valid_words))
         if not valid_words or SequenceMatcher(None, caption_text, word_text).ratio() < 0.62:
             return False
+        # A real word timeline cannot move backwards into the preceding cue,
+        # nor can several spoken words occupy a single encoder tick. These two
+        # checks reject the legacy Tencent relative-time bug before rendering,
+        # even when the concatenated ASR text itself still looks plausible.
+        if start < previous_caption_end - 0.008:
+            return False
+        distinct_ranges = {
+            (round(float(word.get("start") or 0.0), 3), round(float(word.get("end") or 0.0), 3))
+            for word in valid_words
+        }
+        if len(valid_words) >= 4 and len(distinct_ranges) / len(valid_words) < 0.55:
+            return False
+        if caption_unit_count(str(caption.get("text") or "")) >= 3 and end - start < 0.08:
+            return False
+        previous_caption_end = end
     return True
 
 

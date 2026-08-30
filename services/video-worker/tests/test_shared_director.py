@@ -255,6 +255,96 @@ class SharedDirectorTests(unittest.TestCase):
         self.assertTrue(worker.captions_have_reliable_word_timing(retimed))
         self.assertEqual(worker.validate_caption_timing(retimed, 4.5), (True, ""))
 
+    def test_tencent_sentence_relative_words_are_rebased_and_punctuation_is_not_a_word(self) -> None:
+        payload = {
+            "flash_result": [{
+                "sentence_list": [
+                    {
+                        "start_time": 1720,
+                        "end_time": 4970,
+                        "text": "我用codeX做了一款AI剪辑口播视频的工具。",
+                        # Tencent's current Flash word_list values restart at
+                        # zero for every sentence instead of using media time.
+                        "word_list": [
+                            {"start_time": 0, "end_time": 240, "word": "我用"},
+                            {"start_time": 240, "end_time": 650, "word": "codeX"},
+                            {"start_time": 650, "end_time": 1080, "word": "做了一款"},
+                            {"start_time": 1080, "end_time": 1600, "word": "AI剪辑"},
+                            {"start_time": 1600, "end_time": 2320, "word": "口播视频"},
+                            {"start_time": 2320, "end_time": 2500, "word": "的"},
+                            {"start_time": 2500, "end_time": 3250, "word": "工具"},
+                            {"start_time": 3250, "end_time": 3250, "word": "。"},
+                        ],
+                    },
+                    {
+                        "start_time": 4970,
+                        "end_time": 8040,
+                        "text": "最大的特点就是让口播脱离了死板的叙事。",
+                        "word_list": [
+                            {"start_time": 0, "end_time": 430, "word": "最大的"},
+                            {"start_time": 430, "end_time": 820, "word": "特点"},
+                            {"start_time": 820, "end_time": 1160, "word": "就是"},
+                            {"start_time": 1160, "end_time": 1340, "word": "让"},
+                            {"start_time": 1340, "end_time": 1760, "word": "口播"},
+                            {"start_time": 1760, "end_time": 2160, "word": "脱离了"},
+                            {"start_time": 2160, "end_time": 2580, "word": "死板的"},
+                            {"start_time": 2580, "end_time": 3070, "word": "叙事"},
+                        ],
+                    },
+                ],
+            }],
+        }
+        segments = worker.normalize_tencent_flash_segments(payload)
+        self.assertEqual(len(segments), 2)
+        self.assertEqual(segments[0]["words"][0]["start"], 1.72)
+        self.assertEqual(segments[0]["words"][-1]["end"], 4.97)
+        self.assertEqual(segments[1]["words"][0]["start"], 4.97)
+        self.assertEqual(segments[1]["words"][-1]["end"], 8.04)
+        self.assertNotIn("。", [word["text"] for word in segments[0]["words"]])
+        self.assertTrue(all(
+            left["end"] <= right["start"] + 0.001
+            for segment in segments
+            for left, right in zip(segment["words"], segment["words"][1:])
+        ))
+
+        confirmed = [
+            {"start": 1.72, "end": 4.97, "text": "我用codeX做了一款AI剪辑口播视频的工具"},
+            {"start": 4.97, "end": 6.13, "text": "最大的特点就是"},
+            {"start": 6.13, "end": 8.04, "text": "让口播脱离了死板的叙事"},
+        ]
+        retimed = worker.retime_confirmed_captions_from_asr(confirmed, segments)
+        self.assertEqual(retimed[0]["start"], 1.72)
+        self.assertEqual(retimed[0]["end"], 4.97)
+        self.assertEqual(retimed[1]["start"], 4.97)
+        self.assertGreater(retimed[1]["end"], retimed[1]["start"])
+        self.assertGreaterEqual(retimed[2]["start"], retimed[1]["end"])
+        self.assertEqual(retimed[2]["end"], 8.04)
+        self.assertTrue(worker.captions_have_reliable_word_timing(retimed))
+
+    def test_collapsed_or_overlapping_word_timeline_is_not_reused(self) -> None:
+        broken = [
+            {
+                "start": 0.12,
+                "end": 0.89,
+                "text": "大家好我是潮哥",
+                "words": [
+                    {"start": 0.12, "end": 0.55, "text": "大家"},
+                    {"start": 0.55, "end": 0.75, "text": "好"},
+                    {"start": 0.87, "end": 0.89, "text": "我是曹"},
+                ],
+            },
+            {
+                "start": 0.87,
+                "end": 1.74,
+                "text": "我用codeX",
+                "words": [
+                    {"start": 0.87, "end": 0.89, "text": "哥"},
+                    {"start": 1.72, "end": 1.74, "text": "我用code"},
+                ],
+            },
+        ]
+        self.assertFalse(worker.captions_have_reliable_word_timing(broken))
+
     def test_ai_may_select_a_complete_meaningful_phrase(self) -> None:
         self.assertEqual(
             worker.validated_ai_keyword("AI剪辑口播视频的工具", "AI剪辑", "core_viewpoint", 0.88),
