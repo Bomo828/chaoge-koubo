@@ -138,6 +138,35 @@ assert.equal(
 );
 assert.equal(repairedOversizedPlan.cues.filter((cue) => cue.keyword === "提高转化率").length, 1);
 
+// Regression: a causative verb can legitimately begin a complete subtitle
+// phrase.  Treating every leading “让” as an orphan used to reject the whole
+// AI plan even though the ASR timeline contained a clean semantic boundary.
+const causativeCapacityWords = timedWords(["最大的特点就是", "让口播脱离了死", "板的叙事"]);
+const causativeCapacityTimeline = buildViralCaptionTokenTimeline([{
+  start: 0,
+  end: causativeCapacityWords.at(-1)!.end,
+  text: "最大的特点就是让口播脱离了死板的叙事",
+  words: causativeCapacityWords,
+}]);
+const causativeCapacityPlan = compileViralSemanticCaptionPlan({
+  timeline: causativeCapacityTimeline,
+  contract: viralCaptionTemplateContract("template-9"),
+  value: [{
+    a: 0, b: 2, x: "最大的特点就是让口播脱离了死板的叙事",
+    l: ["最大的特点就是", "让口播脱离了死板的叙事"],
+    k: "死板的叙事", p: "primary", z: "Make talking-head videos feel less rigid",
+    n: "core_viewpoint", w: 0.94,
+  }],
+});
+assert.equal(causativeCapacityPlan.error, "", "a complete phrase beginning with 让 must remain a valid semantic unit");
+assert.ok(causativeCapacityPlan.autoSplitCount >= 1);
+assert.equal(causativeCapacityPlan.cues[0].text, "最大的特点就是");
+assert.equal(
+  causativeCapacityPlan.cues.flatMap((cue) => cue.words || []).map((word) => word.text).join(""),
+  causativeCapacityWords.map((word) => word.text).join(""),
+);
+assert.ok(causativeCapacityPlan.cues.every((cue) => cue.captionLines.every((line) => viralCaptionUnitCount(line) <= 7)));
+
 const unsafeSegmentPlan = compileViralSemanticCaptionPlan({
   timeline: buildViralCaptionTokenTimeline([{
     start: 0,

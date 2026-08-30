@@ -18,7 +18,7 @@ export type ViralCaptionPlanItem = {
 };
 
 export const VIRAL_DIRECTOR_PLAN_VERSION = 1 as const;
-export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-global-word-timeline-v8-capacity-repair";
+export const VIRAL_DIRECTOR_PROMPT_VERSION = "viral-director-global-word-timeline-v9-tiered-boundaries";
 
 export type ViralBgmMood = "calm" | "warm" | "professional" | "uplifting" | "neutral";
 

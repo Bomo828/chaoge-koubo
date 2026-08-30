@@ -7,7 +7,7 @@ import { planViralCaptionLayout } from "./viral-semantic-layout";
 import { acceptViralCaptionCorrection, viralPlainText } from "./viral-text-integrity";
 
 export const VIRAL_CAPTION_AI_SKILL_ID = "talking-head-semantic-caption-director";
-export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v8-capacity-repair";
+export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v9-tiered-boundaries";
 export const VIRAL_CAPTION_AI_MODEL = process.env.DEEPSEEK_CAPTION_MODEL?.trim() || "deepseek-v4-flash";
 export const VIRAL_CAPTION_AI_FALLBACK_MODEL = process.env.VIRAL_CAPTION_AI_FALLBACK_MODEL?.trim()
   || process.env.VIRAL_CAPTION_AI_MODEL?.trim()
@@ -188,7 +188,7 @@ export function buildViralCaptionSkillSystemPrompt(options?: {
 1. 输入词表格式为[id,文字]。c中的a、b分别是本屏字幕首词和末词id。所有c必须从id=0开始，按顺序、连续、无重叠、无遗漏覆盖到最后一个id；不能改id顺序。允许跨原ASR句段重新组合，这正是你的职责。
 2. x只能修正确定的同音错字、品牌名、数字和标点；不得总结、改写、扩写。${languageRule}
 3. 先理解整篇的论述结构、转折、因果、并列、步骤序号和指代，再决定每一屏的a、b。字幕边界必须落在完整语义单元之间，不得拆开词语、固定搭配、偏正短语、动宾短语、数量单位、品牌名或英文产品名；步骤序号必须与它引出的步骤在同一屏。容量是上限，不是凑满字数的目标。
-4. l是本屏最终视觉行，1到${contract?.maxLines || 2}行，按顺序拼接必须等于x。${contractRule}不让“的、地、得、了、和、与、在、就、都、把、被”等虚词孤立在行首或行尾；能安全放下的完整短句保持一屏。
+4. l是本屏最终视觉行，1到${contract?.maxLines || 2}行，按顺序拼接必须等于x。${contractRule}不要把单独的“的、地、得、了、和、与、在、就、都”等虚词留在行首或行尾；“让口播更自然”“把重点说清楚”这类完整短语可以从行首开始。能安全放下的完整短句保持一屏。
 5. 标题先理解全文再提炼，不能用问候或机械拼接前两句。中文8到16字；英文3到12词。tl为1到2行，拼接后等于t，不能拆固定短语。
 6. k必须是x中连续出现的2到8字完整信息短语；数字可单独提亮。问候、自我介绍及“我、AI、视频、工具、剪辑”等泛词不能单独提亮。用户消息会给出目标范围，按信息价值选择并分散出现，其余k为空。
 7. p只能是none、regular、primary。无k则none；普通提亮为regular；primary只给全片最重要的钩子、利益数字、反差、结论或行动号召，60秒内最多3个且尽量间隔4秒，会触发音效，宁缺毋滥。
@@ -284,68 +284,129 @@ function badSemanticBoundary(left: string, right: string, language: ViralCaption
   }
   return /(?:的|地|得|和|与|及|或|而|但|却|就|都|也|还|再|又|把|被|让|给|向|从|在|到|为|对|比|像|如果|因为|所以|不仅|以及)$/u.test(left)
     || /(?:^|[，,。！？!?；;：:\s])(?:第?[0-9一二三四五六七八九十]+(?:步|点|项)?)[、.．，,：:]?$/u.test(left)
-    || /^(?:的|地|得|了|着|过|就|才|和|与|及|或|把|被|让|给|以及|%|万|亿|元|折)/u.test(right);
+    || /^(?:的|地|得|了|着|过|和|与|及|或|以及|%|万|亿|元|折)/u.test(right);
 }
 
 const SEMANTIC_CLAUSE_START = /^(?:但是|不过|所以|因此|然后|接着|同时|而且|如果|只要|首先|其次|最后|第一|第二|第三|第\d+|比如|例如|换句话说|也就是说)/u;
+
+function wordBoundaryOffsets(text: string, language: ViralCaptionSkillLanguage) {
+  const boundaries = new Set<number>([0, text.length]);
+  if (language !== "zh" || typeof Intl.Segmenter !== "function") return boundaries;
+  const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+  for (const segment of segmenter.segment(text)) {
+    boundaries.add(segment.index);
+    boundaries.add(segment.index + segment.segment.length);
+  }
+  return boundaries;
+}
+
+function confirmedTokenBoundaryIndexes(
+  tokens: ViralCaptionTimelineToken[],
+  language: ViralCaptionSkillLanguage,
+) {
+  const fullText = tokenText(tokens, language);
+  const wordOffsets = wordBoundaryOffsets(fullText, language);
+  const indexes = new Set<number>();
+  for (let index = 1; index < tokens.length; index += 1) {
+    const offset = tokenText(tokens.slice(0, index), language).length;
+    if (wordOffsets.has(offset)) indexes.add(index);
+  }
+  return indexes;
+}
+
+function boundaryPenalty(
+  left: string,
+  right: string,
+  language: ViralCaptionSkillLanguage,
+  followsDictionaryWord: boolean,
+) {
+  const normalizedRight = normalizeViralCaptionText(right);
+  let penalty = 0;
+  // Intl.Segmenter is a useful quality signal, but its Chinese dictionary is
+  // not the timestamp authority. A confirmed ASR token boundary remains a
+  // usable fallback when the two tokenizers disagree.
+  if (!followsDictionaryWord && language === "zh") penalty += 360;
+  if (badSemanticBoundary(left, right, language)) penalty += 900;
+  if (viralCaptionUnitCount(left) < 3) penalty += 90;
+  if (viralCaptionUnitCount(right) < 3) penalty += 150;
+  if (/[，,。！？!?；;：:]$/u.test(left)) penalty -= 120;
+  if (SEMANTIC_CLAUSE_START.test(normalizedRight)) penalty -= 100;
+  return penalty;
+}
+
+function confirmedTokenLines(
+  tokens: ViralCaptionTimelineToken[],
+  language: ViralCaptionSkillLanguage,
+  contract: ViralCaptionTemplateContract,
+) {
+  const text = normalizeViralCaptionText(tokenText(tokens, language));
+  if (!text || viralCaptionUnitCount(text) > contract.cueMaxUnits) return [];
+  if (viralCaptionUnitCount(text) <= contract.lineMaxUnits) return [text];
+  if (contract.maxLines < 2) return [];
+  const dictionaryBoundaries = confirmedTokenBoundaryIndexes(tokens, language);
+  const candidates = Array.from({ length: Math.max(0, tokens.length - 1) }, (_, index) => index + 1)
+    .map((position) => {
+      const left = normalizeViralCaptionText(tokenText(tokens.slice(0, position), language));
+      const right = normalizeViralCaptionText(tokenText(tokens.slice(position), language));
+      return {
+        lines: [left, right],
+        penalty: boundaryPenalty(left, right, language, dictionaryBoundaries.has(position))
+          + Math.abs(viralCaptionUnitCount(left) - viralCaptionUnitCount(right)) * 3,
+      };
+    })
+    .filter((candidate) => candidate.lines.every((line) => line && viralCaptionUnitCount(line) <= contract.lineMaxUnits))
+    .filter((candidate) => viralPlainText(candidate.lines.join("")) === viralPlainText(text))
+    .sort((left, right) => left.penalty - right.penalty);
+  return candidates[0]?.lines || [];
+}
+
+function directedLinesForConfirmedTokens(
+  tokens: ViralCaptionTimelineToken[],
+  language: ViralCaptionSkillLanguage,
+  contract: ViralCaptionTemplateContract,
+) {
+  const text = tokenText(tokens, language);
+  const strictLines = directedLines(undefined, text, contract);
+  return strictLines.length ? strictLines : confirmedTokenLines(tokens, language, contract);
+}
 
 function splitCueTokensForCapacity(
   tokens: ViralCaptionTimelineToken[],
   language: ViralCaptionSkillLanguage,
   contract: ViralCaptionTemplateContract,
 ) {
-  const groups: ViralCaptionTimelineToken[][] = [];
-  const safeTokenBoundaries = new Set<number>();
-  if (language === "zh" && typeof Intl.Segmenter === "function") {
-    const fullText = tokenText(tokens, language);
-    const wordOffsets = new Set<number>([0, fullText.length]);
-    const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
-    for (const segment of segmenter.segment(fullText)) {
-      wordOffsets.add(segment.index);
-      wordOffsets.add(segment.index + segment.segment.length);
-    }
-    for (let index = 1; index < tokens.length; index += 1) {
-      if (wordOffsets.has(tokenText(tokens.slice(0, index), language).length)) safeTokenBoundaries.add(index);
-    }
-  } else {
-    for (let index = 1; index < tokens.length; index += 1) safeTokenBoundaries.add(index);
-  }
-  let cursor = 0;
-  while (cursor < tokens.length) {
-    const remaining = tokens.slice(cursor);
-    const remainingText = tokenText(remaining, language);
-    if (
-      viralCaptionUnitCount(remainingText) <= contract.cueMaxUnits
-      && directedLines(undefined, remainingText, contract).length
-    ) {
-      groups.push(remaining);
-      break;
-    }
-    const candidates: Array<{ end: number; score: number }> = [];
-    for (let end = cursor + 1; end < tokens.length; end += 1) {
-      if (!safeTokenBoundaries.has(end)) continue;
-      const left = tokens.slice(cursor, end);
-      const right = tokens.slice(end);
-      const leftText = tokenText(left, language);
-      const rightText = tokenText(right, language);
-      const units = viralCaptionUnitCount(leftText);
+  const dictionaryBoundaries = confirmedTokenBoundaryIndexes(tokens, language);
+  const best: Array<{ cost: number; groups: ViralCaptionTimelineToken[][] } | null> = Array(tokens.length + 1).fill(null);
+  best[tokens.length] = { cost: 0, groups: [] };
+
+  // Solve the whole oversized cue instead of greedily taking the first split.
+  // This avoids creating a tiny or impossible remainder after an otherwise
+  // attractive early boundary.
+  for (let cursor = tokens.length - 1; cursor >= 0; cursor -= 1) {
+    for (let end = cursor + 1; end <= tokens.length; end += 1) {
+      const group = tokens.slice(cursor, end);
+      const groupText = tokenText(group, language);
+      const units = viralCaptionUnitCount(groupText);
       if (units > contract.cueMaxUnits) break;
-      if (!directedLines(undefined, leftText, contract).length) continue;
-      if (badSemanticBoundary(leftText, rightText, language)) continue;
-      const punctuation = /[，,。！？!?；;：:]$/u.test(leftText) ? 8 : 0;
-      const clauseStart = SEMANTIC_CLAUSE_START.test(normalizeViralCaptionText(rightText)) ? 7 : 0;
-      const shortRemainder = viralCaptionUnitCount(rightText) < 3 ? 12 : 0;
-      candidates.push({
-        end,
-        score: units * 2 + punctuation + clauseStart - shortRemainder,
-      });
+      const lines = directedLinesForConfirmedTokens(group, language, contract);
+      const tail = best[end];
+      if (!lines.length || !tail) continue;
+      const boundaryCost = end < tokens.length
+        ? boundaryPenalty(
+          groupText,
+          tokenText(tokens.slice(end), language),
+          language,
+          dictionaryBoundaries.has(end),
+        )
+        : 0;
+      const raggedness = Math.max(0, contract.cueMaxUnits - units);
+      const cost = tail.cost + 250 + boundaryCost + raggedness * 2;
+      if (!best[cursor] || cost < best[cursor]!.cost) {
+        best[cursor] = { cost, groups: [group, ...tail.groups] };
+      }
     }
-    const selected = candidates.sort((left, right) => right.score - left.score || right.end - left.end)[0];
-    if (!selected) return [];
-    groups.push(tokens.slice(cursor, selected.end));
-    cursor = selected.end;
   }
-  return groups;
+  return best[0]?.groups || [];
 }
 
 function splitCueTranslation(value: unknown, weights: number[]) {
@@ -370,7 +431,11 @@ function splitCueTranslation(value: unknown, weights: number[]) {
   });
 }
 
-function boundariesFollowWords(cues: ViralSemanticCaptionCue[], language: ViralCaptionSkillLanguage) {
+function boundariesFollowWords(
+  cues: ViralSemanticCaptionCue[],
+  language: ViralCaptionSkillLanguage,
+  locallyRepairedBoundaries: Set<number>,
+) {
   if (language !== "zh" || typeof Intl.Segmenter !== "function" || cues.length <= 1) return true;
   const text = cues.map((cue) => normalizeViralCaptionText(cue.text)).join("");
   const boundaries = new Set<number>([0, text.length]);
@@ -380,9 +445,9 @@ function boundariesFollowWords(cues: ViralSemanticCaptionCue[], language: ViralC
     boundaries.add(segment.index + segment.segment.length);
   }
   let offset = 0;
-  return cues.slice(0, -1).every((cue) => {
+  return cues.slice(0, -1).every((cue, index) => {
     offset += normalizeViralCaptionText(cue.text).length;
-    return boundaries.has(offset);
+    return locallyRepairedBoundaries.has(index) || boundaries.has(offset);
   });
 }
 
@@ -403,6 +468,7 @@ export function compileViralSemanticCaptionPlan(input: {
     return fail("AI 没有返回全稿字幕分段。");
   }
   const cues: ViralSemanticCaptionCue[] = [];
+  const locallyRepairedBoundaries = new Set<number>();
   let expectedToken = 0;
   let autoSplitCount = 0;
   for (const value of rawCues) {
@@ -440,7 +506,9 @@ export function compileViralSemanticCaptionPlan(input: {
       // lines.  Capacity repair uses the confirmed token text so every new cue
       // remains provably aligned to real word timing.
       const groupText = tokenGroups.length === 1 ? text : tokenText(group, input.timeline.language);
-      const lines = directedLines(tokenGroups.length === 1 ? raw.l ?? raw.lines : undefined, groupText, input.contract);
+      const lines = tokenGroups.length === 1
+        ? directedLines(raw.l ?? raw.lines, groupText, input.contract)
+        : directedLinesForConfirmedTokens(group, input.timeline.language, input.contract);
       if (!lines.length) return fail("AI 字幕换行不符合当前模板容量。");
       const groupKeyword = keyword && viralPlainText(groupText).includes(viralPlainText(keyword)) ? keyword : "";
       const importance = normalizeViralKeywordImportance(raw.p ?? raw.importance, Boolean(groupKeyword));
@@ -458,14 +526,21 @@ export function compileViralSemanticCaptionPlan(input: {
         contentNode,
         contentWeight,
       });
+      if (tokenGroups.length > 1 && groupIndex < tokenGroups.length - 1) {
+        locallyRepairedBoundaries.add(cues.length - 1);
+      }
     }
     expectedToken = last + 1;
   }
   if (expectedToken !== tokens.length) return fail("AI 字幕分段遗漏了部分口播。");
-  if (cues.some((cue, index) => index < cues.length - 1 && badSemanticBoundary(cue.text, cues[index + 1].text, input.timeline.language))) {
+  if (cues.some((cue, index) => (
+    index < cues.length - 1
+    && !locallyRepairedBoundaries.has(index)
+    && badSemanticBoundary(cue.text, cues[index + 1].text, input.timeline.language)
+  ))) {
     return fail("AI 字幕仍存在不完整语义边界。");
   }
-  if (!boundariesFollowWords(cues, input.timeline.language)) {
+  if (!boundariesFollowWords(cues, input.timeline.language, locallyRepairedBoundaries)) {
     return fail("AI 字幕边界拆开了完整词语。");
   }
   return { cues, error: "", autoSplitCount };

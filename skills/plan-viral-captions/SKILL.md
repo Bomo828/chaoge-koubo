@@ -25,7 +25,7 @@ Maintain one full-transcript semantic source of truth for Merchant Studio templa
 - Both original-video ASR and imported lip-sync timelines must call the same skill after the timeline is available.
 - Derive camera, transition and SFX-role implementation after the call. AI may label content role and importance, but it does not prescribe rendering coordinates.
 - The deterministic compiler must prove ordered full token coverage, no overlap, no omission, grounded corrections, real first/last-token timing, keyword containment, and template capacity before accepting a plan.
-- If one otherwise grounded AI cue exceeds template capacity, repair only that cue at safe confirmed word boundaries and preserve the rest of the AI plan. Never reject the entire plan for a locally repairable overflow.
+- If one otherwise grounded AI cue exceeds template capacity, repair only that cue at safe confirmed word boundaries and preserve the rest of the AI plan. Treat Chinese dictionary segmentation as a preferred quality signal, not a second timing authority: when it disagrees with confirmed ASR token timing, choose the least-risk confirmed boundary instead of rejecting the entire plan.
 - On provider failure, preserve the locked timeline and show a retryable degraded state. Never label a local fallback as an AI result.
 
 ## Output semantics
