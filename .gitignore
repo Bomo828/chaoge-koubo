@@ -54,6 +54,7 @@ next-env.d.ts
 /outputs/
 /work/
 /.data/
+/.deepseek-api-key.bootstrap
 
 # Reusable agent skills remain local. The production video/remotion workers
 # are versioned so the same GitHub release can deploy the finalized templates.

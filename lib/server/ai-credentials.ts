@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import { mkdirSync, openSync, readFileSync, writeFileSync, closeSync } from "node:fs";
+import { closeSync, mkdirSync, openSync, readFileSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { getDatabase, unixNow } from "./db";
 
@@ -8,6 +8,7 @@ const DEFAULT_LK888_BASE_URL = "https://api.lk888.ai";
 const DEFAULT_DEEPSEEK_BASE_URL = "https://api.deepseek.com";
 const DEFAULT_CHANJING_BASE_URL = "https://open-api.chanjing.cc";
 const DEFAULT_TIKHUB_BASE_URL = "https://api.tikhub.io";
+const DEEPSEEK_BOOTSTRAP_FILE = ".deepseek-api-key.bootstrap";
 
 type StoredLk888Credential = {
   apiKey?: string;
@@ -138,6 +139,53 @@ function readStoredCredentials() {
     console.error("Unable to decrypt AI provider credentials", error);
     return {} as StoredCredentials;
   }
+}
+
+/**
+ * Imports a deployment-only DeepSeek key into the encrypted credential store.
+ * The bootstrap file must be owner-only and is removed after the database write,
+ * so credentials never need to be committed to the release repository.
+ */
+export function importDeepSeekBootstrapCredential() {
+  const filePath = path.join(process.cwd(), DEEPSEEK_BOOTSTRAP_FILE);
+  let fileStat;
+  try {
+    fileStat = statSync(filePath);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") return false;
+    throw error;
+  }
+
+  if (!fileStat.isFile()) throw new Error("DeepSeek 临时凭证不是普通文件，已拒绝导入。");
+  if ((fileStat.mode & 0o077) !== 0) throw new Error("DeepSeek 临时凭证权限过宽，已拒绝导入。");
+
+  const apiKey = readFileSync(filePath, "utf8").trim();
+  if (apiKey.length < 12 || /\s/.test(apiKey)) {
+    throw new Error("DeepSeek 临时凭证格式不正确，已拒绝导入。");
+  }
+
+  const stored = readStoredCredentials();
+  const now = unixNow();
+  const next: StoredCredentials = {
+    ...stored,
+    deepseek: {
+      apiKey,
+      baseUrl: DEFAULT_DEEPSEEK_BASE_URL,
+      updatedAt: now,
+      updatedBy: "server-bootstrap",
+    },
+  };
+  getDatabase().prepare(`
+    INSERT INTO system_settings (key, value_json, updated_by, updated_at) VALUES (?, ?, ?, ?)
+    ON CONFLICT(key) DO UPDATE SET value_json = excluded.value_json, updated_by = excluded.updated_by, updated_at = excluded.updated_at
+  `).run(CREDENTIAL_SETTING_KEY, encryptCredentials(next), "server-bootstrap", now);
+
+  try {
+    unlinkSync(filePath);
+  } catch (error) {
+    console.error("DeepSeek bootstrap credential imported but could not be removed", error);
+  }
+  return true;
 }
 
 function normalizeBaseUrl(value: string | undefined, fallback = DEFAULT_LK888_BASE_URL) {
