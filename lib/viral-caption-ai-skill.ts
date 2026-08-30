@@ -7,7 +7,7 @@ import { planViralCaptionLayout } from "./viral-semantic-layout";
 import { acceptViralCaptionCorrection, viralPlainText } from "./viral-text-integrity";
 
 export const VIRAL_CAPTION_AI_SKILL_ID = "talking-head-semantic-caption-director";
-export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v7-global-word-timeline";
+export const VIRAL_CAPTION_AI_SKILL_VERSION = "2026-08-30-v8-capacity-repair";
 export const VIRAL_CAPTION_AI_MODEL = process.env.DEEPSEEK_CAPTION_MODEL?.trim() || "deepseek-v4-flash";
 export const VIRAL_CAPTION_AI_FALLBACK_MODEL = process.env.VIRAL_CAPTION_AI_FALLBACK_MODEL?.trim()
   || process.env.VIRAL_CAPTION_AI_MODEL?.trim()
@@ -199,7 +199,62 @@ export function buildViralCaptionSkillSystemPrompt(options?: {
 输出：{"t":"完整标题","tl":["第一行","第二行"],"c":[{"a":0,"b":4,"x":"这一屏校正后的完整字幕","l":["第一行","第二行"],"k":"提亮词或空字符串","p":"none|regular|primary","z":"简短翻译","n":"hook","w":0.9}]}。`;
 }
 
+function visualLinesFollowWords(lines: string[], language: ViralCaptionSkillLanguage) {
+  if (lines.length <= 1) return true;
+  if (lines.some((line, index) => index < lines.length - 1 && badSemanticBoundary(line, lines[index + 1], language))) return false;
+  if (language !== "zh" || typeof Intl.Segmenter !== "function") return true;
+  const text = lines.join("");
+  const boundaries = new Set<number>([0, text.length]);
+  const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+  for (const segment of segmenter.segment(text)) {
+    boundaries.add(segment.index);
+    boundaries.add(segment.index + segment.segment.length);
+  }
+  let offset = 0;
+  return lines.slice(0, -1).every((line) => {
+    offset += line.length;
+    return boundaries.has(offset);
+  });
+}
+
+function genericSafeLines(text: string, contract: ViralCaptionTemplateContract) {
+  const normalized = normalizeViralCaptionText(text);
+  const language = detectViralCaptionSkillLanguage(normalized);
+  if (viralCaptionUnitCount(normalized) <= contract.lineMaxUnits) return [normalized];
+  if (contract.maxLines < 2) return [];
+  if (language === "en") {
+    const words = normalized.split(/\s+/).filter(Boolean);
+    const candidates = Array.from({ length: Math.max(0, words.length - 1) }, (_, index) => index + 1)
+      .map((position) => [words.slice(0, position).join(" "), words.slice(position).join(" ")])
+      .filter((lines) => lines.every((line) => viralCaptionUnitCount(line) <= contract.lineMaxUnits))
+      .filter((lines) => visualLinesFollowWords(lines, language));
+    return candidates.sort((left, right) => (
+      Math.abs(viralCaptionUnitCount(left[0]) - viralCaptionUnitCount(left[1]))
+      - Math.abs(viralCaptionUnitCount(right[0]) - viralCaptionUnitCount(right[1]))
+    ))[0] || [];
+  }
+  const positions = new Set<number>();
+  if (typeof Intl.Segmenter === "function") {
+    const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+    for (const segment of segmenter.segment(normalized)) {
+      if (segment.index > 0) positions.add(segment.index);
+      if (segment.index + segment.segment.length < normalized.length) positions.add(segment.index + segment.segment.length);
+    }
+  } else {
+    for (let position = 1; position < normalized.length; position += 1) positions.add(position);
+  }
+  const candidates = [...positions]
+    .map((position) => [normalized.slice(0, position), normalized.slice(position)])
+    .filter((lines) => lines.every((line) => viralCaptionUnitCount(line) <= contract.lineMaxUnits))
+    .filter((lines) => visualLinesFollowWords(lines, language));
+  return candidates.sort((left, right) => (
+    Math.abs(viralCaptionUnitCount(left[0]) - viralCaptionUnitCount(left[1]))
+    - Math.abs(viralCaptionUnitCount(right[0]) - viralCaptionUnitCount(right[1]))
+  ))[0] || [];
+}
+
 function directedLines(value: unknown, text: string, contract: ViralCaptionTemplateContract) {
+  const language = detectViralCaptionSkillLanguage(text);
   const lines = Array.isArray(value)
     ? value.filter((line): line is string => typeof line === "string")
       .map(normalizeViralCaptionText).filter(Boolean).slice(0, contract.maxLines)
@@ -209,14 +264,16 @@ function directedLines(value: unknown, text: string, contract: ViralCaptionTempl
     && viralPlainText(lines.join("")) === viralPlainText(text)
     && lines.every((line) => viralCaptionUnitCount(line) <= contract.lineMaxUnits)
     && viralCaptionUnitCount(lines.join("")) <= contract.cueMaxUnits
+    && visualLinesFollowWords(lines, language)
   ) return lines;
   const fallback = planViralCaptionLayout(text, undefined, contract.lineMaxUnits).lines.slice(0, contract.maxLines);
-  return fallback.length
+  if (fallback.length
     && viralPlainText(fallback.join("")) === viralPlainText(text)
     && fallback.every((line) => viralCaptionUnitCount(line) <= contract.lineMaxUnits)
     && viralCaptionUnitCount(fallback.join("")) <= contract.cueMaxUnits
-    ? fallback
-    : [];
+    && visualLinesFollowWords(fallback, language)
+  ) return fallback;
+  return genericSafeLines(text, contract);
 }
 
 function badSemanticBoundary(left: string, right: string, language: ViralCaptionSkillLanguage) {
@@ -226,7 +283,91 @@ function badSemanticBoundary(left: string, right: string, language: ViralCaption
       || /^(?:s|es|ed|ing|ly)\b/i.test(right);
   }
   return /(?:的|地|得|和|与|及|或|而|但|却|就|都|也|还|再|又|把|被|让|给|向|从|在|到|为|对|比|像|如果|因为|所以|不仅|以及)$/u.test(left)
-    || /^(?:的|地|得|了|着|过|就|才|和|与|及|或|把|被|让|给|以及)/u.test(right);
+    || /(?:^|[，,。！？!?；;：:\s])(?:第?[0-9一二三四五六七八九十]+(?:步|点|项)?)[、.．，,：:]?$/u.test(left)
+    || /^(?:的|地|得|了|着|过|就|才|和|与|及|或|把|被|让|给|以及|%|万|亿|元|折)/u.test(right);
+}
+
+const SEMANTIC_CLAUSE_START = /^(?:但是|不过|所以|因此|然后|接着|同时|而且|如果|只要|首先|其次|最后|第一|第二|第三|第\d+|比如|例如|换句话说|也就是说)/u;
+
+function splitCueTokensForCapacity(
+  tokens: ViralCaptionTimelineToken[],
+  language: ViralCaptionSkillLanguage,
+  contract: ViralCaptionTemplateContract,
+) {
+  const groups: ViralCaptionTimelineToken[][] = [];
+  const safeTokenBoundaries = new Set<number>();
+  if (language === "zh" && typeof Intl.Segmenter === "function") {
+    const fullText = tokenText(tokens, language);
+    const wordOffsets = new Set<number>([0, fullText.length]);
+    const segmenter = new Intl.Segmenter("zh-CN", { granularity: "word" });
+    for (const segment of segmenter.segment(fullText)) {
+      wordOffsets.add(segment.index);
+      wordOffsets.add(segment.index + segment.segment.length);
+    }
+    for (let index = 1; index < tokens.length; index += 1) {
+      if (wordOffsets.has(tokenText(tokens.slice(0, index), language).length)) safeTokenBoundaries.add(index);
+    }
+  } else {
+    for (let index = 1; index < tokens.length; index += 1) safeTokenBoundaries.add(index);
+  }
+  let cursor = 0;
+  while (cursor < tokens.length) {
+    const remaining = tokens.slice(cursor);
+    const remainingText = tokenText(remaining, language);
+    if (
+      viralCaptionUnitCount(remainingText) <= contract.cueMaxUnits
+      && directedLines(undefined, remainingText, contract).length
+    ) {
+      groups.push(remaining);
+      break;
+    }
+    const candidates: Array<{ end: number; score: number }> = [];
+    for (let end = cursor + 1; end < tokens.length; end += 1) {
+      if (!safeTokenBoundaries.has(end)) continue;
+      const left = tokens.slice(cursor, end);
+      const right = tokens.slice(end);
+      const leftText = tokenText(left, language);
+      const rightText = tokenText(right, language);
+      const units = viralCaptionUnitCount(leftText);
+      if (units > contract.cueMaxUnits) break;
+      if (!directedLines(undefined, leftText, contract).length) continue;
+      if (badSemanticBoundary(leftText, rightText, language)) continue;
+      const punctuation = /[，,。！？!?；;：:]$/u.test(leftText) ? 8 : 0;
+      const clauseStart = SEMANTIC_CLAUSE_START.test(normalizeViralCaptionText(rightText)) ? 7 : 0;
+      const shortRemainder = viralCaptionUnitCount(rightText) < 3 ? 12 : 0;
+      candidates.push({
+        end,
+        score: units * 2 + punctuation + clauseStart - shortRemainder,
+      });
+    }
+    const selected = candidates.sort((left, right) => right.score - left.score || right.end - left.end)[0];
+    if (!selected) return [];
+    groups.push(tokens.slice(cursor, selected.end));
+    cursor = selected.end;
+  }
+  return groups;
+}
+
+function splitCueTranslation(value: unknown, weights: number[]) {
+  const text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  if (!text) return weights.map(() => "");
+  if (weights.length <= 1) return [text];
+  const language = detectViralCaptionSkillLanguage(text);
+  const units = language === "en" ? text.split(" ").filter(Boolean) : Array.from(text.replace(/\s+/g, ""));
+  if (units.length < weights.length) return [text, ...weights.slice(1).map(() => "")];
+  const totalWeight = Math.max(1, weights.reduce((sum, weight) => sum + weight, 0));
+  const boundaries = [0];
+  let consumed = 0;
+  for (const weight of weights.slice(0, -1)) {
+    consumed += weight;
+    const target = Math.round(units.length * consumed / totalWeight);
+    boundaries.push(Math.max(boundaries.at(-1)! + 1, Math.min(units.length - 1, target)));
+  }
+  boundaries.push(units.length);
+  return weights.map((_, index) => {
+    const slice = units.slice(boundaries[index], boundaries[index + 1]);
+    return language === "en" ? slice.join(" ") : slice.join("");
+  });
 }
 
 function boundariesFollowWords(cues: ViralSemanticCaptionCue[], language: ViralCaptionSkillLanguage) {
@@ -253,59 +394,81 @@ export function compileViralSemanticCaptionPlan(input: {
 }) {
   const rawCues = Array.isArray(input.value) ? input.value : [];
   const tokens = input.timeline.tokens;
+  const fail = (error: string) => ({
+    cues: [] as ViralSemanticCaptionCue[],
+    error,
+    autoSplitCount: 0,
+  });
   if (!tokens.length || !rawCues.length || rawCues.length > 240) {
-    return { cues: [] as ViralSemanticCaptionCue[], error: "AI 没有返回全稿字幕分段。" };
+    return fail("AI 没有返回全稿字幕分段。");
   }
   const cues: ViralSemanticCaptionCue[] = [];
   let expectedToken = 0;
+  let autoSplitCount = 0;
   for (const value of rawCues) {
-    if (!value || typeof value !== "object") return { cues: [], error: "AI 字幕分段格式不完整。" };
+    if (!value || typeof value !== "object") return fail("AI 字幕分段格式不完整。");
     const raw = value as Record<string, unknown>;
     const first = Number(raw.a ?? raw.from);
     const last = Number(raw.b ?? raw.to);
     if (!Number.isInteger(first) || !Number.isInteger(last) || first !== expectedToken || last < first || last >= tokens.length) {
-      return { cues: [], error: "AI 字幕分段没有连续覆盖完整口播。" };
+      return fail("AI 字幕分段没有连续覆盖完整口播。");
     }
     const cueTokens = tokens.slice(first, last + 1);
     const source = tokenText(cueTokens, input.timeline.language);
     const text = acceptViralCaptionCorrection(source, raw.x ?? raw.text);
-    if (!text || viralCaptionUnitCount(text) > input.contract.cueMaxUnits) {
-      return { cues: [], error: "AI 字幕分段超过当前模板容量。" };
-    }
-    const lines = directedLines(raw.l ?? raw.lines, text, input.contract);
-    if (!lines.length) return { cues: [], error: "AI 字幕换行不符合当前模板容量。" };
     const keyword = typeof (raw.k ?? raw.keyword) === "string"
       ? String(raw.k ?? raw.keyword).trim().replace(/\s+/g, "").slice(0, 8)
       : "";
-    const importance = normalizeViralKeywordImportance(raw.p ?? raw.importance, Boolean(keyword));
     const contentNode = CONTENT_NODES.has(String(raw.n ?? raw.content_node) as ViralSemanticCaptionCue["contentNode"])
       ? String(raw.n ?? raw.content_node) as ViralSemanticCaptionCue["contentNode"]
       : "supporting";
     const contentWeight = Math.max(0, Math.min(1, Number(raw.w ?? raw.weight) || 0.5));
-    cues.push({
-      start: Number(cueTokens[0].start.toFixed(3)),
-      end: Number(Math.max(cueTokens[0].start + 0.04, cueTokens.at(-1)!.end).toFixed(3)),
-      text,
-      ...(input.timeline.precision === "word" ? {
-        words: cueTokens.map((token) => ({ start: token.start, end: token.end, text: token.text })),
-      } : {}),
-      captionLines: lines,
-      keyword,
-      keywordImportance: importance,
-      translation: typeof (raw.z ?? raw.translation) === "string" ? String(raw.z ?? raw.translation).trim().slice(0, 240) : "",
-      contentNode,
-      contentWeight,
-    });
+    if (!text) return fail("AI 字幕文字为空。");
+    const tokenGroups = viralCaptionUnitCount(text) <= input.contract.cueMaxUnits
+      ? [cueTokens]
+      : splitCueTokensForCapacity(cueTokens, input.timeline.language, input.contract);
+    if (!tokenGroups.length) return fail(
+      input.timeline.precision === "word"
+        ? "AI 超长字幕没有可用的完整词边界。"
+        : "上游字幕缺少词级时间，无法安全拆分超长字幕。",
+    );
+    autoSplitCount += Math.max(0, tokenGroups.length - 1);
+    const weights = tokenGroups.map((group) => Math.max(1, viralCaptionUnitCount(tokenText(group, input.timeline.language))));
+    const translations = splitCueTranslation(raw.z ?? raw.translation, weights);
+    for (const [groupIndex, group] of tokenGroups.entries()) {
+      // When the AI cue already fits, retain its grounded correction and visual
+      // lines.  Capacity repair uses the confirmed token text so every new cue
+      // remains provably aligned to real word timing.
+      const groupText = tokenGroups.length === 1 ? text : tokenText(group, input.timeline.language);
+      const lines = directedLines(tokenGroups.length === 1 ? raw.l ?? raw.lines : undefined, groupText, input.contract);
+      if (!lines.length) return fail("AI 字幕换行不符合当前模板容量。");
+      const groupKeyword = keyword && viralPlainText(groupText).includes(viralPlainText(keyword)) ? keyword : "";
+      const importance = normalizeViralKeywordImportance(raw.p ?? raw.importance, Boolean(groupKeyword));
+      cues.push({
+        start: Number(group[0].start.toFixed(3)),
+        end: Number(Math.max(group[0].start + 0.04, group.at(-1)!.end).toFixed(3)),
+        text: groupText,
+        ...(input.timeline.precision === "word" ? {
+          words: group.map((token) => ({ start: token.start, end: token.end, text: token.text })),
+        } : {}),
+        captionLines: lines,
+        keyword: groupKeyword,
+        keywordImportance: importance,
+        translation: translations[groupIndex] || "",
+        contentNode,
+        contentWeight,
+      });
+    }
     expectedToken = last + 1;
   }
-  if (expectedToken !== tokens.length) return { cues: [], error: "AI 字幕分段遗漏了部分口播。" };
+  if (expectedToken !== tokens.length) return fail("AI 字幕分段遗漏了部分口播。");
   if (cues.some((cue, index) => index < cues.length - 1 && badSemanticBoundary(cue.text, cues[index + 1].text, input.timeline.language))) {
-    return { cues: [], error: "AI 字幕仍存在不完整语义边界。" };
+    return fail("AI 字幕仍存在不完整语义边界。");
   }
   if (!boundariesFollowWords(cues, input.timeline.language)) {
-    return { cues: [], error: "AI 字幕边界拆开了完整词语。" };
+    return fail("AI 字幕边界拆开了完整词语。");
   }
-  return { cues, error: "" };
+  return { cues, error: "", autoSplitCount };
 }
 
 export function buildViralCaptionSkillRequest(input: {

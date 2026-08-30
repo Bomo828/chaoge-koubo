@@ -3,7 +3,7 @@ import {
   buildViralCaptionTokenTimeline,
   compileViralSemanticCaptionPlan,
 } from "../lib/viral-caption-ai-skill";
-import { viralCaptionTemplateContract } from "../lib/viral-caption-contract";
+import { viralCaptionTemplateContract, viralCaptionUnitCount } from "../lib/viral-caption-contract";
 
 function timedWords(values: string[], offset = 0) {
   return values.map((text, index) => ({
@@ -108,5 +108,50 @@ const mixedPlan = compileViralSemanticCaptionPlan({
 });
 assert.equal(mixedPlan.error, "");
 assert.equal(mixedPlan.cues[0].keyword, "30%");
+
+const oversizedWords = timedWords(["门店运营", "经常遇到", "获客成本高", "但是", "通过优化内容", "可以提高转化率"]);
+const oversizedTimeline = buildViralCaptionTokenTimeline([{
+  start: 0,
+  end: oversizedWords.at(-1)!.end,
+  text: "门店运营经常遇到获客成本高，但是通过优化内容可以提高转化率",
+  words: oversizedWords,
+}]);
+const repairedOversizedPlan = compileViralSemanticCaptionPlan({
+  timeline: oversizedTimeline,
+  contract: viralCaptionTemplateContract("template-9"),
+  value: [{
+    a: 0, b: 5, x: "门店运营经常遇到获客成本高但是通过优化内容可以提高转化率",
+    l: ["门店运营经常遇到获客成本高", "但是通过优化内容可以提高转化率"],
+    k: "提高转化率", p: "primary", z: "Optimize content to improve conversion",
+    n: "pain_reversal", w: 0.92,
+  }],
+});
+assert.equal(repairedOversizedPlan.error, "", "one oversized AI cue should be repaired instead of rejecting the whole plan");
+assert.ok(repairedOversizedPlan.autoSplitCount >= 1);
+assert.ok(repairedOversizedPlan.cues.length >= 2);
+assert.ok(repairedOversizedPlan.cues.every((cue) => viralCaptionUnitCount(cue.text) <= 14));
+assert.ok(repairedOversizedPlan.cues.every((cue) => cue.captionLines.every((line) => viralCaptionUnitCount(line) <= 7)));
+assert.equal(
+  repairedOversizedPlan.cues.flatMap((cue) => cue.words || []).map((word) => word.text).join(""),
+  oversizedWords.map((word) => word.text).join(""),
+  "capacity repair must preserve every confirmed word exactly once",
+);
+assert.equal(repairedOversizedPlan.cues.filter((cue) => cue.keyword === "提高转化率").length, 1);
+
+const unsafeSegmentPlan = compileViralSemanticCaptionPlan({
+  timeline: buildViralCaptionTokenTimeline([{
+    start: 0,
+    end: 3,
+    text: "这一整条上游字幕非常长而且完全没有任何可以使用的词级时间",
+  }]),
+  contract: viralCaptionTemplateContract("template-9"),
+  value: [{
+    a: 0, b: 0, x: "这一整条上游字幕非常长而且完全没有任何可以使用的词级时间",
+    l: ["这一整条上游字幕非常长", "而且完全没有任何可以使用的词级时间"],
+    k: "", p: "none", z: "",
+  }],
+});
+assert.equal(unsafeSegmentPlan.cues.length, 0);
+assert.match(unsafeSegmentPlan.error, /缺少词级时间/);
 
 console.log("viral semantic caption skill contract: ok");

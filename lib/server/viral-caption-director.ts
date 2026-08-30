@@ -193,7 +193,7 @@ export async function planViralCaptionDirector(input: {
   const compactInput = timeline.tokens.map((token) => [token.id, token.text]);
   const sourceLanguage = timeline.language;
   const key = cacheKey({
-    prompt: `${VIRAL_DIRECTOR_PROMPT_VERSION}-global-word-director-v3`,
+    prompt: `${VIRAL_DIRECTOR_PROMPT_VERSION}-global-word-director-v4`,
     model: VIRAL_CAPTION_AI_MODEL,
     templateId,
     contract,
@@ -309,6 +309,7 @@ export async function planViralCaptionDirector(input: {
       directorPlan,
       sourceCaptionCount: source.length,
       compiledCaptionCount: directorPlan.captions.length,
+      autoSplitCaptionCount: compiled.autoSplitCount,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",
     };

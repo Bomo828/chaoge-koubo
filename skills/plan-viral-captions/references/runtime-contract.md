@@ -60,6 +60,8 @@ Reject a model plan unless all conditions hold:
 
 On rejection, preserve the recognized transcript and return a deterministic safe layout with `planReady=false`. Do not discard prior user work or claim that AI planning succeeded.
 
+An otherwise valid cue that only exceeds template capacity is locally repairable, not a whole-plan failure. Split it at confirmed word boundaries, reject boundaries that strand function words, suffixes or step labels, regenerate template-safe visual lines, retain the keyword only on the repaired cue containing it, and derive every repaired start/end from its first/last confirmed word. If the oversized source has only one sentence-level token, do not invent timing; return the explicit missing-word-timing error instead.
+
 ## Forward tests
 
 Use unrelated scripts rather than matching one known sentence. Include long noun and verb-object phrases, causal and contrast clauses, numbered steps attached to the previous ASR sentence, mixed Chinese/Latin brands/numbers/units, malformed token coverage, and both word-level and sentence-level timing. Assert semantic and integrity invariants rather than one exact wording when several good plans exist.
