@@ -231,7 +231,6 @@ export async function POST(request: Request) {
     });
     if (!itemsById.size) throw new Error("AI 没有返回可用的逐句规划。");
     const parsedTitle = typeof parsed.title === "string" ? parsed.title : typeof parsed.t === "string" ? parsed.t : "";
-    if (!parsedTitle.trim()) throw new Error("AI 没有返回完整标题。");
     const plannedCaptions = source.map((caption, index) => {
       const raw = itemsById.get(index) || {};
       const text = acceptViralCaptionCorrection(caption.text, raw.corrected_text).slice(0, 180);
@@ -281,10 +280,13 @@ export async function POST(request: Request) {
     const rawTitle = parsedTitle.trim()
       ? normalizeViralTitleSyntax(parsedTitle.trim().replace(/[。！？!?]+$/g, "").slice(0, 40))
       : fallback.title;
-    if (!viralCaptionSkillTitleIsValid(rawTitle.replace(/\n/g, ""), sourceLanguage)) {
-      throw new Error("AI 返回的标题不是完整自然语义。");
-    }
-    const titleLayout = planViralTitleLayout(rawTitle, parsed.title_lines ?? parsed.tl);
+    const aiTitleAccepted = Boolean(parsedTitle.trim())
+      && viralCaptionSkillTitleIsValid(rawTitle.replace(/\n/g, ""), sourceLanguage);
+    const guardedTitle = aiTitleAccepted ? rawTitle : fallback.title;
+    const titleLayout = planViralTitleLayout(
+      guardedTitle,
+      aiTitleAccepted ? parsed.title_lines ?? parsed.tl : fallback.titleLines,
+    );
     const title = titleLayout.serializedTitle;
     const directorPlan = buildViralDirectorPlan({
       templateId,
@@ -307,6 +309,9 @@ export async function POST(request: Request) {
       provider: aiResult.provider,
       planningRole: `${aiResult.provider}-caption-director`,
       timelineRole: "upstream-timing-only",
+      titleSource: aiTitleAccepted ? "ai" : "semantic-guardrail",
+      providerFallbackWarning: aiResult.fallbackFailures?.join("；") || null,
+      warning: aiTitleAccepted ? null : "AI 标题未通过完整语义校验，已保留 AI 字幕规划并自动换用安全标题。",
       directorPlan,
       requestMs: Date.now() - requestStartedAt,
       cache: "miss",

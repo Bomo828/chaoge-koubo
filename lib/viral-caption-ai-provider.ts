@@ -15,6 +15,7 @@ export type ViralCaptionAiResult<T> = {
   response: T;
   provider: ViralCaptionAiProvider;
   model: string;
+  fallbackFailures?: string[];
 };
 
 export async function requestViralCaptionAi<T>(input: {
@@ -58,7 +59,12 @@ export async function requestViralCaptionAi<T>(input: {
           provider: "lk888",
         })),
       });
-      return { response, provider: "lk888", model: VIRAL_CAPTION_AI_FALLBACK_MODEL };
+      return {
+        response,
+        provider: "lk888",
+        model: VIRAL_CAPTION_AI_FALLBACK_MODEL,
+        fallbackFailures: [...failures],
+      };
     } catch (error) {
       failures.push(error instanceof Error ? error.message : "备用模型请求失败");
     }
